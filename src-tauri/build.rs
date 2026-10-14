@@ -5,11 +5,16 @@ fn main() {
             "cancel",
             "page",
             "text_diff",
+            "merge_buffers",
+            "binary_page",
             "preview_sync",
             "apply_sync",
             "pick_directory",
             "load_session",
             "save_session",
+            "open_document",
+            "close_document",
+            "save_document",
         ]),
     ))
     .expect("Tauri build configuration");

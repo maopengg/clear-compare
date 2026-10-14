@@ -39,3 +39,13 @@ The optimized macOS application and DMG were built and exercised on synthetic fi
 ## Remaining long-term milestones
 
 P2: editing, encoding and large-directory performance. P3: durable synchronization policies, recovery and automation. P4: advanced merge and specialized viewers. P5: archives and remote adapters. P6: cloud, VCS and system integrations. P7: full platform release acceptance.
+
+## P2 text workflows and initial specialized viewer
+
+- UTF-8 and BOM-marked UTF-16 LE/BE editing retains BOM and uniform line-ending style.
+- Saves verify the current digest, create a verified backup and persist a prepared/completed manifest, then atomically replace and verify the result.
+- Display-only case, whitespace and newline normalization preserves original text on both sides.
+- Three-way merging combines independent changes and exposes competing changes with base/left/right markers. Results remain buffers until explicitly saved through the editor.
+- Hex/ASCII comparison reads fixed 4 KiB pages, independently of file size.
+- Focused tests cover encoding retention, external edits, malformed inputs, normalization, final newline significance, adjacent edits, deletion, conflicting insertions and binary page boundaries.
+- Core/CLI tests and compiler/static checks continue; the new desktop interaction and installation acceptance are deferred per the agreed validation sequence.

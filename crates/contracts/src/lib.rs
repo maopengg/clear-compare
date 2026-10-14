@@ -97,12 +97,65 @@ pub struct DiffLine {
     pub old_line: Option<usize>,
     pub new_line: Option<usize>,
     pub text: String,
+    /// Original right-side text for lines equal under normalization.
+    pub right_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TextOptions {
+    pub ignore_case: bool,
+    pub ignore_whitespace: bool,
+    pub ignore_line_endings: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextDiff {
     pub path: String,
     pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Side {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Encoding {
+    Utf8,
+    Utf16Le,
+    Utf16Be,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LineEnding {
+    Lf,
+    CrLf,
+    Cr,
+    Mixed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextDocument {
+    pub id: String,
+    pub absolute_path: String,
+    pub path: String,
+    pub side: Side,
+    pub text: String,
+    pub encoding: Encoding,
+    pub bom: bool,
+    pub line_ending: LineEnding,
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SaveResult {
+    pub document: TextDocument,
+    pub backup: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,4 +188,28 @@ pub struct SyncResult {
     pub plan: SyncPlan,
     pub actions: Vec<ActionResult>,
     pub journal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeResult {
+    pub text: String,
+    pub conflicts: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryLine {
+    pub offset: String,
+    pub left_hex: String,
+    pub right_hex: String,
+    pub left_ascii: String,
+    pub right_ascii: String,
+    pub changed: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryPage {
+    pub path: String,
+    pub offset: String,
+    pub left_size: String,
+    pub right_size: String,
+    pub lines: Vec<BinaryLine>,
 }

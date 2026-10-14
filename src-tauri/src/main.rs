@@ -3,6 +3,7 @@
 use clear_contracts::*;
 use clear_core::compare::Snapshot;
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -18,6 +19,7 @@ struct Backend {
     plan: Mutex<Option<SyncPlan>>,
     cancel: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
+    documents: Mutex<BTreeMap<String, Arc<clear_core::editing::OpenDocument>>>,
 }
 
 struct Busy(Arc<AtomicBool>);
@@ -59,12 +61,11 @@ async fn compare(
     request: CompareRequest,
     state: State<'_, Backend>,
 ) -> Result<OpenedComparison, String> {
-    let guard = state.begin()?;
+    let _operation_guard = state.begin()?;
     // Invalidate the old plan before a new scan, even when that scan fails.
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
     let cancel = state.cancel.clone();
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
-        let _guard = guard;
         clear_core::compare::compare(&request, &cancel)
     })
     .await
@@ -92,6 +93,70 @@ fn cancel(state: State<'_, Backend>) {
 }
 
 #[tauri::command]
+async fn open_document(
+    session: String,
+    row_id: String,
+    side: Side,
+    state: State<'_, Backend>,
+) -> Result<TextDocument, String> {
+    let _operation_guard = state.begin()?;
+    let snapshot = state.snapshot(&session)?;
+    let document = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::editing::open(&snapshot, &row_id, side)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let view = document.view.clone();
+    let mut documents = state.documents.lock().map_err(|_| "State unavailable")?;
+    if documents.len() >= 8 {
+        return Err("Close an editor before opening more documents".into());
+    }
+    documents.insert(view.id.clone(), Arc::new(document));
+    Ok(view)
+}
+
+#[tauri::command]
+fn close_document(document_id: String, state: State<'_, Backend>) -> Result<(), String> {
+    state
+        .documents
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .remove(&document_id);
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_document(
+    document_id: String,
+    text: String,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<SaveResult, String> {
+    let _operation_guard = state.begin()?;
+    let document = state
+        .documents
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .get(&document_id)
+        .cloned()
+        .ok_or("Editor expired. Reopen the document.")?;
+    let backup = data_dir(&app)?.join("editor-backups");
+    std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
+    let (updated, result) = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::editing::save(&document, &text, &backup)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let mut documents = state.documents.lock().map_err(|_| "State unavailable")?;
+    documents.remove(&document_id);
+    documents.insert(updated.view.id.clone(), Arc::new(updated));
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    Ok(result)
+}
+
+#[tauri::command]
 fn page(session: String, offset: usize, state: State<'_, Backend>) -> Result<Page, String> {
     let snapshot = state.snapshot(&session)?;
     Ok(Page {
@@ -111,10 +176,43 @@ fn page(session: String, offset: usize, state: State<'_, Backend>) -> Result<Pag
 async fn text_diff(
     session: String,
     row_id: String,
+    options: TextOptions,
     state: State<'_, Backend>,
 ) -> Result<TextDiff, String> {
     let snapshot = state.snapshot(&session)?;
-    tauri::async_runtime::spawn_blocking(move || clear_core::text::preview(&snapshot, &row_id))
+    tauri::async_runtime::spawn_blocking(move || {
+        clear_core::text::preview_with_options(&snapshot, &row_id, &options)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn binary_page(
+    session: String,
+    row_id: String,
+    offset: String,
+    state: State<'_, Backend>,
+) -> Result<BinaryPage, String> {
+    let snapshot = state.snapshot(&session)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        clear_core::binary::page(&snapshot, &row_id, &offset)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn merge_buffers(
+    base: String,
+    left: String,
+    right: String,
+    state: State<'_, Backend>,
+) -> Result<MergeResult, String> {
+    let _operation_guard = state.begin()?;
+    tauri::async_runtime::spawn_blocking(move || clear_core::merge::three_way(&base, &left, &right))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -127,13 +225,12 @@ async fn preview_sync(
     app: tauri::AppHandle,
     state: State<'_, Backend>,
 ) -> Result<SyncPlan, String> {
-    let guard = state.begin()?;
+    let _operation_guard = state.begin()?;
     let snapshot = state.snapshot(&session)?;
     let cancel = state.cancel.clone();
     let backup = data_dir(&app)?.join("backups");
     std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
     let plan = tauri::async_runtime::spawn_blocking(move || {
-        let _guard = guard;
         clear_core::sync::plan(&snapshot, &row_ids, &backup, &cancel)
     })
     .await
@@ -145,7 +242,7 @@ async fn preview_sync(
 
 #[tauri::command]
 async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<SyncResult, String> {
-    let guard = state.begin()?;
+    let _operation_guard = state.begin()?;
     let plan = state
         .plan
         .lock()
@@ -158,7 +255,6 @@ async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<SyncRe
     let snapshot = state.snapshot(&plan.session)?;
     let cancel = state.cancel.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = guard;
         clear_core::sync::execute(&snapshot, &plan, &cancel)
     })
     .await
@@ -210,11 +306,16 @@ fn main() {
             cancel,
             page,
             text_diff,
+            merge_buffers,
+            binary_page,
             preview_sync,
             apply_sync,
             pick_directory,
             load_session,
-            save_session
+            save_session,
+            open_document,
+            close_document,
+            save_document
         ])
         .run(tauri::generate_context!())
         .expect("desktop runtime failed");

@@ -80,7 +80,19 @@ fn App() -> impl IntoView {
     let selected = RwSignal::new(BTreeSet::<String>::new());
     let diff = RwSignal::new(None::<TextDiff>);
     let diff_limit = RwSignal::new(500usize);
+    let ignore_case = RwSignal::new(false);
+    let ignore_space = RwSignal::new(false);
+    let ignore_endings = RwSignal::new(false);
     let plan = RwSignal::new(None::<SyncPlan>);
+    let editor = RwSignal::new(None::<TextDocument>);
+    let draft = RwSignal::new(String::new());
+    let binary = RwSignal::new(None::<BinaryPage>);
+    let binary_id = RwSignal::new(String::new());
+    let merge_visible = RwSignal::new(false);
+    let merge_base = RwSignal::new(String::new());
+    let merge_left = RwSignal::new(String::new());
+    let merge_right = RwSignal::new(String::new());
+    let merge_result = RwSignal::new(None::<MergeResult>);
 
     spawn_local(async move {
         match invoke::<Option<SavedSession>>("load_session", serde_json::json!({})).await {
@@ -96,11 +108,32 @@ fn App() -> impl IntoView {
         }
     });
 
+    let open_binary = move |id: String, offset: String| {
+        let Some(c) = comparison.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        binary_id.set(id.clone());
+        spawn_local(async move {
+            match invoke::<BinaryPage>(
+                "binary_page",
+                serde_json::json!({"session":c.session,"rowId":id,"offset":offset}),
+            )
+            .await
+            {
+                Ok(p) => binary.set(Some(p)),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
     let reset = move || {
         comparison.set(None);
         rows.set(Vec::new());
         selected.set(BTreeSet::new());
         diff.set(None);
+        binary.set(None);
         plan.set(None);
         message.set(String::new());
     };
@@ -246,6 +279,108 @@ fn App() -> impl IntoView {
         });
     };
 
+    let open_editor = move |row_id: String, side: Side| {
+        let Some(c) = comparison.get_untracked() else {
+            return;
+        };
+        if editor
+            .get_untracked()
+            .is_some_and(|d| d.text != draft.get_untracked())
+        {
+            error.set(
+                tr(
+                    english.get_untracked(),
+                    "请先保存或重置当前编辑内容。",
+                    "Save or reset the current editor before opening another file.",
+                )
+                .into(),
+            );
+            return;
+        }
+        let old = editor.get_untracked();
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            if let Some(old) = old {
+                let _ =
+                    invoke::<()>("close_document", serde_json::json!({"documentId":old.id})).await;
+            }
+            match invoke::<TextDocument>(
+                "open_document",
+                serde_json::json!({"session":c.session,"rowId":row_id,"side":side}),
+            )
+            .await
+            {
+                Ok(document) => {
+                    draft.set(document.text.clone());
+                    editor.set(Some(document));
+                }
+                Err(e) => {
+                    editor.set(None);
+                    error.set(e);
+                }
+            }
+            busy.set(false);
+        });
+    };
+    let save_editor = move || {
+        let Some(document) = editor.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        let text = draft.get_untracked();
+        spawn_local(async move {
+            match invoke::<SaveResult>(
+                "save_document",
+                serde_json::json!({"documentId":document.id,"text":text}),
+            )
+            .await
+            {
+                Ok(result) => {
+                    draft.set(result.document.text.clone());
+                    editor.set(Some(result.document));
+                    reset();
+                    message.set(format!(
+                        "{} {}",
+                        tr(
+                            english.get_untracked(),
+                            "文件已保存；原始内容备份：",
+                            "File saved; original backup:"
+                        ),
+                        result.backup
+                    ));
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let close_editor = move || {
+        let Some(document) = editor.get_untracked() else {
+            return;
+        };
+        if draft.get_untracked() != document.text {
+            error.set(
+                tr(
+                    english.get_untracked(),
+                    "有未保存的修改，请先保存或重置。",
+                    "Unsaved changes: save or reset before closing.",
+                )
+                .into(),
+            );
+            return;
+        }
+        editor.set(None);
+        spawn_local(async move {
+            let _ = invoke::<()>(
+                "close_document",
+                serde_json::json!({"documentId":document.id}),
+            )
+            .await;
+        });
+    };
+
     view! {
         <main class="workspace">
             <header class="topbar">
@@ -271,29 +406,35 @@ fn App() -> impl IntoView {
                 <section class="empty"><div class="empty-symbol" aria-hidden="true">"⇄"</div><h1>{move || tr(english.get(),"看清差异，再同步","See the difference. Then sync.")}</h1><p>{move || tr(english.get(),"选择两个独立的文件夹，比较内容，检查计划，然后复制你选择的文件。","Choose two separate directories, compare their contents, review a plan, then copy selected files.")}</p><div class="empty-notes"><span>{move || tr(english.get(),"目标独有文件保留","Destination-only files retained")}</span><span>{move || tr(english.get(),"覆盖前验证备份","Backups verified before overwrite")}</span></div></section>
             }>
                 <div class="summary-bar">{move || comparison.get().map(|c| { let s=c.summary; view! {<span class="stat changed">{format!("{} {}",tr(english.get(),"修改","Changed"),s.changed)}</span><span class="stat left">{format!("{} {}",tr(english.get(),"仅左","Left only"),s.left_only)}</span><span class="stat right">{format!("{} {}",tr(english.get(),"仅右","Right only"),s.right_only)}</span><span class="stat same">{format!("{} {}",tr(english.get(),"一致","Same"),s.same)}</span><span class="stat">{format!("{} {} · {} {}",tr(english.get(),"未验证","Unverified"),s.unverified,tr(english.get(),"错误","Errors"),s.errors)}</span>} })}</div>
-                <div class="filterbar"><input aria-label="Filter current page" placeholder=move || tr(english.get(),"筛选当前页路径…","Filter paths on this page…") prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev))/><label class="check-label"><input type="checkbox" prop:checked=move || differences.get() on:change=move |ev| differences.set(event_target_checked(&ev))/>{move || tr(english.get(),"只看差异","Differences only")}</label><span class="selection-count">{move || format!("{} {}",selected.get().len(),tr(english.get(),"个文件已选","files selected"))}</span><button class="primary" disabled=move || selected.get().is_empty() || busy.get() on:click=move |_| preview()>{move || tr(english.get(),"预览同步 →","Preview sync →")}</button></div>
-                <section class="file-list" aria-label="Comparison results"><div class="file-header"><span></span><span>{move || tr(english.get(),"相对路径","Relative path")}</span><span>{move || tr(english.get(),"左侧大小","Left size")}</span><span>{move || tr(english.get(),"右侧大小","Right size")}</span><span>{move || tr(english.get(),"状态","Status")}</span></div>
+                <div class="text-options"><button class="quiet" on:click=move |_|merge_visible.set(!merge_visible.get_untracked())>{move || tr(english.get(),"三方文本合并","Three-way text merge")}</button><span>{move || tr(english.get(),"文本比较规则（打开文件时应用）","Text rules (applied when opening a file)")}</span><label><input type="checkbox" prop:checked=move || ignore_case.get() on:change=move |ev|ignore_case.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略大小写","Ignore case")}</label><label><input type="checkbox" prop:checked=move || ignore_space.get() on:change=move |ev|ignore_space.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略空白","Ignore whitespace")}</label><label><input type="checkbox" prop:checked=move || ignore_endings.get() on:change=move |ev|ignore_endings.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略换行风格","Ignore line ending style")}</label></div><div class="filterbar"><input aria-label="Filter current page" placeholder=move || tr(english.get(),"筛选当前页路径…","Filter paths on this page…") prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev))/><label class="check-label"><input type="checkbox" prop:checked=move || differences.get() on:change=move |ev| differences.set(event_target_checked(&ev))/>{move || tr(english.get(),"只看差异","Differences only")}</label><span class="selection-count">{move || format!("{} {}",selected.get().len(),tr(english.get(),"个文件已选","files selected"))}</span><button class="primary" disabled=move || selected.get().is_empty() || busy.get() on:click=move |_| preview()>{move || tr(english.get(),"预览同步 →","Preview sync →")}</button></div>
+                <section class="file-list" aria-label="Comparison results"><div class="file-header"><span></span><span>{move || tr(english.get(),"相对路径","Relative path")}</span><span>{move || tr(english.get(),"左侧大小","Left size")}</span><span>{move || tr(english.get(),"右侧大小","Right size")}</span><span>{move || tr(english.get(),"状态","Status")}</span><span>{move || tr(english.get(),"编辑","Edit")}</span></div>
                     <div class="file-scroll"><For each=move || { let query=search.get().to_lowercase(); rows.get().into_iter().filter(|r| (!differences.get() || r.status != Status::Same) && r.path.to_lowercase().contains(&query)).collect::<Vec<_>>() } key=|r| r.id.clone() children=move |row| {
                         let id=row.id.clone(); let select_id=id.clone(); let check_id=id.clone(); let open_id=id.clone();
                         let eligible=matches!(row.status,Status::Changed|Status::LeftOnly) && row.left.as_ref().is_some_and(|e| e.kind==Kind::File);
+                        let can_left=row.left.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());
+                        let can_right=row.right.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());
+                        let edit_left=id.clone();let edit_right=id.clone();let hex_id=id.clone();
                         let left_size=size(row.left.as_ref()); let right_size=size(row.right.as_ref()); let state=row.status.clone(); let css=status_class(&state); let path=row.path.clone();
                         let detail=row.left.as_ref().and_then(|e| e.error.clone()).or_else(|| row.right.as_ref().and_then(|e| e.error.clone())).unwrap_or_else(|| path.clone());
                         view! {<div class="file-row" title=detail><input type="checkbox" aria-label=format!("Select {}",path) disabled=move || !eligible || busy.get() prop:checked=move || selected.get().contains(&check_id) on:change=move |ev| { let checked=event_target_checked(&ev);selected.update(|s| {if checked {s.insert(select_id.clone());} else {s.remove(&select_id);}});plan.set(None); }/>
                             <button class="file-name" disabled=move || busy.get() on:click=move |_| {
                                 let Some(c)=comparison.get_untracked() else {return;}; let id=open_id.clone();busy.set(true);error.set(String::new());diff.set(None);diff_limit.set(500);
-                                spawn_local(async move {match invoke::<TextDiff>("text_diff",serde_json::json!({"session":c.session,"rowId":id})).await {Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)} busy.set(false);});
-                            }>{path}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span></div>}
+                                spawn_local(async move {match invoke::<TextDiff>("text_diff",serde_json::json!({"session":c.session,"rowId":id,"options":{"ignore_case":ignore_case.get_untracked(),"ignore_whitespace":ignore_space.get_untracked(),"ignore_line_endings":ignore_endings.get_untracked()}})).await {Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)} busy.set(false);});
+                            }>{path}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
                     }/></div>
                 </section>
                 <div class="pagination"><span>{move || comparison.get().map(|c| format!("{}–{} / {}",offset.get()+1,(offset.get()+500).min(c.page.total),c.page.total)).unwrap_or_default()}</span><button class="quiet" disabled=move || offset.get()==0 || busy.get() on:click=move |_| paginate(false)>{move || tr(english.get(),"上一页","Previous")}</button><button class="quiet" disabled=move || busy.get() || comparison.get().is_none_or(|c| offset.get()+500>=c.page.total) on:click=move |_| paginate(true)>{move || tr(english.get(),"下一页","Next")}</button></div>
                 <Show when=move || comparison.get().is_some_and(|c| !c.warnings.is_empty())><p class="warnings">{move || comparison.get().map(|c| c.warnings.join(" · "))}</p></Show>
             </Show>
-            <Show when=move || diff.get().is_some()><section class="diff-panel"><header><strong>{move || diff.get().map(|d|d.path)}</strong><button class="quiet" on:click=move |_| diff.set(None)>{move || tr(english.get(),"关闭预览","Close preview")}</button></header><div class="diff-headings"><span>{move || tr(english.get(),"左侧 · 来源","Left · Source")}</span><span>{move || tr(english.get(),"右侧 · 目标","Right · Destination")}</span></div><div class="diff-scroll"><For each=move || diff.get().map(|d|d.lines.into_iter().take(diff_limit.get()).enumerate().collect::<Vec<_>>()).unwrap_or_default() key=|(i,_)| *i children=move |(_,line)| {
-                let left_text=if line.tag=="insert" {String::new()} else {line.text.clone()};let right_text=if line.tag=="delete" {String::new()} else {line.text};
+            <Show when=move || diff.get().is_some()><section class="diff-panel"><header><button class="quiet" on:click=move |_|{if let Some(d)=diff.get_untracked(){merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);}}>{move || tr(english.get(),"载入合并面板","Load into merge panel")}</button><strong>{move || diff.get().map(|d|d.path)}</strong><button class="quiet" on:click=move |_| diff.set(None)>{move || tr(english.get(),"关闭预览","Close preview")}</button></header><div class="diff-headings"><span>{move || tr(english.get(),"左侧 · 来源","Left · Source")}</span><span>{move || tr(english.get(),"右侧 · 目标","Right · Destination")}</span></div><div class="diff-scroll"><For each=move || diff.get().map(|d|d.lines.into_iter().take(diff_limit.get()).enumerate().collect::<Vec<_>>()).unwrap_or_default() key=|(i,_)| *i children=move |(_,line)| {
+                let left_text=if line.tag=="insert" {String::new()} else {line.text.clone()};let right_text=if line.tag=="delete" {String::new()} else {line.right_text.unwrap_or(line.text)};
                 view! {<div class=format!("diff-line {}",line.tag)><div class="diff-cell"><span class="line-number">{line.old_line.map(|n|n.to_string())}</span><pre>{left_text}</pre></div><div class="diff-cell"><span class="line-number">{line.new_line.map(|n|n.to_string())}</span><pre>{right_text}</pre></div></div>}
             }/></div><Show when=move || diff.get().is_some_and(|d|d.lines.len()>diff_limit.get())><button class="quiet" on:click=move |_| diff_limit.update(|n|*n+=500)>{move || tr(english.get(),"再显示 500 行","Show 500 more lines")}</button></Show></section></Show>
+            <Show when=move ||binary.get().is_some()><section class="binary-panel"><header><strong>{move ||binary.get().map(|p|format!("{} · {} / {} bytes",p.path,p.left_size,p.right_size))}</strong><button class="quiet" on:click=move |_|binary.set(None)>{move ||tr(english.get(),"关闭二进制预览","Close binary preview")}</button></header><div class="binary-scroll"><For each=move ||binary.get().map(|p|p.lines).unwrap_or_default() key=|l|l.offset.clone() children=move |line|view! {<div class=if line.changed{"binary-line changed"}else{"binary-line"}><span>{format!("{:08X}",line.offset.parse::<u64>().unwrap_or_default())}</span><pre>{line.left_hex}</pre><pre>{line.left_ascii}</pre><pre>{line.right_hex}</pre><pre>{line.right_ascii}</pre></div>}/></div><footer><button class="quiet" disabled=move ||busy.get() ||binary.get().is_none_or(|p|p.offset=="0") on:click=move |_|{if let Some(p)=binary.get_untracked(){let n=p.offset.parse::<u64>().unwrap_or_default().saturating_sub(4096);open_binary(binary_id.get_untracked(),n.to_string());}}>{move ||tr(english.get(),"上一页","Previous")}</button><span>{move ||binary.get().map(|p|format!("Offset {} · 4096 bytes/page",p.offset))}</span><button class="quiet" disabled=move ||busy.get() ||binary.get().is_none_or(|p|{let n=p.offset.parse::<u64>().unwrap_or_default();n.saturating_add(4096)>=p.left_size.parse::<u64>().unwrap_or_default().max(p.right_size.parse::<u64>().unwrap_or_default())}) on:click=move |_|{if let Some(p)=binary.get_untracked(){if let Some(n)=p.offset.parse::<u64>().unwrap_or_default().checked_add(4096){open_binary(binary_id.get_untracked(),n.to_string());}}}>{move ||tr(english.get(),"下一页","Next")}</button></footer></section></Show>
+            <Show when=move || merge_visible.get()><section class="merge-panel"><header><strong>{move || tr(english.get(),"三方文本合并","Three-way text merge")}</strong><button class="quiet" on:click=move |_|merge_visible.set(false)>{move || tr(english.get(),"收起","Collapse")}</button></header><p>{move || tr(english.get(),"填写共同基础版本及左右版本。结果先保留在缓冲区；冲突用标记展示，可手动处理后载入已打开的编辑器。","Enter the common base and both versions. The result stays in a buffer; resolve conflict markers before loading it into an open editor.")}</p><div class="merge-inputs"><label>{move || tr(english.get(),"基础版本","Base")}<textarea aria-label="Merge base" spellcheck="false" prop:value=move ||merge_base.get() on:input=move |ev|{merge_base.set(event_target_value(&ev));merge_result.set(None);}/></label><label>{move || tr(english.get(),"左侧版本","Left")}<textarea aria-label="Merge left" spellcheck="false" prop:value=move ||merge_left.get() on:input=move |ev|{merge_left.set(event_target_value(&ev));merge_result.set(None);}/></label><label>{move || tr(english.get(),"右侧版本","Right")}<textarea aria-label="Merge right" spellcheck="false" prop:value=move ||merge_right.get() on:input=move |ev|{merge_right.set(event_target_value(&ev));merge_result.set(None);}/></label></div><button class="primary" disabled=move ||busy.get() on:click=move |_|{busy.set(true);error.set(String::new());let args=serde_json::json!({"base":merge_base.get_untracked(),"left":merge_left.get_untracked(),"right":merge_right.get_untracked()});spawn_local(async move {match invoke::<MergeResult>("merge_buffers",args).await{Ok(value)=>merge_result.set(Some(value)),Err(e)=>error.set(e)}busy.set(false);});}>{move || tr(english.get(),"生成合并结果","Generate merge result")}</button><Show when=move ||merge_result.get().is_some()><p>{move ||merge_result.get().map(|m|format!("{}: {}",tr(english.get(),"冲突组数","Conflict groups"),m.conflicts))}</p><textarea class="text-editor" aria-label="Merge result" spellcheck="false" prop:value=move ||merge_result.get().map(|m|m.text).unwrap_or_default() on:input=move |ev|merge_result.update(|m|{if let Some(m)=m{m.text=event_target_value(&ev);}})/><button class="quiet" disabled=move ||busy.get() ||editor.get().is_none() ||editor.get().is_some_and(|d|d.text!=draft.get()) on:click=move |_|{if let Some(m)=merge_result.get_untracked(){draft.set(m.text);}}>{move || tr(english.get(),"载入已打开的编辑器","Load into open editor")}</button></Show></section></Show>
+            <Show when=move || editor.get().is_some()><section class="editor-panel"><header><strong>{move || editor.get().map(|d|format!("{} · {:?} · {:?}",d.absolute_path,d.encoding,d.line_ending))}</strong><span>{move || editor.get().map(|d|if d.text==draft.get(){tr(english.get(),"已保存","Saved")}else{tr(english.get(),"未保存","Unsaved")})}</span></header><textarea class="text-editor" aria-label="Text editor" spellcheck="false" disabled=move || busy.get() prop:value=move || draft.get() on:input=move |ev|draft.set(event_target_value(&ev))/><footer><button class="quiet" disabled=move || busy.get() on:click=move |_|close_editor()>{move || tr(english.get(),"关闭编辑","Close editor")}</button><button class="quiet" disabled=move || busy.get() on:click=move |_|{if let Some(d)=editor.get_untracked(){draft.set(d.text);}}>{move || tr(english.get(),"重置内容","Reset buffer")}</button><button class="primary" disabled=move || busy.get() || editor.get().is_none_or(|d|d.text==draft.get()) on:click=move |_|save_editor()>{move || tr(english.get(),"备份并保存","Backup and save")}</button></footer></section></Show>
             <Show when=move || plan.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="sync-title"><h2 id="sync-title">{move || tr(english.get(),"检查同步计划","Review synchronization plan")}</h2><p>{move || tr(english.get(),"从左侧复制到右侧。不会删除目标独有文件。所有覆盖文件将先备份。","Copy left to right. Destination-only files are retained. Overwritten files are backed up first.")}</p><div class="plan-actions"><For each=move || plan.get().map(|p|p.actions).unwrap_or_default() key=|a|a.row_id.clone() children=move |a| view! {<div><span>{a.path}</span><strong>{move || if a.overwrite {tr(english.get(),"覆盖并备份","Overwrite + backup")} else {tr(english.get(),"新增","Create")}}</strong></div>}/></div><p class="backup-path">{move || plan.get().map(|p|format!("{}: {}",tr(english.get(),"备份位置","Backup location"),p.backup_root))}</p><footer><button class="quiet" disabled=move || busy.get() on:click=move |_| plan.set(None)>{move || tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move || busy.get() on:click=move |_| apply()>{move || tr(english.get(),"执行已预览的同步","Execute reviewed plan")}</button></footer></section></div></Show>
-            <footer class="statusbar"><span>{move || tr(english.get(),"UTF-8 预览 · 不跟随符号链接 · 不自动删除","UTF-8 preview · Links not followed · No automatic deletion")}</span><span>"Clear Compare · MIT"</span></footer>
+            <footer class="statusbar"><span>{move || tr(english.get(),"UTF-8 / UTF-16 预览 · 不跟随符号链接 · 不自动删除","UTF-8 / UTF-16 preview · Links not followed · No automatic deletion")}</span><span>"Clear Compare · MIT"</span></footer>
         </main>
     }
 }

@@ -22,6 +22,21 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    Merge {
+        base: PathBuf,
+        left: PathBuf,
+        right: PathBuf,
+    },
+    Diff {
+        left: PathBuf,
+        right: PathBuf,
+        #[arg(long)]
+        ignore_case: bool,
+        #[arg(long)]
+        ignore_whitespace: bool,
+        #[arg(long)]
+        ignore_line_endings: bool,
+    },
     Sync {
         left: String,
         right: String,
@@ -65,6 +80,36 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             } else {
                 0
             })
+        }
+        Command::Merge { base, left, right } => {
+            let result = clear_core::merge::three_way(
+                &clear_core::text::read_text(&base)?,
+                &clear_core::text::read_text(&left)?,
+                &clear_core::text::read_text(&right)?,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(i32::from(result.conflicts > 0))
+        }
+        Command::Diff {
+            left,
+            right,
+            ignore_case,
+            ignore_whitespace,
+            ignore_line_endings,
+        } => {
+            let diff = clear_core::text::compare_strings(
+                "text",
+                &clear_core::text::read_text(&left)?,
+                &clear_core::text::read_text(&right)?,
+                &clear_contracts::TextOptions {
+                    ignore_case,
+                    ignore_whitespace,
+                    ignore_line_endings,
+                },
+            )?;
+            let different = diff.lines.iter().any(|l| l.tag != "equal");
+            println!("{}", serde_json::to_string_pretty(&diff)?);
+            Ok(i32::from(different))
         }
         Command::Sync {
             left,

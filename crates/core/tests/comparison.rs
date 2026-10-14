@@ -52,11 +52,15 @@ fn text_preview_rejects_binary_invalid_encoding_and_large_inputs() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("a");
     fs::write(&path, [0, 1, 2]).unwrap();
-    assert!(text::read_utf8(&path).is_err());
+    assert!(text::read_text(&path).is_err());
     fs::write(&path, [255, 254, 128]).unwrap();
-    assert!(text::read_utf8(&path).is_err());
-    fs::write(&path, vec![b'a'; 2 * 1024 * 1024 + 1]).unwrap();
-    assert!(text::read_utf8(&path).is_err());
+    assert!(text::read_text(&path).is_err());
+    fs::write(
+        &path,
+        vec![b'a'; clear_core::editing::MAX_DOCUMENT_BYTES + 1],
+    )
+    .unwrap();
+    assert!(text::read_text(&path).is_err());
     fs::write(&path, "\u{feff}中文\r\n").unwrap();
-    assert_eq!(text::read_utf8(&path).unwrap(), "中文\r\n");
+    assert_eq!(text::read_text(&path).unwrap(), "中文\r\n");
 }

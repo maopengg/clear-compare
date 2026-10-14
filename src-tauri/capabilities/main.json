@@ -4,7 +4,8 @@
   "description": "Local main window with explicit comparison commands; no generic filesystem or shell access",
   "windows": ["main"],
   "permissions": [
-    "core:default", "allow-compare", "allow-cancel", "allow-page", "allow-text-diff",
-    "allow-preview-sync", "allow-apply-sync", "allow-pick-directory", "allow-load-session", "allow-save-session"
+    "core:default", "allow-compare", "allow-cancel", "allow-page", "allow-text-diff", "allow-merge-buffers", "allow-binary-page",
+    "allow-preview-sync", "allow-apply-sync", "allow-pick-directory", "allow-load-session", "allow-save-session",
+    "allow-open-document", "allow-close-document", "allow-save-document"
   ]
 }
