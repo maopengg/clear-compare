@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, persisted settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, persisted settings and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table and image viewers, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -29,7 +29,7 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 1. 选择互不包含的两个文件夹：左侧为来源，右侧为目标。
 2. 设置排除规则，点击“比较文件夹”。默认校验内容。
-3. 检查差异，点击文本文件阅读左右差异；支持 UTF-8 及带 BOM 的 UTF-16，比较规则可忽略大小写、空白或换行风格。
+3. 点击目录进入子目录，通过面包屑返回；可切换“包含子目录”，搜索和排序作用于当前范围的全部条目。检查差异，点击文本文件阅读左右差异；支持 UTF-8 及带 BOM 的 UTF-16，比较规则可忽略大小写、空白或换行风格。
 4. 勾选需要复制的新增或修改文件，点击“预览同步”。
 5. 核对方向、文件清单和备份位置后执行。
 6. 完成后重新比较。保留备份和操作日志，直到确认结果。
@@ -38,7 +38,7 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 勾选“右 → 左”可切换同步方向；切换后需重新选择文件并预览。
 
-目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录行的一致仅表示两侧目录存在，不代表整个子树内容相同。
+目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录状态会聚合按当前规则扫描到的子项；目录大小是已列出的常规文件大小之和，不是实际磁盘占用。子项有差异、错误或未验证内容时，目录不会标为内容一致。
 
 ### 排除规则
 
@@ -102,7 +102,7 @@ cargo build -p clear-cli --release --locked
 ./target/release/clear-compare sync ./source ./target --backup-dir ./backups --apply
 ```
 
-CLI `--apply` generates a fresh plan; it does not consume previously exported JSON. The desktop consumes its exact stored plan ID. Compare exits0 for verified-equal files,1 for differences/unverified contents and2 for errors; failed sync exits2. Text diff and merge exit1 for differences or unresolved conflicts,0 for equality or conflict-free output,2 for errors. Empty-directory-only differences are visible but do not count in the file summary in this release.
+CLI `--apply` generates a fresh plan; it does not consume previously exported JSON. The desktop consumes its exact stored plan ID. Compare exits0 for verified-equal files,1 for differences/unverified contents and2 for errors; failed sync exits2. Text diff and merge exit1 for differences or unresolved conflicts,0 for equality or conflict-free output,2 for errors. Empty-directory-only differences produce compare exit1; ordinary directory rows remain outside the file-count summary.
 
 ## Limits and integrity
 
@@ -111,7 +111,7 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 - CSV/TSV: strict quoting, up to 4 MiB / 30,000 rows / 200,000 cells / 1,024 columns; columns compare by position. Duplicate keys are errors. Optional finite absolute numeric tolerance uses floating-point values. Desktop results are paged in blocks of 500.
 - Merge results are buffers with conflict markers, not automatic file writes. Two-second diff deadlines can yield coarser alignment on pathological inputs. Hex viewing uses fixed 4 KiB pages; hex editing is not implemented.
 - Editor backups: app data `editor-backups/<id>/original.bin` and a digest/state `manifest.json`. Original encoding/BOM and uniform newline style are retained by default; explicit conversion is available. The editor can preview and undo its most recent save, backing up the current contents before restoring. CLI can reopen matching completed editor backups across process restarts; manually inspect unresolved merge markers before saving.
-- Scan: at most200,000 entries per root and500 rows per page. Search and difference filtering operate on the current page.
+- Scan: at most200,000 entries per root and500 rows per page. Search, difference filtering and sorting operate across the entire selected directory scope before pagination. Folder navigation uses opaque native IDs and breadcrumbs; optional recursion includes descendants. Directories remain before files in both ascending and descending sorts.
 - Desktop backups: app data directory, `backups/<plan-id>/files/`, with `journal.json`. CLI uses the selected backup base.
 - Recovery-journal resume/redo, editor-backup browsing, automatic crash resume, timestamp/ACL/xattr preservation and full encoding support are not implemented yet.
 - Copy history is available from the desktop “Operation history” button after restart. Reviewed rollback restores overwritten files and removes only hash-matching created files, backing up their current contents first. `running`/`failed` journal entries are reconciled against actual contents; conflicting changes block recovery.

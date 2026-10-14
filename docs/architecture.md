@@ -52,3 +52,7 @@ Directional synchronization resolves source/target roots from the immutable plan
 Sync journals include the destination root and relative entry paths in native byte/wide-unit encoding. UI display labels never reconstruct filesystem inputs. Recovery rejects paths from a different operating system, symlink traversals, mismatched journal placement, modified current files and invalid original backups.
 
 Recovery previews own a native plan with pinned expected digests. Tauri resolves history IDs under its private backup directory and consumes exact cached preview tokens. CLI preview is read-only; `--apply` generates a fresh plan. Recovery streams contents to verified current-file backups before replacement or removal and persists action states in a separate journal. The original copy journal and backups remain intact.
+
+## Directory scope queries
+
+The immutable snapshot indexes native directory paths. Directory states and regular-file byte totals propagate from scanned descendants; exclusions, errors and unverified entries remain visible in that aggregation. Query inputs use directory IDs, not display-path reconstruction. Native filtering and stable sorting run across the selected scope before a maximum-500-row response is cloned for IPC. Descendant aggregation walks ancestor paths rather than rescanning the full row set for each directory.

@@ -99,11 +99,11 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             println!("{}", serde_json::to_string_pretty(&snapshot.report)?);
             Ok(if snapshot.report.summary.errors > 0 {
                 2
-            } else if snapshot.report.summary.changed
-                + snapshot.report.summary.left_only
-                + snapshot.report.summary.right_only
-                + snapshot.report.summary.unverified
-                > 0
+            } else if snapshot
+                .report
+                .rows
+                .iter()
+                .any(|r| r.status != clear_contracts::Status::Same)
             {
                 1
             } else {

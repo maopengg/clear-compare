@@ -36,6 +36,8 @@ pub struct Entry {
 pub struct Row {
     pub id: String,
     pub path: String,
+    #[serde(default)]
+    pub directory_summary: Option<Summary>,
     pub status: Status,
     pub left: Option<Entry>,
     pub right: Option<Entry>,
@@ -303,4 +305,33 @@ pub struct RecoveryResult {
 pub struct SyncHistoryEntry {
     pub id: String,
     pub modified_ms: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FolderSort {
+    #[default]
+    Path,
+    Status,
+    LeftSize,
+    RightSize,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderQuery {
+    pub parent_id: Option<String>,
+    pub recursive: bool,
+    pub search: String,
+    pub differences_only: bool,
+    pub sort: FolderSort,
+    pub descending: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Breadcrumb {
+    pub id: String,
+    pub label: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderPage {
+    pub page: Page,
+    pub breadcrumbs: Vec<Breadcrumb>,
 }

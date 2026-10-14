@@ -18,6 +18,7 @@ pub struct Snapshot {
     pub left: PathBuf,
     pub right: PathBuf,
     pub paths: BTreeMap<String, PathBuf>,
+    pub directory_index: BTreeMap<PathBuf, String>,
     pub rules: Rules,
 }
 
@@ -207,7 +208,7 @@ pub fn compare(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot
         let state = status(a.as_ref(), b.as_ref());
         let id = index.to_string();
         paths.insert(id.clone(), path.clone());
-        // Directory equality means the directory exists on both sides, not subtree equality.
+        // File summary excludes ordinary directories; subtree status is aggregated below.
         if !a
             .as_ref()
             .or(b.as_ref())
@@ -226,7 +227,8 @@ pub fn compare(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot
         }
         rows.push(Row {
             id,
-            path: path.to_string_lossy().replace('\\', "/"),
+            path: crate::tree::display_path(&path),
+            directory_summary: None,
             status: state,
             left: a,
             right: b,
@@ -241,7 +243,14 @@ pub fn compare(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot
         warnings
             .push("Symbolic links are listed but not followed, compared or synchronized.".into());
     }
+    crate::tree::aggregate(&mut rows, &paths);
+    let directory_index = rows
+        .iter()
+        .filter(|r| crate::tree::is_directory(r))
+        .filter_map(|r| paths.get(&r.id).map(|p| (p.clone(), r.id.clone())))
+        .collect();
     Ok(Snapshot {
+        directory_index,
         report: Comparison {
             session: unique_id(),
             left: left.to_string_lossy().into_owned(),

@@ -151,3 +151,17 @@ fn synchronization_recovery_cli_defaults_to_preview_and_backs_up_removed_creatio
         "content"
     );
 }
+
+#[test]
+fn directory_only_differences_produce_a_difference_exit_code() {
+    let t = tempfile::tempdir().unwrap();
+    for name in ["l/new-empty", "r"] {
+        fs::create_dir_all(t.path().join(name)).unwrap();
+    }
+    let output = run(&[
+        "compare".as_ref(),
+        t.path().join("l").as_os_str(),
+        t.path().join("r").as_os_str(),
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+}

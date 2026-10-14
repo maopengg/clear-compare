@@ -266,6 +266,20 @@ fn page(session: String, offset: usize, state: State<'_, Backend>) -> Result<Pag
 }
 
 #[tauri::command]
+async fn query_folder(
+    session: String,
+    query: FolderQuery,
+    offset: usize,
+    state: State<'_, Backend>,
+) -> Result<FolderPage, String> {
+    let snapshot = state.snapshot(&session)?;
+    tauri::async_runtime::spawn_blocking(move || clear_core::tree::query(&snapshot, &query, offset))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn text_diff(
     session: String,
     row_id: String,
@@ -549,6 +563,7 @@ fn main() {
             compare,
             cancel,
             page,
+            query_folder,
             text_diff,
             merge_buffers,
             binary_page,

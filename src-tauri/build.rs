@@ -4,6 +4,7 @@ fn main() {
             "compare",
             "cancel",
             "page",
+            "query_folder",
             "text_diff",
             "merge_buffers",
             "binary_page",

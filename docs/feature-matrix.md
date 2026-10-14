@@ -5,7 +5,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | Plan module | Current implementation | Remaining scope |
 |---|---|---|
 | F01 Workspace | One window, persisted path/rule settings | Tabs, session library, workspace restore |
-| F02 Folder comparison | Recursive bounded scan, metadata or SHA-256, paged file list | Tree aggregation, live refresh, broader criteria |
+| F02 Folder comparison | Recursive bounded scan, metadata or SHA-256, subtree status/size aggregation, native directory navigation, scope-wide search/sort and paged file list | Live refresh, broader criteria, explicit expansion tree and performance baselines |
 | F03 Rules | Root-relative and any-level exclusions, semicolon/newline import | Inclusion priority, attributes, content filters |
 | F04 Operations | Verified regular-file copy with overwrite backups | Move, delete, rename, attribute/time preservation |
 | F05 Synchronization | Reviewed left-to-right or right-to-left copy, stop-on-error, journal, cancellation, persisted copy history and reviewed rollback | Mirror, baseline-aware bidirectional policies, pause, crash resume and recovery redo |

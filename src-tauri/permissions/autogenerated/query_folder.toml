@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-query-folder"
+description = "Enables the query_folder command without any pre-configured scope."
+commands.allow = ["query_folder"]
+
+[[permission]]
+identifier = "deny-query-folder"
+description = "Denies the query_folder command without any pre-configured scope."
+commands.deny = ["query_folder"]

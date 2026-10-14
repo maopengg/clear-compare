@@ -81,3 +81,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Desktop operation history and CLI `recover-sync` expose reviewed recovery. Older journals lacking native path metadata are rejected explicitly. Recovery redo and automatic crash resume remain planned.
 - Tests cover overwrite/create rollback, reverse direction, running-state reconciliation, modified targets, changed backups, native-path round trips and process-level preview/apply behavior. Linux additionally verifies actual non-Unicode filenames; macOS filesystems reject the synthetic invalid UTF-8 filename, so its encoding round trip is tested without creating that filename.
 - Preceding save-format/restoration changes passed three-platform core/WASM CI run 38554500982. New packaged-client workflows are compiled but runtime/installation acceptance stays deferred.
+
+## Directory aggregation, navigation and global queries
+
+- Directory status reflects differing/erroneous/unverified scanned descendants; byte totals sum listed regular files under the active rules. A directory with a changed empty child is visibly changed even when file counters remain zero.
+- Scope-wide search, difference filtering and stable path/status/numeric-size sorting happen before pagination. Directory IDs and native path indexes provide child browsing and breadcrumbs.
+- The UI distinguishes overall comparison counters from the current directory/query scope. Search can apply by button or Enter, and page totals represent the filtered result.
+- Tests find a difference after more than 500 equal rows, verify directory aggregate counts/bytes, native breadcrumb scope, unverified descendants and numeric size ordering. CLI now exits1 for empty-directory-only differences.
+- Previous copy-recovery changes passed three-platform core/WASM CI run 38555848042. Final packaged-client installation and runtime acceptance remain deferred.

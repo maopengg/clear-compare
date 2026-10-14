@@ -9,6 +9,7 @@ pub mod rules;
 pub mod sync;
 pub mod table;
 pub mod text;
+pub mod tree;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
