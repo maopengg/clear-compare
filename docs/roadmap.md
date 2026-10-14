@@ -72,3 +72,12 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Desktop restoration consumes a native cached preview token and only accesses the editor's native last-save backup. CLI `restore-editor` can reopen a matching completed manifest across process restarts; preview is the default, `--apply` writes.
 - New tests cover format conversion, byte-exact restoration, reopen, restoration backup contents, tampered backup rejection and external edits after preview.
 - Three-platform core/WASM CI run 38553600582 passed for the preceding directional-copy and panel changes. Final packaged-client acceptance remains deferred.
+
+## Journaled synchronization recovery
+
+- New copy plans persist lossless native destination/entry paths. Backup storage requires Unicode paths; native entry names round-trip without using display labels.
+- Recovery reopens a persisted journal after snapshot/process lifetime, reconciles completed/running/failed copies and previews restore/removal actions. Current content must match the copied digest; original overwrite backups must match their original digest.
+- Each recovery action backs up current content before replacement/removal and writes a separate state journal; errors stop later actions. Empty directories created during copy are retained.
+- Desktop operation history and CLI `recover-sync` expose reviewed recovery. Older journals lacking native path metadata are rejected explicitly. Recovery redo and automatic crash resume remain planned.
+- Tests cover overwrite/create rollback, reverse direction, running-state reconciliation, modified targets, changed backups, native-path round trips and process-level preview/apply behavior. Linux additionally verifies actual non-Unicode filenames; macOS filesystems reject the synthetic invalid UTF-8 filename, so its encoding round trip is tested without creating that filename.
+- Preceding save-format/restoration changes passed three-platform core/WASM CI run 38554500982. New packaged-client workflows are compiled but runtime/installation acceptance stays deferred.

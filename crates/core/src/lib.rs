@@ -3,6 +3,8 @@ pub mod binary;
 pub mod compare;
 pub mod editing;
 pub mod merge;
+pub mod native_path;
+pub mod recovery;
 pub mod rules;
 pub mod sync;
 pub mod table;

@@ -98,3 +98,56 @@ fn editor_restore_preview_does_not_write_and_apply_creates_a_reversal_backup() {
         "changed\r\n"
     );
 }
+
+#[test]
+fn synchronization_recovery_cli_defaults_to_preview_and_backs_up_removed_creations() {
+    let t = tempfile::tempdir().unwrap();
+    for name in ["l", "r", "b", "recover"] {
+        fs::create_dir(t.path().join(name)).unwrap();
+    }
+    fs::write(t.path().join("l/new"), "content").unwrap();
+    let sync = run(&[
+        "sync".as_ref(),
+        t.path().join("l").as_os_str(),
+        t.path().join("r").as_os_str(),
+        "--backup-dir".as_ref(),
+        t.path().join("b").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        sync.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&sync.stdout).unwrap();
+    let journal = Path::new(result["journal"].as_str().unwrap());
+    let preview = run(&[
+        "recover-sync".as_ref(),
+        journal.as_os_str(),
+        "--backup-dir".as_ref(),
+        t.path().join("recover").as_os_str(),
+    ]);
+    assert!(preview.status.success());
+    assert!(t.path().join("r/new").exists());
+    let recovered = run(&[
+        "recover-sync".as_ref(),
+        journal.as_os_str(),
+        "--backup-dir".as_ref(),
+        t.path().join("recover").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        recovered.status.success(),
+        "{}",
+        String::from_utf8_lossy(&recovered.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&recovered.stdout).unwrap();
+    assert!(!t.path().join("r/new").exists());
+    assert_eq!(
+        fs::read_to_string(
+            Path::new(result["plan"]["backup_root"].as_str().unwrap()).join("files/new")
+        )
+        .unwrap(),
+        "content"
+    );
+}

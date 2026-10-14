@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apply-sync-recovery"
+description = "Enables the apply_sync_recovery command without any pre-configured scope."
+commands.allow = ["apply_sync_recovery"]
+
+[[permission]]
+identifier = "deny-apply-sync-recovery"
+description = "Denies the apply_sync_recovery command without any pre-configured scope."
+commands.deny = ["apply_sync_recovery"]

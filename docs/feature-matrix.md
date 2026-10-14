@@ -8,7 +8,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F02 Folder comparison | Recursive bounded scan, metadata or SHA-256, paged file list | Tree aggregation, live refresh, broader criteria |
 | F03 Rules | Root-relative and any-level exclusions, semicolon/newline import | Inclusion priority, attributes, content filters |
 | F04 Operations | Verified regular-file copy with overwrite backups | Move, delete, rename, attribute/time preservation |
-| F05 Synchronization | Reviewed left-to-right or right-to-left copy, stop-on-error, journal, cancellation | Mirror, bidirectional policies, pause and recovery |
+| F05 Synchronization | Reviewed left-to-right or right-to-left copy, stop-on-error, journal, cancellation, persisted copy history and reviewed rollback | Mirror, baseline-aware bidirectional policies, pause, crash resume and recovery redo |
 | F06 Text compare | UTF-8/UTF-16 line diff, original-text paired view, bounded computation | Intraline differences, alignment controls and navigation |
 | F07 Editing | Side-specific editor, encoding/BOM/newline retention or explicit conversion, digest-checked atomic save, verified backup and reviewed last-save restore | Editor undo/redo history, persistent backup browser and block-copy workflow |
 | F08 Text rules | Case, within-line whitespace and line-ending normalization | Syntax filters, regex rules and manual alignment |

@@ -115,9 +115,10 @@ pub struct TextDiff {
     pub lines: Vec<DiffLine>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Side {
+    #[default]
     Left,
     Right,
 }
@@ -161,6 +162,8 @@ pub struct SaveResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CopyAction {
     pub row_id: String,
+    #[serde(default)]
+    pub relative_native: Option<NativePath>,
     pub path: String,
     pub overwrite: bool,
     pub bytes: String,
@@ -171,6 +174,9 @@ pub struct CopyAction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncPlan {
     pub id: String,
+    #[serde(default)]
+    pub target_native: Option<NativePath>,
+    #[serde(default)]
     pub source_side: Side,
     pub session: String,
     pub actions: Vec<CopyAction>,
@@ -263,4 +269,38 @@ pub struct RestorePreview {
     pub original_digest: String,
     pub current_digest: String,
     pub bytes: String,
+}
+
+/// Lossless durable paths. Paths from another operating system are not executed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "encoding", content = "value", rename_all = "snake_case")]
+pub enum NativePath {
+    Unix(Vec<u8>),
+    Windows(Vec<u16>),
+    Utf8(String),
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecoveryAction {
+    pub path: String,
+    pub operation: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecoveryPreview {
+    pub id: String,
+    pub source_journal: String,
+    pub target: String,
+    pub backup_root: String,
+    pub actions: Vec<RecoveryAction>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecoveryResult {
+    pub plan: RecoveryPreview,
+    pub actions: Vec<ActionResult>,
+    pub journal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncHistoryEntry {
+    pub id: String,
+    pub modified_ms: String,
 }

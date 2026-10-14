@@ -22,6 +22,13 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    RecoverSync {
+        journal: PathBuf,
+        #[arg(long)]
+        backup_dir: PathBuf,
+        #[arg(long)]
+        apply: bool,
+    },
     RestoreEditor {
         target: PathBuf,
         backup: PathBuf,
@@ -102,6 +109,25 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             } else {
                 0
             })
+        }
+        Command::RecoverSync {
+            journal,
+            backup_dir,
+            apply,
+        } => {
+            let plan = clear_core::recovery::preview(&journal, &backup_dir, &cancel)?;
+            if apply {
+                let result = clear_core::recovery::execute(&plan, &cancel)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(if result.actions.iter().all(|a| a.state == "completed") {
+                    0
+                } else {
+                    2
+                })
+            } else {
+                println!("{}", serde_json::to_string_pretty(&plan.view)?);
+                Ok(0)
+            }
         }
         Command::RestoreEditor {
             target,

@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, native folder selection, persisted settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, persisted settings and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table and image viewers, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -87,6 +87,9 @@ cargo build -p clear-cli --release --locked
 # Preview only; backups must already exist outside both selected roots.
 ./target/release/clear-compare sync ./source ./target --backup-dir ./backups
 
+# Synchronization recovery: preview rollback; --apply executes a fresh plan.
+./target/release/clear-compare recover-sync ./backups/plan-id/journal.json --backup-dir ./recovery-backups
+
 # Editor restore preview; target must match the completed backup manifest.
 # Backup base must be outside the target file parent directory.
 ./target/release/clear-compare restore-editor ./files/edited.txt ./backup-id/original.bin --backup-dir ./backups
@@ -110,8 +113,11 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 - Editor backups: app data `editor-backups/<id>/original.bin` and a digest/state `manifest.json`. Original encoding/BOM and uniform newline style are retained by default; explicit conversion is available. The editor can preview and undo its most recent save, backing up the current contents before restoring. CLI can reopen matching completed editor backups across process restarts; manually inspect unresolved merge markers before saving.
 - Scan: at most200,000 entries per root and500 rows per page. Search and difference filtering operate on the current page.
 - Desktop backups: app data directory, `backups/<plan-id>/files/`, with `journal.json`. CLI uses the selected backup base.
-- Synchronization rollback, backup-history browsing, crash resume, timestamp/ACL/xattr preservation and full encoding support are not implemented yet.
-- A multi-file copy is not a transaction. Failure stops later actions and reports partial completion.
+- Recovery-journal resume/redo, editor-backup browsing, automatic crash resume, timestamp/ACL/xattr preservation and full encoding support are not implemented yet.
+- Copy history is available from the desktop “Operation history” button after restart. Reviewed rollback restores overwritten files and removes only hash-matching created files, backing up their current contents first. `running`/`failed` journal entries are reconciled against actual contents; conflicting changes block recovery.
+- Durable native paths are recorded for new sync journals. Older journals without these fields cannot be automatically recovered. Journals must stay with their original backup directory and on the originating operating system. Recovery journals are currently evidence/backups, not resumable redo plans.
+- Recovery reads at most 64 MiB of source journal JSON. Desktop history lists at most 2,000 backup-directory entries. Unicode backup-directory paths are required; supported native entry names are stored losslessly.
+- A multi-file copy or recovery is not a transaction. Failure stops later actions and reports partial completion.
 - Revalidation handles ordinary external changes, but does not guarantee safety against adversarial filesystem races.
 
 ## Development

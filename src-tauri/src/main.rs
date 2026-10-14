@@ -20,6 +20,7 @@ struct Backend {
     plan: Mutex<Option<SyncPlan>>,
     editor_backups: Mutex<BTreeMap<String, PathBuf>>,
     restore: Mutex<Option<(String, clear_core::editing::RestorePlan)>>,
+    recovery: Mutex<Option<clear_core::recovery::Plan>>,
     cancel: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
     documents: Mutex<BTreeMap<String, Arc<clear_core::editing::OpenDocument>>>,
@@ -402,6 +403,110 @@ async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<SyncRe
 }
 
 #[tauri::command]
+async fn list_sync_history(app: tauri::AppHandle) -> Result<Vec<SyncHistoryEntry>, String> {
+    let base = data_dir(&app)?.join("backups");
+    tauri::async_runtime::spawn_blocking(move || {
+        if !base.exists() {
+            return Ok(Vec::new());
+        }
+        let mut entries = Vec::new();
+        for item in std::fs::read_dir(&base)
+            .map_err(|e| e.to_string())?
+            .take(2000)
+        {
+            let item = item.map_err(|e| e.to_string())?;
+            if !item.file_type().map_err(|e| e.to_string())?.is_dir() {
+                continue;
+            }
+            let Some(id) = item.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !valid_history_id(&id) {
+                continue;
+            }
+            let Ok(path) = clear_core::compare::checked_path(
+                &base,
+                &PathBuf::from(&id).join("journal.json"),
+                false,
+            ) else {
+                continue;
+            };
+            let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                continue;
+            }
+            let modified_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis().to_string())
+                .unwrap_or_default();
+            entries.push(SyncHistoryEntry { id, modified_ms });
+        }
+        entries.sort_by(|a, b| b.id.cmp(&a.id));
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+fn valid_history_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 128 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+}
+#[tauri::command]
+async fn preview_sync_recovery(
+    history_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<RecoveryPreview, String> {
+    let _operation_guard = state.begin()?;
+    if !valid_history_id(&history_id) {
+        return Err("Invalid history entry".into());
+    }
+    let data = data_dir(&app)?;
+    let base = data.join("backups");
+    let journal = clear_core::compare::checked_path(
+        &base,
+        &PathBuf::from(history_id).join("journal.json"),
+        false,
+    )
+    .map_err(|e| e.to_string())?;
+    let backup = data.join("recovery-backups");
+    std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
+    let cancel = state.cancel.clone();
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::recovery::preview(&journal, &backup, &cancel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let view = plan.view.clone();
+    *state.recovery.lock().map_err(|_| "State unavailable")? = Some(plan);
+    Ok(view)
+}
+#[tauri::command]
+async fn apply_sync_recovery(
+    plan_id: String,
+    state: State<'_, Backend>,
+) -> Result<RecoveryResult, String> {
+    let _operation_guard = state.begin()?;
+    let plan = state
+        .recovery
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .take()
+        .ok_or("Preview recovery first")?;
+    if plan.view.id != plan_id {
+        return Err("Recovery preview expired".into());
+    }
+    let cancel = state.cancel.clone();
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    tauri::async_runtime::spawn_blocking(move || clear_core::recovery::execute(&plan, &cancel))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
@@ -458,7 +563,10 @@ fn main() {
             close_document,
             save_document,
             preview_editor_restore,
-            apply_editor_restore
+            apply_editor_restore,
+            list_sync_history,
+            preview_sync_recovery,
+            apply_sync_recovery
         ])
         .run(tauri::generate_context!())
         .expect("desktop runtime failed");

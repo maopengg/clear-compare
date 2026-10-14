@@ -56,6 +56,11 @@ pub fn plan_direction(
     let base = fs::canonicalize(backup_base)?;
     reject_overlap(&base, &snapshot.left)?;
     reject_overlap(&base, &snapshot.right)?;
+    if base.to_str().is_none() {
+        return Err(Error::Invalid(
+            "Backup directory must have a Unicode path".into(),
+        ));
+    }
     let id = unique_id();
     let mut actions = Vec::new();
     let mut seen = BTreeSet::new();
@@ -119,6 +124,7 @@ pub fn plan_direction(
         }
         actions.push(CopyAction {
             row_id: row_id.clone(),
+            relative_native: Some(crate::native_path::encode(relative)),
             path: row.path.clone(),
             overwrite: target_digest.is_some(),
             bytes: fs::metadata(source)?.len().to_string(),
@@ -128,6 +134,7 @@ pub fn plan_direction(
     }
     Ok(SyncPlan {
         id: id.clone(),
+        target_native: Some(crate::native_path::encode(target_root)),
         source_side,
         session: snapshot.report.session.clone(),
         actions,
@@ -135,7 +142,7 @@ pub fn plan_direction(
     })
 }
 
-fn atomic_json(path: &Path, data: &SyncResult) -> Result<()> {
+pub(crate) fn atomic_json<T: serde::Serialize>(path: &Path, data: &T) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| Error::Invalid("Invalid journal path".into()))?;
@@ -174,6 +181,11 @@ fn copy_one(
         .paths
         .get(&action.row_id)
         .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
+    if action.relative_native.as_ref() != Some(&crate::native_path::encode(relative)) {
+        return Err(Error::Invalid(
+            "Plan entry path metadata differs from its snapshot".into(),
+        ));
+    }
     if snapshot.rules.excludes(relative, false) {
         return Err(Error::Invalid("Excluded entry".into()));
     }
@@ -263,7 +275,22 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
         return Err(Error::Invalid("Plan belongs to another comparison".into()));
     }
     roots_unchanged(snapshot)?;
+    let target = if plan.source_side == Side::Left {
+        &snapshot.right
+    } else {
+        &snapshot.left
+    };
+    if plan.target_native.as_ref() != Some(&crate::native_path::encode(target)) {
+        return Err(Error::Invalid(
+            "Plan destination metadata differs from its snapshot".into(),
+        ));
+    }
     let backup = Path::new(&plan.backup_root);
+    if backup.file_name().and_then(|s| s.to_str()) != Some(plan.id.as_str()) {
+        return Err(Error::Invalid(
+            "Plan backup directory does not match its ID".into(),
+        ));
+    }
     let base = backup
         .parent()
         .ok_or_else(|| Error::Invalid("Invalid backup root".into()))?;

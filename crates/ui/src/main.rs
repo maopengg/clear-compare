@@ -92,6 +92,8 @@ fn App() -> impl IntoView {
     let format_ending = RwSignal::new(String::new());
     let format_bom = RwSignal::new(String::new());
     let can_restore = RwSignal::new(false);
+    let history = RwSignal::new(None::<Vec<SyncHistoryEntry>>);
+    let recovery = RwSignal::new(None::<RecoveryPreview>);
     let restore_preview = RwSignal::new(None::<RestorePreview>);
     let table_visible = RwSignal::new(false);
     let table = RwSignal::new(None::<OpenedTable>);
@@ -537,6 +539,94 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let load_history = move || {
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<Vec<SyncHistoryEntry>>("list_sync_history", serde_json::json!({})).await
+            {
+                Ok(entries) => history.set(Some(entries)),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let preview_recovery = move |id: String| {
+        if editor_dirty() {
+            error.set(
+                tr(
+                    english.get_untracked(),
+                    "先保存或重置编辑内容，再预览恢复。",
+                    "Save or reset the editor before previewing recovery.",
+                )
+                .into(),
+            );
+            return;
+        }
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<RecoveryPreview>(
+                "preview_sync_recovery",
+                serde_json::json!({"historyId":id}),
+            )
+            .await
+            {
+                Ok(p) => recovery.set(Some(p)),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let apply_recovery = move || {
+        let Some(p) = recovery.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<RecoveryResult>(
+                "apply_sync_recovery",
+                serde_json::json!({"planId":p.id}),
+            )
+            .await
+            {
+                Ok(result) => {
+                    let completed = result
+                        .actions
+                        .iter()
+                        .filter(|a| a.state == "completed")
+                        .count();
+                    if let Some(failed) = result.actions.iter().find(|a| a.error.is_some()) {
+                        error.set(format!(
+                            "{}: {}",
+                            failed.path,
+                            failed.error.as_deref().unwrap_or_default()
+                        ));
+                    }
+                    if let Some(d) = editor.get_untracked() {
+                        let _ =
+                            invoke::<()>("close_document", serde_json::json!({"documentId":d.id}))
+                                .await;
+                    }
+                    editor.set(None);
+                    draft.set(String::new());
+                    can_restore.set(false);
+                    reset();
+                    message.set(format!(
+                        "{} {}/{} · {}",
+                        tr(english.get_untracked(), "恢复完成", "Recovered"),
+                        completed,
+                        result.actions.len(),
+                        result.journal
+                    ));
+                }
+                Err(e) => error.set(e),
+            }
+            recovery.set(None);
+            busy.set(false);
+        });
+    };
     let close_editor = move || {
         let Some(document) = editor.get_untracked() else {
             return;
@@ -566,7 +656,7 @@ fn App() -> impl IntoView {
         <main class="workspace">
             <header class="topbar">
                 <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">"0.1 preview"</span></div>
-                <div class="top-actions"><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
+                <div class="top-actions"><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
                 <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
             </header>
             <section class="path-section" aria-label="Comparison directories">
@@ -615,6 +705,7 @@ fn App() -> impl IntoView {
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id}, open_binary)}
             {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, error})}
             {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore)}
+            {panels::history::panel(english,busy,history,recovery,preview_recovery,apply_recovery)}
             <Show when=move ||restore_preview.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-title"><h2 id="restore-title">{move ||tr(english.get(),"检查恢复计划","Review restore plan")}</h2><p>{move ||tr(english.get(),"恢复上次保存前的原始字节。恢复前的当前内容也会备份；文件若发生外部修改，恢复将被阻止。","Restore the original bytes from before the last save. Current contents are backed up first; external changes block restoration.")}</p><p class="backup-path">{move ||restore_preview.get().map(|p|format!("{} ← {} · {} bytes",p.target,p.backup,p.bytes))}</p><footer><button class="quiet" disabled=move ||busy.get() on:click=move |_|restore_preview.set(None)>{move ||tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move ||busy.get() on:click=move |_|apply_restore()>{move ||tr(english.get(),"执行已预览的恢复","Execute reviewed restore")}</button></footer></section></div></Show>
             <Show when=move || plan.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="sync-title"><h2 id="sync-title">{move || tr(english.get(),"检查同步计划","Review synchronization plan")}</h2><p>{move || tr(english.get(),if plan.get().is_some_and(|p|p.source_side==Side::Right){"从右侧复制到左侧。不会删除目标独有文件。所有覆盖文件将先备份。"}else{"从左侧复制到右侧。不会删除目标独有文件。所有覆盖文件将先备份。"},if plan.get().is_some_and(|p|p.source_side==Side::Right){"Copy right to left. Destination-only files are retained. Overwritten files are backed up first."}else{"Copy left to right. Destination-only files are retained. Overwritten files are backed up first."})}</p><div class="plan-actions"><For each=move || plan.get().map(|p|p.actions).unwrap_or_default() key=|a|a.row_id.clone() children=move |a| view! {<div><span>{a.path}</span><strong>{move || if a.overwrite {tr(english.get(),"覆盖并备份","Overwrite + backup")} else {tr(english.get(),"新增","Create")}}</strong></div>}/></div><p class="backup-path">{move || plan.get().map(|p|format!("{}: {}",tr(english.get(),"备份位置","Backup location"),p.backup_root))}</p><footer><button class="quiet" disabled=move || busy.get() on:click=move |_| plan.set(None)>{move || tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move || busy.get() on:click=move |_| apply()>{move || tr(english.get(),"执行已预览的同步","Execute reviewed plan")}</button></footer></section></div></Show>
             <footer class="statusbar"><span>{move || tr(english.get(),"UTF-8 / UTF-16 预览 · 不跟随符号链接 · 不自动删除","UTF-8 / UTF-16 preview · Links not followed · No automatic deletion")}</span><span>"Clear Compare · MIT"</span></footer>

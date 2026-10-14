@@ -19,6 +19,9 @@ fn main() {
             "save_document",
             "preview_editor_restore",
             "apply_editor_restore",
+            "list_sync_history",
+            "preview_sync_recovery",
+            "apply_sync_recovery",
         ]),
     ))
     .expect("Tauri build configuration");
