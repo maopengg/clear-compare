@@ -116,3 +116,47 @@ fn destination_symlink_cannot_escape_the_selected_root() {
     assert_eq!(result.actions[0].state, "failed");
     assert!(!b.path().join("outside/file").exists());
 }
+
+#[test]
+fn reverse_copy_uses_right_source_and_left_backup() {
+    let t = tempfile::tempdir().unwrap();
+    for name in ["l", "r", "b"] {
+        fs::create_dir(t.path().join(name)).unwrap();
+    }
+    fs::write(t.path().join("l/a"), "old left").unwrap();
+    fs::write(t.path().join("r/a"), "new right").unwrap();
+    fs::write(t.path().join("r/new"), "added").unwrap();
+    let req = clear_contracts::CompareRequest {
+        left: t.path().join("l").to_string_lossy().into(),
+        right: t.path().join("r").to_string_lossy().into(),
+        exclusions: String::new(),
+        content: true,
+    };
+    let cancel = AtomicBool::new(false);
+    let s = compare::compare(&req, &cancel).unwrap();
+    let ids = s
+        .report
+        .rows
+        .iter()
+        .map(|r| r.id.clone())
+        .collect::<Vec<_>>();
+    let p = sync::plan_direction(
+        &s,
+        &ids,
+        &t.path().join("b"),
+        &cancel,
+        clear_contracts::Side::Right,
+    )
+    .unwrap();
+    let result = sync::execute(&s, &p, &cancel).unwrap();
+    assert!(result.actions.iter().all(|a| a.state == "completed"));
+    assert_eq!(
+        fs::read_to_string(t.path().join("l/a")).unwrap(),
+        "new right"
+    );
+    assert_eq!(fs::read_to_string(t.path().join("l/new")).unwrap(), "added");
+    assert_eq!(
+        fs::read_to_string(std::path::Path::new(&p.backup_root).join("files/a")).unwrap(),
+        "old left"
+    );
+}

@@ -269,6 +269,7 @@ async fn merge_buffers(
 async fn preview_sync(
     session: String,
     row_ids: Vec<String>,
+    source_side: Side,
     app: tauri::AppHandle,
     state: State<'_, Backend>,
 ) -> Result<SyncPlan, String> {
@@ -278,7 +279,7 @@ async fn preview_sync(
     let backup = data_dir(&app)?.join("backups");
     std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
     let plan = tauri::async_runtime::spawn_blocking(move || {
-        clear_core::sync::plan(&snapshot, &row_ids, &backup, &cancel)
+        clear_core::sync::plan_direction(&snapshot, &row_ids, &backup, &cancel, source_side)
     })
     .await
     .map_err(|e| e.to_string())?

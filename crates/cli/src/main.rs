@@ -5,7 +5,7 @@ use std::{path::PathBuf, sync::atomic::AtomicBool};
 #[derive(Parser)]
 #[command(
     version,
-    about = "Local file comparison and verified left-to-right copy"
+    about = "Local file comparison, text merging and verified directional copy"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -56,6 +56,8 @@ enum Command {
         exclude: String,
         #[arg(long)]
         backup_dir: PathBuf,
+        #[arg(long)]
+        reverse: bool,
         #[arg(long)]
         apply: bool,
     },
@@ -152,6 +154,7 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             right,
             exclude,
             backup_dir,
+            reverse,
             apply,
         } => {
             let s = clear_core::compare::compare(
@@ -168,17 +171,30 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
                 .rows
                 .iter()
                 .filter(|r| {
-                    matches!(
-                        r.status,
-                        clear_contracts::Status::Changed | clear_contracts::Status::LeftOnly
-                    ) && r
-                        .left
-                        .as_ref()
-                        .is_some_and(|e| e.kind == clear_contracts::Kind::File)
+                    (r.status == clear_contracts::Status::Changed
+                        || r.status
+                            == if reverse {
+                                clear_contracts::Status::RightOnly
+                            } else {
+                                clear_contracts::Status::LeftOnly
+                            })
+                        && (if reverse { &r.right } else { &r.left })
+                            .as_ref()
+                            .is_some_and(|e| e.kind == clear_contracts::Kind::File)
                 })
                 .map(|r| r.id.clone())
                 .collect::<Vec<_>>();
-            let plan = clear_core::sync::plan(&s, &ids, &backup_dir, &cancel)?;
+            let plan = clear_core::sync::plan_direction(
+                &s,
+                &ids,
+                &backup_dir,
+                &cancel,
+                if reverse {
+                    clear_contracts::Side::Right
+                } else {
+                    clear_contracts::Side::Left
+                },
+            )?;
             if !apply {
                 println!("{}", serde_json::to_string_pretty(&plan)?);
                 return Ok(0);

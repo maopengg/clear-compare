@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed left-to-right copy, verified overwrite backups, operation journals, native folder selection, persisted settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, native folder selection, persisted settings and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table and image viewers, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -35,6 +35,8 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 6. 完成后重新比较。保留备份和操作日志，直到确认结果。
 
 通过每行的“左 / 右”按钮编辑对应文件，保存前生成校验备份；外部修改会阻止保存。三方合并面板接受共同基础版本及左右版本，结果可载入已打开且没有未保存修改的编辑器。Hex 按钮打开分页二进制预览。
+
+勾选“右 → 左”可切换同步方向；切换后需重新选择文件并预览。
 
 目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录行的一致仅表示两侧目录存在，不代表整个子树内容相同。
 
@@ -84,6 +86,9 @@ cargo build -p clear-cli --release --locked
 
 # Preview only; backups must already exist outside both selected roots.
 ./target/release/clear-compare sync ./source ./target --backup-dir ./backups
+
+# Reverse direction, still preview-only.
+./target/release/clear-compare sync ./left ./right --backup-dir ./backups --reverse
 
 # Generate and apply a fresh plan.
 ./target/release/clear-compare sync ./source ./target --backup-dir ./backups --apply

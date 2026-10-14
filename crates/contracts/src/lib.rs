@@ -171,6 +171,7 @@ pub struct CopyAction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncPlan {
     pub id: String,
+    pub source_side: Side,
     pub session: String,
     pub actions: Vec<CopyAction>,
     pub backup_root: String,

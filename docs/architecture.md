@@ -40,3 +40,9 @@ The current comparison settings are kept under Tauri's application data director
 ## Remaining work
 
 Restore automation, metadata preservation, durable directory fsync, large-scale indexed scanning, session libraries, broader encodings, advanced merging, remote adapters and converters remain on the roadmap. The initial architecture leaves these separate from the UI and desktop runtime.
+
+## Specialized workspace panels
+
+Leptos editing, merge, table and binary panels are separate modules in `crates/ui/src/panels`. Each consumes typed signals and operation callbacks. Native paths and file mutation remain in `clear-core` and explicitly authorized Tauri commands.
+
+Directional synchronization resolves source/target roots from the immutable plan's `source_side`. It does not copy or reverse the entire directory snapshot. Changing direction clears the UI selection and requires a new preview. Backups always belong to the destination being replaced.

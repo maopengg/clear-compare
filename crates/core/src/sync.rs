@@ -3,7 +3,7 @@ use crate::{
     compare::{Snapshot, check_cancel, checked_path, hash_file, reject_overlap},
     unique_id,
 };
-use clear_contracts::{ActionResult, CopyAction, Kind, Status, SyncPlan, SyncResult};
+use clear_contracts::{ActionResult, CopyAction, Kind, Side, Status, SyncPlan, SyncResult};
 use std::{
     collections::BTreeSet,
     fs::{self, File},
@@ -30,6 +30,21 @@ pub fn plan(
     backup_base: &Path,
     cancel: &AtomicBool,
 ) -> Result<SyncPlan> {
+    plan_direction(snapshot, row_ids, backup_base, cancel, Side::Left)
+}
+
+pub fn plan_direction(
+    snapshot: &Snapshot,
+    row_ids: &[String],
+    backup_base: &Path,
+    cancel: &AtomicBool,
+    source_side: Side,
+) -> Result<SyncPlan> {
+    let (source_root, target_root) = if source_side == Side::Left {
+        (&snapshot.left, &snapshot.right)
+    } else {
+        (&snapshot.right, &snapshot.left)
+    };
     if row_ids.is_empty() {
         return Err(Error::Invalid("Select files to synchronize".into()));
     }
@@ -59,35 +74,44 @@ pub fn plan(
             .iter()
             .find(|r| &r.id == row_id)
             .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
-        if !matches!(row.status, Status::Changed | Status::LeftOnly)
-            || !row
-                .left
+        let (source_entry, target_entry) = if source_side == Side::Left {
+            (&row.left, &row.right)
+        } else {
+            (&row.right, &row.left)
+        };
+        let eligible = row.status == Status::Changed
+            || row.status
+                == if source_side == Side::Left {
+                    Status::LeftOnly
+                } else {
+                    Status::RightOnly
+                };
+        if !eligible
+            || !source_entry
                 .as_ref()
                 .is_some_and(|e| e.kind == Kind::File && e.error.is_none())
         {
             return Err(Error::Invalid(format!(
-                "Not eligible for left-to-right copy: {}",
+                "Not eligible for selected copy direction: {}",
                 row.path
             )));
         }
         if snapshot.rules.excludes(relative, false) {
             return Err(Error::Invalid("Excluded entry".into()));
         }
-        let source = checked_path(&snapshot.left, relative, false)?;
-        let target = checked_path(&snapshot.right, relative, true)?;
+        let source = checked_path(source_root, relative, false)?;
+        let target = checked_path(target_root, relative, true)?;
         let source_digest = hash_file(&source, cancel)?;
         let target_digest = regular_digest(&target, cancel)?;
-        if row
-            .left
+        if source_entry
             .as_ref()
             .and_then(|e| e.digest.as_ref())
             .is_some_and(|d| d != &source_digest)
-            || row
-                .right
+            || target_entry
                 .as_ref()
                 .and_then(|e| e.digest.as_ref())
                 .is_some_and(|d| Some(d) != target_digest.as_ref())
-            || (row.right.is_none() && target_digest.is_some())
+            || (target_entry.is_none() && target_digest.is_some())
         {
             return Err(Error::Invalid(
                 "Files changed since comparison. Compare again.".into(),
@@ -104,6 +128,7 @@ pub fn plan(
     }
     Ok(SyncPlan {
         id: id.clone(),
+        source_side,
         session: snapshot.report.session.clone(),
         actions,
         backup_root: base.join(id).to_string_lossy().into_owned(),
@@ -140,6 +165,11 @@ fn copy_one(
 ) -> Result<()> {
     check_cancel(cancel)?;
     roots_unchanged(snapshot)?;
+    let (source_root, target_root) = if plan.source_side == Side::Left {
+        (&snapshot.left, &snapshot.right)
+    } else {
+        (&snapshot.right, &snapshot.left)
+    };
     let relative = snapshot
         .paths
         .get(&action.row_id)
@@ -147,8 +177,8 @@ fn copy_one(
     if snapshot.rules.excludes(relative, false) {
         return Err(Error::Invalid("Excluded entry".into()));
     }
-    let source = checked_path(&snapshot.left, relative, false)?;
-    let destination = checked_path(&snapshot.right, relative, true)?;
+    let source = checked_path(source_root, relative, false)?;
+    let destination = checked_path(target_root, relative, true)?;
     if hash_file(&source, cancel)? != action.source_digest
         || regular_digest(&destination, cancel)? != action.target_digest
     {
@@ -160,7 +190,7 @@ fn copy_one(
         .parent()
         .ok_or_else(|| Error::Invalid("Missing parent".into()))?;
     fs::create_dir_all(parent)?;
-    checked_path(&snapshot.right, relative, true)?;
+    checked_path(target_root, relative, true)?;
     let mut temporary = NamedTempFile::new_in(parent)?;
     // Copy in bounded chunks with cancellation, rather than reading the file into memory.
     let mut reader = File::open(&source)?;
@@ -209,7 +239,7 @@ fn copy_one(
     }
     check_cancel(cancel)?;
     roots_unchanged(snapshot)?;
-    checked_path(&snapshot.right, relative, true)?;
+    checked_path(target_root, relative, true)?;
     if regular_digest(&destination, cancel)? != action.target_digest {
         return Err(Error::Invalid("Destination changed during copy".into()));
     }

@@ -58,3 +58,9 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Native table state retains the full bounded report while IPC/UI pages contain at most 500 rows.
 - Parser, keyed comparison, missing rows, duplicate keys and invalid-tolerance tests pass locally.
 - Windows CI exposed an editor-save access error; the backup source handle is now closed before replacement and error stages are labeled. Three-platform CI must confirm the correction.
+
+## Directional copy and UI module boundaries
+
+- Left-to-right and right-to-left copy use the same digest/backup/journal checks. Reverse-copy tests verify right-only additions and backup of the replaced left-side content.
+- Editing, merge, table and binary views are separated into dedicated modules. Table refresh keys include their native report ID; binary reloads remount the preview so stale keyed rows are not reused.
+- Three-platform core/WASM CI run 38552812481 passed after the editor handle correction. These checks are distinct from postponed packaged-client installation acceptance.
