@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-editor-restore"
+description = "Enables the preview_editor_restore command without any pre-configured scope."
+commands.allow = ["preview_editor_restore"]
+
+[[permission]]
+identifier = "deny-preview-editor-restore"
+description = "Denies the preview_editor_restore command without any pre-configured scope."
+commands.deny = ["preview_editor_restore"]

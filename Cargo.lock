@@ -510,6 +510,7 @@ dependencies = [
  "clear-contracts",
  "clear-core",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

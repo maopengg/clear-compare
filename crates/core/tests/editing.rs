@@ -47,3 +47,84 @@ fn malformed_and_binary_text_are_rejected() {
     assert!(editing::decode(&[255, 128]).is_err());
     assert_eq!(editing::decode(b"\xef\xbb\xbfhello").unwrap().0, "hello");
 }
+
+#[test]
+fn explicit_format_conversion_and_reviewed_restore_preserve_original_bytes() {
+    use clear_contracts::{LineEnding, SaveOptions};
+    let t = tempfile::tempdir().unwrap();
+    for name in ["l", "r", "b"] {
+        fs::create_dir(t.path().join(name)).unwrap();
+    }
+    let original = b"mixed\r\nlines\nend\r";
+    fs::write(t.path().join("l/a"), original).unwrap();
+    let req = CompareRequest {
+        left: t.path().join("l").to_string_lossy().into(),
+        right: t.path().join("r").to_string_lossy().into(),
+        exclusions: String::new(),
+        content: true,
+    };
+    let s = compare::compare(&req, &AtomicBool::new(false)).unwrap();
+    let d = editing::open(&s, &s.report.rows[0].id, Side::Left).unwrap();
+    assert!(editing::save(&d, "new", &t.path().join("b")).is_err());
+    let options = SaveOptions {
+        encoding: Some(Encoding::Utf16Be),
+        line_ending: Some(LineEnding::CrLf),
+        bom: None,
+    };
+    let (saved, result) =
+        editing::save_with_options(&d, "中文\nnew\n", &t.path().join("b"), &options).unwrap();
+    assert_eq!(saved.view.encoding, Encoding::Utf16Be);
+    assert!(saved.view.bom);
+    assert_eq!(saved.view.text, "中文\r\nnew\r\n");
+    let plan = editing::preview_restore(&saved, std::path::Path::new(&result.backup)).unwrap();
+    let before = fs::read(t.path().join("l/a")).unwrap();
+    let (restored, result) = editing::apply_restore(&plan, &t.path().join("b")).unwrap();
+    assert_eq!(fs::read(t.path().join("l/a")).unwrap(), original);
+    assert_eq!(fs::read(&result.backup).unwrap(), before);
+    assert_eq!(restored.view.line_ending, LineEnding::Mixed);
+    let reopened = editing::open_file(&t.path().join("l/a")).unwrap();
+    let redo = editing::preview_restore(&reopened, std::path::Path::new(&result.backup)).unwrap();
+    fs::write(t.path().join("l/a"), "external").unwrap();
+    assert!(editing::apply_restore(&redo, &t.path().join("b")).is_err());
+    assert_eq!(
+        fs::read_to_string(t.path().join("l/a")).unwrap(),
+        "external"
+    );
+}
+
+#[test]
+fn corrupted_backup_and_bomless_utf16_requests_are_rejected() {
+    use clear_contracts::SaveOptions;
+    let t = tempfile::tempdir().unwrap();
+    for name in ["l", "r", "b"] {
+        fs::create_dir(t.path().join(name)).unwrap();
+    }
+    fs::write(t.path().join("l/a"), "original").unwrap();
+    let s = compare::compare(
+        &CompareRequest {
+            left: t.path().join("l").to_string_lossy().into(),
+            right: t.path().join("r").to_string_lossy().into(),
+            exclusions: String::new(),
+            content: true,
+        },
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let d = editing::open(&s, &s.report.rows[0].id, Side::Left).unwrap();
+    assert!(
+        editing::save_with_options(
+            &d,
+            "new",
+            &t.path().join("b"),
+            &SaveOptions {
+                encoding: Some(Encoding::Utf16Le),
+                bom: Some(false),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    let (saved, result) = editing::save(&d, "new", &t.path().join("b")).unwrap();
+    fs::write(&result.backup, "corrupt").unwrap();
+    assert!(editing::preview_restore(&saved, std::path::Path::new(&result.backup)).is_err());
+}

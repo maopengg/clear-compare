@@ -10,7 +10,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F04 Operations | Verified regular-file copy with overwrite backups | Move, delete, rename, attribute/time preservation |
 | F05 Synchronization | Reviewed left-to-right or right-to-left copy, stop-on-error, journal, cancellation | Mirror, bidirectional policies, pause and recovery |
 | F06 Text compare | UTF-8/UTF-16 line diff, original-text paired view, bounded computation | Intraline differences, alignment controls and navigation |
-| F07 Editing | Side-specific editor, encoding/BOM/newline retention, digest-checked atomic save and verified backup manifest | Explicit mixed-newline policy, tested undo/redo and block-copy workflow |
+| F07 Editing | Side-specific editor, encoding/BOM/newline retention or explicit conversion, digest-checked atomic save, verified backup and reviewed last-save restore | Editor undo/redo history, persistent backup browser and block-copy workflow |
 | F08 Text rules | Case, within-line whitespace and line-ending normalization | Syntax filters, regex rules and manual alignment |
 | F09 Text merge | Three-way merge buffers, conflict markers, load result into editor; JSON CLI | Conflict navigation and resolution controls, multi-file merge workflows |
 | F10 Folder merge | Planned | Baseline-aware folder merging |

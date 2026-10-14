@@ -247,3 +247,20 @@ pub struct OpenedTable {
     pub report: TableComparison,
     pub total: usize,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SaveOptions {
+    pub encoding: Option<Encoding>,
+    pub line_ending: Option<LineEnding>,
+    pub bom: Option<bool>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestorePreview {
+    pub id: String,
+    pub target: String,
+    pub backup: String,
+    pub original_digest: String,
+    pub current_digest: String,
+    pub bytes: String,
+}

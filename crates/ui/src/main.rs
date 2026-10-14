@@ -88,6 +88,11 @@ fn App() -> impl IntoView {
     let plan = RwSignal::new(None::<SyncPlan>);
     let editor = RwSignal::new(None::<TextDocument>);
     let draft = RwSignal::new(String::new());
+    let format_encoding = RwSignal::new(String::new());
+    let format_ending = RwSignal::new(String::new());
+    let format_bom = RwSignal::new(String::new());
+    let can_restore = RwSignal::new(false);
+    let restore_preview = RwSignal::new(None::<RestorePreview>);
     let table_visible = RwSignal::new(false);
     let table = RwSignal::new(None::<OpenedTable>);
     let table_id = RwSignal::new(String::new());
@@ -376,14 +381,19 @@ fn App() -> impl IntoView {
         });
     };
 
+    let editor_dirty = move || {
+        editor
+            .get_untracked()
+            .is_some_and(|d| d.text != draft.get_untracked())
+            || !format_encoding.get_untracked().is_empty()
+            || !format_ending.get_untracked().is_empty()
+            || !format_bom.get_untracked().is_empty()
+    };
     let open_editor = move |row_id: String, side: Side| {
         let Some(c) = comparison.get_untracked() else {
             return;
         };
-        if editor
-            .get_untracked()
-            .is_some_and(|d| d.text != draft.get_untracked())
-        {
+        if editor_dirty() {
             error.set(
                 tr(
                     english.get_untracked(),
@@ -409,6 +419,7 @@ fn App() -> impl IntoView {
             .await
             {
                 Ok(document) => {
+                    can_restore.set(false);
                     draft.set(document.text.clone());
                     editor.set(Some(document));
                 }
@@ -427,16 +438,39 @@ fn App() -> impl IntoView {
         busy.set(true);
         error.set(String::new());
         let text = draft.get_untracked();
+        let options = SaveOptions {
+            encoding: match format_encoding.get_untracked().as_str() {
+                "utf8" => Some(Encoding::Utf8),
+                "utf16_le" => Some(Encoding::Utf16Le),
+                "utf16_be" => Some(Encoding::Utf16Be),
+                _ => None,
+            },
+            line_ending: match format_ending.get_untracked().as_str() {
+                "lf" => Some(LineEnding::Lf),
+                "crlf" => Some(LineEnding::CrLf),
+                "cr" => Some(LineEnding::Cr),
+                _ => None,
+            },
+            bom: match format_bom.get_untracked().as_str() {
+                "yes" => Some(true),
+                "no" => Some(false),
+                _ => None,
+            },
+        };
         spawn_local(async move {
             match invoke::<SaveResult>(
                 "save_document",
-                serde_json::json!({"documentId":document.id,"text":text}),
+                serde_json::json!({"documentId":document.id,"text":text,"options":options}),
             )
             .await
             {
                 Ok(result) => {
                     draft.set(result.document.text.clone());
                     editor.set(Some(result.document));
+                    format_encoding.set(String::new());
+                    format_ending.set(String::new());
+                    format_bom.set(String::new());
+                    can_restore.set(true);
                     reset();
                     message.set(format!(
                         "{} {}",
@@ -453,11 +487,61 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let preview_restore = move || {
+        let Some(d) = editor.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<RestorePreview>(
+                "preview_editor_restore",
+                serde_json::json!({"documentId":d.id}),
+            )
+            .await
+            {
+                Ok(p) => restore_preview.set(Some(p)),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let apply_restore = move || {
+        let Some(p) = restore_preview.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<SaveResult>("apply_editor_restore", serde_json::json!({"planId":p.id}))
+                .await
+            {
+                Ok(result) => {
+                    draft.set(result.document.text.clone());
+                    editor.set(Some(result.document));
+                    can_restore.set(true);
+                    reset();
+                    message.set(format!(
+                        "{} {}",
+                        tr(
+                            english.get_untracked(),
+                            "已恢复；恢复前内容备份：",
+                            "Restored; previous contents backed up:"
+                        ),
+                        result.backup
+                    ));
+                }
+                Err(e) => error.set(e),
+            }
+            restore_preview.set(None);
+            busy.set(false);
+        });
+    };
     let close_editor = move || {
         let Some(document) = editor.get_untracked() else {
             return;
         };
-        if draft.get_untracked() != document.text {
+        if editor_dirty() {
             error.set(
                 tr(
                     english.get_untracked(),
@@ -530,7 +614,8 @@ fn App() -> impl IntoView {
             {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_id, table_tsv, table_headers, table_key, table_tolerance, table_offset}, open_table, paginate_table)}
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id}, open_binary)}
             {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, error})}
-            {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft}, close_editor, save_editor)}
+            {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore)}
+            <Show when=move ||restore_preview.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-title"><h2 id="restore-title">{move ||tr(english.get(),"检查恢复计划","Review restore plan")}</h2><p>{move ||tr(english.get(),"恢复上次保存前的原始字节。恢复前的当前内容也会备份；文件若发生外部修改，恢复将被阻止。","Restore the original bytes from before the last save. Current contents are backed up first; external changes block restoration.")}</p><p class="backup-path">{move ||restore_preview.get().map(|p|format!("{} ← {} · {} bytes",p.target,p.backup,p.bytes))}</p><footer><button class="quiet" disabled=move ||busy.get() on:click=move |_|restore_preview.set(None)>{move ||tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move ||busy.get() on:click=move |_|apply_restore()>{move ||tr(english.get(),"执行已预览的恢复","Execute reviewed restore")}</button></footer></section></div></Show>
             <Show when=move || plan.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="sync-title"><h2 id="sync-title">{move || tr(english.get(),"检查同步计划","Review synchronization plan")}</h2><p>{move || tr(english.get(),if plan.get().is_some_and(|p|p.source_side==Side::Right){"从右侧复制到左侧。不会删除目标独有文件。所有覆盖文件将先备份。"}else{"从左侧复制到右侧。不会删除目标独有文件。所有覆盖文件将先备份。"},if plan.get().is_some_and(|p|p.source_side==Side::Right){"Copy right to left. Destination-only files are retained. Overwritten files are backed up first."}else{"Copy left to right. Destination-only files are retained. Overwritten files are backed up first."})}</p><div class="plan-actions"><For each=move || plan.get().map(|p|p.actions).unwrap_or_default() key=|a|a.row_id.clone() children=move |a| view! {<div><span>{a.path}</span><strong>{move || if a.overwrite {tr(english.get(),"覆盖并备份","Overwrite + backup")} else {tr(english.get(),"新增","Create")}}</strong></div>}/></div><p class="backup-path">{move || plan.get().map(|p|format!("{}: {}",tr(english.get(),"备份位置","Backup location"),p.backup_root))}</p><footer><button class="quiet" disabled=move || busy.get() on:click=move |_| plan.set(None)>{move || tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move || busy.get() on:click=move |_| apply()>{move || tr(english.get(),"执行已预览的同步","Execute reviewed plan")}</button></footer></section></div></Show>
             <footer class="statusbar"><span>{move || tr(english.get(),"UTF-8 / UTF-16 预览 · 不跟随符号链接 · 不自动删除","UTF-8 / UTF-16 preview · Links not followed · No automatic deletion")}</span><span>"Clear Compare · MIT"</span></footer>
         </main>

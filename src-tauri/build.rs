@@ -17,6 +17,8 @@ fn main() {
             "open_document",
             "close_document",
             "save_document",
+            "preview_editor_restore",
+            "apply_editor_restore",
         ]),
     ))
     .expect("Tauri build configuration");

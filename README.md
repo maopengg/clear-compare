@@ -87,6 +87,11 @@ cargo build -p clear-cli --release --locked
 # Preview only; backups must already exist outside both selected roots.
 ./target/release/clear-compare sync ./source ./target --backup-dir ./backups
 
+# Editor restore preview; target must match the completed backup manifest.
+# Backup base must be outside the target file parent directory.
+./target/release/clear-compare restore-editor ./files/edited.txt ./backup-id/original.bin --backup-dir ./backups
+# Add --apply to generate and execute a fresh restore plan.
+
 # Reverse direction, still preview-only.
 ./target/release/clear-compare sync ./left ./right --backup-dir ./backups --reverse
 
@@ -98,14 +103,14 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 
 ## Limits and integrity
 
-- Text comparison/editing: UTF-8 and BOM-marked UTF-16 LE/BE, at most 4 MiB and 30,000 comparison lines per side. Mixed line-ending documents can be read but saving requires a future explicit normalization policy. Unsupported encodings/binary files return explicit errors.
+- Text comparison/editing: UTF-8 and BOM-marked UTF-16 LE/BE, at most 4 MiB and 30,000 comparison lines per side. Mixed line-ending documents require an explicit LF/CRLF/CR policy when saving. Encoding/BOM can be converted explicitly; UTF-16 always includes a BOM. Unsupported encodings/binary files return explicit errors.
 - Ignore-whitespace removes whitespace within a line for comparison; it does not change displayed text or saved files. Missing final newlines remain significant.
 - CSV/TSV: strict quoting, up to 4 MiB / 30,000 rows / 200,000 cells / 1,024 columns; columns compare by position. Duplicate keys are errors. Optional finite absolute numeric tolerance uses floating-point values. Desktop results are paged in blocks of 500.
 - Merge results are buffers with conflict markers, not automatic file writes. Two-second diff deadlines can yield coarser alignment on pathological inputs. Hex viewing uses fixed 4 KiB pages; hex editing is not implemented.
-- Editor backups: app data `editor-backups/<id>/original.bin` and a digest/state `manifest.json`. Original encoding/BOM and uniform newline style are retained; manually inspect unresolved merge markers before saving.
+- Editor backups: app data `editor-backups/<id>/original.bin` and a digest/state `manifest.json`. Original encoding/BOM and uniform newline style are retained by default; explicit conversion is available. The editor can preview and undo its most recent save, backing up the current contents before restoring. CLI can reopen matching completed editor backups across process restarts; manually inspect unresolved merge markers before saving.
 - Scan: at most200,000 entries per root and500 rows per page. Search and difference filtering operate on the current page.
 - Desktop backups: app data directory, `backups/<plan-id>/files/`, with `journal.json`. CLI uses the selected backup base.
-- Automatic restore, crash resume, timestamp/ACL/xattr preservation and full encoding support are not implemented yet.
+- Synchronization rollback, backup-history browsing, crash resume, timestamp/ACL/xattr preservation and full encoding support are not implemented yet.
 - A multi-file copy is not a transaction. Failure stops later actions and reports partial completion.
 - Revalidation handles ordinary external changes, but does not guarantee safety against adversarial filesystem races.
 

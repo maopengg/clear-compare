@@ -4,7 +4,9 @@ use crate::{
     compare::{Snapshot, checked_path, hash_file, reject_overlap},
     unique_id,
 };
-use clear_contracts::{Encoding, Kind, LineEnding, SaveResult, Side, TextDocument};
+use clear_contracts::{
+    Encoding, Kind, LineEnding, RestorePreview, SaveOptions, SaveResult, Side, TextDocument,
+};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
@@ -16,6 +18,7 @@ use tempfile::NamedTempFile;
 
 pub const MAX_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
 
+#[derive(Clone)]
 pub struct OpenDocument {
     pub view: TextDocument,
     root: PathBuf,
@@ -180,12 +183,104 @@ pub fn open(snapshot: &Snapshot, row_id: &str, side: Side) -> Result<OpenDocumen
     })
 }
 
+/// Explicit CLI file entry point; the desktop uses opaque comparison entry IDs.
+pub fn open_file(path: &Path) -> Result<OpenDocument> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let root = fs::canonicalize(
+        absolute
+            .parent()
+            .ok_or_else(|| Error::Invalid("Invalid file path".into()))?,
+    )?;
+    let relative = PathBuf::from(
+        absolute
+            .file_name()
+            .ok_or_else(|| Error::Invalid("Invalid file name".into()))?,
+    );
+    let target = checked_path(&root, &relative, false)?;
+    let cancel = AtomicBool::new(false);
+    let baseline = hash_file(&target, &cancel)?;
+    let mut bytes = Vec::new();
+    File::open(&target)?
+        .take((MAX_DOCUMENT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_DOCUMENT_BYTES {
+        return Err(Error::Invalid("Text editing is limited to 4 MiB".into()));
+    }
+    let digest = format!("{:x}", Sha256::digest(&bytes));
+    if digest != baseline {
+        return Err(Error::Invalid("File changed while opening".into()));
+    }
+    let (text, encoding, bom) = decode(&bytes)?;
+    let view = TextDocument {
+        id: unique_id(),
+        absolute_path: target.to_string_lossy().into(),
+        path: relative.to_string_lossy().into(),
+        side: Side::Left,
+        line_ending: endings(&text),
+        text,
+        encoding,
+        bom,
+        digest,
+    };
+    Ok(OpenDocument {
+        view,
+        root,
+        relative,
+    })
+}
+
 pub fn save(
     original: &OpenDocument,
     text: &str,
     backup_base: &Path,
 ) -> Result<(OpenDocument, SaveResult)> {
-    let bytes = encode(text, &original.view)?;
+    save_with_options(original, text, backup_base, &SaveOptions::default())
+}
+
+pub fn save_with_options(
+    original: &OpenDocument,
+    text: &str,
+    backup_base: &Path,
+    options: &SaveOptions,
+) -> Result<(OpenDocument, SaveResult)> {
+    let mut format = original.view.clone();
+    if let Some(encoding) = &options.encoding {
+        format.encoding = encoding.clone();
+    }
+    if let Some(ending) = &options.line_ending {
+        if *ending == LineEnding::Mixed {
+            return Err(Error::Invalid(
+                "Choose LF, CRLF or CR to normalize line endings".into(),
+            ));
+        }
+        format.line_ending = ending.clone();
+    }
+    if let Some(bom) = options.bom {
+        format.bom = bom;
+    }
+    if format.encoding != Encoding::Utf8 {
+        if options.bom == Some(false) {
+            return Err(Error::Invalid("UTF-16 requires a BOM".into()));
+        }
+        format.bom = true;
+    }
+    let bytes = encode(text, &format)?;
+    save_bytes(original, &bytes, backup_base)
+}
+
+fn save_bytes(
+    original: &OpenDocument,
+    bytes: &[u8],
+    backup_base: &Path,
+) -> Result<(OpenDocument, SaveResult)> {
+    if bytes.len() > MAX_DOCUMENT_BYTES {
+        return Err(Error::Invalid("Document exceeds 4 MiB".into()));
+    }
+    decode(bytes)?;
     if !backup_base.is_dir() {
         return Err(Error::Invalid("Backup base must exist".into()));
     }
@@ -206,7 +301,7 @@ pub fn save(
         .parent()
         .ok_or_else(|| Error::Invalid("Invalid file parent".into()))?;
     let mut temporary = NamedTempFile::new_in(parent)?;
-    temporary.write_all(&bytes)?;
+    temporary.write_all(bytes)?;
     temporary
         .as_file()
         .set_permissions(permissions)
@@ -233,7 +328,7 @@ pub fn save(
     if hash_file(&path, &cancel)? != original.view.digest {
         return Err(Error::Invalid("File changed while saving".into()));
     }
-    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let digest = format!("{:x}", Sha256::digest(bytes));
     let manifest = backup_dir.join("manifest.json");
     let write_manifest = |state: &str| -> Result<()> {
         let value = serde_json::json!({"version":1,"state":state,"target":path,
@@ -262,7 +357,7 @@ pub fn save(
         return Err(Error::Invalid("Saved document failed verification".into()));
     }
     write_manifest("completed")?;
-    let (text, encoding, bom) = decode(&bytes)?;
+    let (text, encoding, bom) = decode(bytes)?;
     let view = TextDocument {
         id: unique_id(),
         absolute_path: path.to_string_lossy().into_owned(),
@@ -286,4 +381,76 @@ pub fn save(
         },
         result,
     ))
+}
+
+/// A reviewed restore owns verified bytes and a pinned editor baseline.
+pub struct RestorePlan {
+    pub view: RestorePreview,
+    document: OpenDocument,
+    bytes: Vec<u8>,
+}
+
+pub fn preview_restore(original: &OpenDocument, backup: &Path) -> Result<RestorePlan> {
+    let directory = backup
+        .parent()
+        .ok_or_else(|| Error::Invalid("Invalid backup path".into()))?;
+    if backup.file_name() != Some(std::ffi::OsStr::new("original.bin")) {
+        return Err(Error::Invalid(
+            "Select an editor original.bin backup".into(),
+        ));
+    }
+    let manifest = directory.join("manifest.json");
+    let mut data = Vec::new();
+    File::open(&manifest)?.take(65537).read_to_end(&mut data)?;
+    if data.len() > 65536 {
+        return Err(Error::Invalid("Backup manifest is too large".into()));
+    }
+    let metadata: serde_json::Value = serde_json::from_slice(&data)?;
+    if metadata["version"] != 1
+        || metadata["state"] != "completed"
+        || metadata["target"] != original.view.absolute_path
+        || metadata["saved_digest"] != original.view.digest
+    {
+        return Err(Error::Invalid(
+            "Backup does not match this editor's completed save".into(),
+        ));
+    }
+    let expected = metadata["original_digest"]
+        .as_str()
+        .ok_or_else(|| Error::Invalid("Missing backup digest".into()))?;
+    let cancel = AtomicBool::new(false);
+    if hash_file(backup, &cancel)? != expected {
+        return Err(Error::Invalid("Backup contents changed".into()));
+    }
+    let mut bytes = Vec::new();
+    File::open(backup)?
+        .take((MAX_DOCUMENT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_DOCUMENT_BYTES || format!("{:x}", Sha256::digest(&bytes)) != expected {
+        return Err(Error::Invalid("Invalid editor backup".into()));
+    }
+    decode(&bytes)?;
+    let target = checked_path(&original.root, &original.relative, false)?;
+    if hash_file(&target, &cancel)? != original.view.digest {
+        return Err(Error::Invalid(
+            "Current file changed. Reopen before restoring.".into(),
+        ));
+    }
+    Ok(RestorePlan {
+        view: RestorePreview {
+            id: unique_id(),
+            target: original.view.absolute_path.clone(),
+            backup: backup.to_string_lossy().into(),
+            original_digest: expected.into(),
+            current_digest: original.view.digest.clone(),
+            bytes: bytes.len().to_string(),
+        },
+        document: original.clone(),
+        bytes,
+    })
+}
+
+pub fn apply_restore(plan: &RestorePlan, backup_base: &Path) -> Result<(OpenDocument, SaveResult)> {
+    // Restore also backs up the current file, allowing another reviewed reversal.
+    save_bytes(&plan.document, &plan.bytes, backup_base)
 }

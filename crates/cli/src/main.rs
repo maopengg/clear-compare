@@ -22,6 +22,14 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    RestoreEditor {
+        target: PathBuf,
+        backup: PathBuf,
+        #[arg(long)]
+        backup_dir: PathBuf,
+        #[arg(long)]
+        apply: bool,
+    },
     Table {
         left: PathBuf,
         right: PathBuf,
@@ -94,6 +102,22 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             } else {
                 0
             })
+        }
+        Command::RestoreEditor {
+            target,
+            backup,
+            backup_dir,
+            apply,
+        } => {
+            let document = clear_core::editing::open_file(&target)?;
+            let plan = clear_core::editing::preview_restore(&document, &backup)?;
+            if apply {
+                let (_, result) = clear_core::editing::apply_restore(&plan, &backup_dir)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&plan.view)?);
+            }
+            Ok(0)
         }
         Command::Table {
             left,

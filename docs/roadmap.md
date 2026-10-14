@@ -64,3 +64,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Left-to-right and right-to-left copy use the same digest/backup/journal checks. Reverse-copy tests verify right-only additions and backup of the replaced left-side content.
 - Editing, merge, table and binary views are separated into dedicated modules. Table refresh keys include their native report ID; binary reloads remount the preview so stale keyed rows are not reused.
 - Three-platform core/WASM CI run 38552812481 passed after the editor handle correction. These checks are distinct from postponed packaged-client installation acceptance.
+
+## Save format controls and reviewed editor restoration
+
+- Save options explicitly convert UTF-8 / UTF-16 LE/BE, BOM and LF/CRLF/CR style. Mixed endings require an explicit choice; BOM-less UTF-16 output is rejected.
+- A restore preview pins verified original bytes and the current editor digest. Apply revalidates the current file and creates a backup of its current contents before replacing it. Restoration retains the original bytes, including mixed line endings.
+- Desktop restoration consumes a native cached preview token and only accesses the editor's native last-save backup. CLI `restore-editor` can reopen a matching completed manifest across process restarts; preview is the default, `--apply` writes.
+- New tests cover format conversion, byte-exact restoration, reopen, restoration backup contents, tampered backup rejection and external edits after preview.
+- Three-platform core/WASM CI run 38553600582 passed for the preceding directional-copy and panel changes. Final packaged-client acceptance remains deferred.

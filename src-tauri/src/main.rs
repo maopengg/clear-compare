@@ -18,6 +18,8 @@ struct Backend {
     snapshot: Mutex<Option<Arc<Snapshot>>>,
     table: Mutex<Option<(String, Arc<TableComparison>)>>,
     plan: Mutex<Option<SyncPlan>>,
+    editor_backups: Mutex<BTreeMap<String, PathBuf>>,
+    restore: Mutex<Option<(String, clear_core::editing::RestorePlan)>>,
     cancel: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
     documents: Mutex<BTreeMap<String, Arc<clear_core::editing::OpenDocument>>>,
@@ -120,6 +122,12 @@ async fn open_document(
 #[tauri::command]
 fn close_document(document_id: String, state: State<'_, Backend>) -> Result<(), String> {
     state
+        .editor_backups
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .remove(&document_id);
+    *state.restore.lock().map_err(|_| "State unavailable")? = None;
+    state
         .documents
         .lock()
         .map_err(|_| "State unavailable")?
@@ -131,6 +139,7 @@ fn close_document(document_id: String, state: State<'_, Backend>) -> Result<(), 
 async fn save_document(
     document_id: String,
     text: String,
+    options: SaveOptions,
     app: tauri::AppHandle,
     state: State<'_, Backend>,
 ) -> Result<SaveResult, String> {
@@ -145,13 +154,95 @@ async fn save_document(
     let backup = data_dir(&app)?.join("editor-backups");
     std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
     let (updated, result) = tauri::async_runtime::spawn_blocking(move || {
-        clear_core::editing::save(&document, &text, &backup)
+        clear_core::editing::save_with_options(&document, &text, &backup, &options)
     })
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
     let mut documents = state.documents.lock().map_err(|_| "State unavailable")?;
     documents.remove(&document_id);
+    let mut backups = state
+        .editor_backups
+        .lock()
+        .map_err(|_| "State unavailable")?;
+    backups.remove(&document_id);
+    backups.insert(updated.view.id.clone(), PathBuf::from(&result.backup));
+    *state.restore.lock().map_err(|_| "State unavailable")? = None;
+    documents.insert(updated.view.id.clone(), Arc::new(updated));
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    Ok(result)
+}
+
+#[tauri::command]
+async fn preview_editor_restore(
+    document_id: String,
+    state: State<'_, Backend>,
+) -> Result<RestorePreview, String> {
+    let _operation_guard = state.begin()?;
+    let document = state
+        .documents
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .get(&document_id)
+        .cloned()
+        .ok_or("Editor expired")?;
+    let backup = state
+        .editor_backups
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .get(&document_id)
+        .cloned()
+        .ok_or("No recent save backup for this editor")?;
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::editing::preview_restore(&document, &backup)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let view = plan.view.clone();
+    *state.restore.lock().map_err(|_| "State unavailable")? = Some((document_id, plan));
+    Ok(view)
+}
+#[tauri::command]
+async fn apply_editor_restore(
+    plan_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<SaveResult, String> {
+    let _operation_guard = state.begin()?;
+    let (document_id, plan) = state
+        .restore
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .take()
+        .ok_or("Preview a restore first")?;
+    if plan.view.id != plan_id {
+        return Err("Restore preview expired".into());
+    }
+    if !state
+        .documents
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .contains_key(&document_id)
+    {
+        return Err("Editor expired".into());
+    }
+    let backup = data_dir(&app)?.join("editor-backups");
+    std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
+    let (updated, result) = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::editing::apply_restore(&plan, &backup)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let mut documents = state.documents.lock().map_err(|_| "State unavailable")?;
+    documents.remove(&document_id);
+    let mut backups = state
+        .editor_backups
+        .lock()
+        .map_err(|_| "State unavailable")?;
+    backups.remove(&document_id);
+    backups.insert(updated.view.id.clone(), PathBuf::from(&result.backup));
     documents.insert(updated.view.id.clone(), Arc::new(updated));
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
     Ok(result)
@@ -365,7 +456,9 @@ fn main() {
             save_session,
             open_document,
             close_document,
-            save_document
+            save_document,
+            preview_editor_restore,
+            apply_editor_restore
         ])
         .run(tauri::generate_context!())
         .expect("desktop runtime failed");
