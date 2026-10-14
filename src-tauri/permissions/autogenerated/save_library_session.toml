@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-library-session"
+description = "Enables the save_library_session command without any pre-configured scope."
+commands.allow = ["save_library_session"]
+
+[[permission]]
+identifier = "deny-save-library-session"
+description = "Denies the save_library_session command without any pre-configured scope."
+commands.deny = ["save_library_session"]

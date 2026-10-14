@@ -65,6 +65,9 @@ fn size(entry: Option<&Entry>) -> String {
 
 #[component]
 fn App() -> impl IntoView {
+    let library = RwSignal::new(None::<Vec<LibraryEntry>>);
+    let session_name = RwSignal::new(String::new());
+    let active_library = RwSignal::new(None::<(String, String)>);
     let english = RwSignal::new(false);
     let left = RwSignal::new(String::new());
     let right = RwSignal::new(String::new());
@@ -117,15 +120,60 @@ fn App() -> impl IntoView {
     let merge_right = RwSignal::new(String::new());
     let merge_result = RwSignal::new(None::<MergeResult>);
 
+    let current_session = move || SavedSession {
+        request: CompareRequest {
+            left: left.get_untracked(),
+            right: right.get_untracked(),
+            exclusions: exclusions.get_untracked(),
+            content: content.get_untracked(),
+        },
+        english: english.get_untracked(),
+        view: SessionView {
+            search: search.get_untracked(),
+            differences_only: differences.get_untracked(),
+            recursive: recursive.get_untracked(),
+            sort: match folder_sort.get_untracked().as_str() {
+                "status" => FolderSort::Status,
+                "left_size" => FolderSort::LeftSize,
+                "right_size" => FolderSort::RightSize,
+                _ => FolderSort::Path,
+            },
+            descending: descending.get_untracked(),
+            reverse_sync: reverse_sync.get_untracked(),
+            text_options: TextOptions {
+                ignore_case: ignore_case.get_untracked(),
+                ignore_whitespace: ignore_space.get_untracked(),
+                ignore_line_endings: ignore_endings.get_untracked(),
+            },
+        },
+    };
+    let apply_session = move |saved: SavedSession| {
+        left.set(saved.request.left);
+        right.set(saved.request.right);
+        exclusions.set(saved.request.exclusions);
+        content.set(saved.request.content);
+        english.set(saved.english);
+        search.set(saved.view.search);
+        differences.set(saved.view.differences_only);
+        recursive.set(saved.view.recursive);
+        folder_sort.set(
+            match saved.view.sort {
+                FolderSort::Path => "path",
+                FolderSort::Status => "status",
+                FolderSort::LeftSize => "left_size",
+                FolderSort::RightSize => "right_size",
+            }
+            .into(),
+        );
+        descending.set(saved.view.descending);
+        reverse_sync.set(saved.view.reverse_sync);
+        ignore_case.set(saved.view.text_options.ignore_case);
+        ignore_space.set(saved.view.text_options.ignore_whitespace);
+        ignore_endings.set(saved.view.text_options.ignore_line_endings);
+    };
     spawn_local(async move {
         match invoke::<Option<SavedSession>>("load_session", serde_json::json!({})).await {
-            Ok(Some(saved)) => {
-                left.set(saved.request.left);
-                right.set(saved.request.right);
-                exclusions.set(saved.request.exclusions);
-                content.set(saved.request.content);
-                english.set(saved.english);
-            }
+            Ok(Some(saved)) => apply_session(saved),
             Ok(None) => {}
             Err(e) => error.set(e),
         }
@@ -328,10 +376,7 @@ fn App() -> impl IntoView {
                         Err(e) => error.set(e),
                     }
                     comparison.set(Some(opened));
-                    let saved = SavedSession {
-                        request,
-                        english: english.get_untracked(),
-                    };
+                    let saved = current_session();
                     if let Err(e) =
                         invoke::<()>("save_session", serde_json::json!({ "session": saved })).await
                     {
@@ -673,6 +718,116 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let refresh_library = move || {
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<Vec<LibraryEntry>>("list_sessions", serde_json::json!({})).await {
+                Ok(entries) => library.set(Some(entries)),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let save_library = move |update: bool| {
+        let (id, revision) = if update {
+            let Some((id, revision)) = active_library.get_untracked() else {
+                return;
+            };
+            (Some(id), Some(revision))
+        } else {
+            (None, None)
+        };
+        let args = serde_json::json!({"id":id,"revision":revision,"name":session_name.get_untracked(),"session":current_session()});
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<LibraryEntry>("save_library_session", args).await {
+                Ok(entry) => {
+                    active_library.set(Some((entry.id.clone(), entry.revision.clone())));
+                    session_name.set(entry.name.clone());
+                    library.update(|entries| {
+                        let entries = entries.get_or_insert_with(Vec::new);
+                        entries.retain(|e| e.id != entry.id);
+                        entries.insert(0, entry);
+                    });
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let open_library = move |entry: LibraryEntry| {
+        if editor_dirty() {
+            error.set(
+                tr(
+                    english.get_untracked(),
+                    "先保存或重置编辑内容，再打开会话。",
+                    "Save or reset the editor before opening a session.",
+                )
+                .into(),
+            );
+            return;
+        }
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<LibraryEntry>("load_library_session", serde_json::json!({"id":entry.id}))
+                .await
+            {
+                Ok(entry) => {
+                    reset();
+                    apply_session(entry.session.clone());
+                    session_name.set(entry.name.clone());
+                    active_library.set(Some((entry.id.clone(), entry.revision.clone())));
+                    library.update(|entries| {
+                        if let Some(entries) = entries {
+                            entries.retain(|e| e.id != entry.id);
+                            entries.insert(0, entry);
+                        }
+                    });
+                    if let Some(d) = editor.get_untracked() {
+                        let _ =
+                            invoke::<()>("close_document", serde_json::json!({"documentId":d.id}))
+                                .await;
+                    }
+                    editor.set(None);
+                    draft.set(String::new());
+                    can_restore.set(false);
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let archive_library = move |entry: LibraryEntry| {
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<()>(
+                "archive_session",
+                serde_json::json!({"id":entry.id,"revision":entry.revision}),
+            )
+            .await
+            {
+                Ok(()) => {
+                    library.update(|entries| {
+                        if let Some(entries) = entries {
+                            entries.retain(|e| e.id != entry.id);
+                        }
+                    });
+                    if active_library
+                        .get_untracked()
+                        .is_some_and(|(id, _)| id == entry.id)
+                    {
+                        active_library.set(None);
+                    }
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
     let close_editor = move || {
         let Some(document) = editor.get_untracked() else {
             return;
@@ -702,9 +857,10 @@ fn App() -> impl IntoView {
         <main class="workspace">
             <header class="topbar">
                 <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">"0.1 preview"</span></div>
-                <div class="top-actions"><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
+                <div class="top-actions"><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
                 <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
             </header>
+            {panels::sessions::panel(english,busy,panels::sessions::Signals{library,session_name,active_library},refresh_library,save_library,open_library,archive_library)}
             <section class="path-section" aria-label="Comparison directories">
                 <div class="path-pair">
                     <div class="path-field"><label for="left">{move || tr(english.get(),"左侧 · 来源","Left · Source")}</label><div class="path-input"><input id="left" prop:value=move || left.get() disabled=move || busy.get() placeholder=move || tr(english.get(),"选择来源文件夹","Choose source directory") on:input=move |ev| {reset();left.set(event_target_value(&ev));}/><button class="browse" aria-label="Choose source directory" disabled=move || busy.get() on:click=move |_| pick(true)>"…"</button></div></div>

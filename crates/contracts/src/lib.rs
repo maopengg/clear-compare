@@ -55,6 +55,8 @@ pub struct CompareRequest {
 pub struct SavedSession {
     pub request: CompareRequest,
     pub english: bool,
+    #[serde(default)]
+    pub view: SessionView,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -334,4 +336,37 @@ pub struct Breadcrumb {
 pub struct FolderPage {
     pub page: Page,
     pub breadcrumbs: Vec<Breadcrumb>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SessionView {
+    pub search: String,
+    pub differences_only: bool,
+    pub recursive: bool,
+    pub sort: FolderSort,
+    pub descending: bool,
+    pub reverse_sync: bool,
+    pub text_options: TextOptions,
+}
+impl Default for SessionView {
+    fn default() -> Self {
+        Self {
+            search: String::new(),
+            differences_only: true,
+            recursive: true,
+            sort: FolderSort::Path,
+            descending: false,
+            reverse_sync: false,
+            text_options: TextOptions::default(),
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryEntry {
+    pub id: String,
+    pub name: String,
+    pub updated_ms: String,
+    pub revision: String,
+    pub session: SavedSession,
 }

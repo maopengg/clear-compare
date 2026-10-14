@@ -89,3 +89,10 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - The UI distinguishes overall comparison counters from the current directory/query scope. Search can apply by button or Enter, and page totals represent the filtered result.
 - Tests find a difference after more than 500 equal rows, verify directory aggregate counts/bytes, native breadcrumb scope, unverified descendants and numeric size ordering. CLI now exits1 for empty-directory-only differences.
 - Previous copy-recovery changes passed three-platform core/WASM CI run 38555848042. Final packaged-client installation and runtime acceptance remain deferred.
+
+## Named session library
+
+- Named configurations persist comparison paths/rules, language and view/text options; opening loads configuration without starting filesystem work. Directory scope resets to root because snapshot IDs are ephemeral.
+- Versioned session files are atomically persisted with revision checks and a nonblocking storage lock for cooperating processes. Archiving retains files under `sessions/trash`.
+- Last-session persistence now uses bounded regular-file reads and atomic replacement. Legacy settings default the added view fields.
+- Tests cover reopen/update/archive, stale revisions, legacy defaults, invalid IDs, symlink rejection and lock contention. Previous directory-query changes passed three-platform CI run 38557214016.

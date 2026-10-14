@@ -534,25 +534,70 @@ async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String>
 
 #[tauri::command]
 fn load_session(app: tauri::AppHandle) -> Result<Option<SavedSession>, String> {
-    let path = data_dir(&app)?.join("session.json");
-    if !path.exists() {
-        return Ok(None);
-    }
-    serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
-        .map(Some)
-        .map_err(|e| e.to_string())
+    clear_core::sessions::load_last(&data_dir(&app)?).map_err(|e| e.to_string())
 }
-
 #[tauri::command]
 fn save_session(session: SavedSession, app: tauri::AppHandle) -> Result<(), String> {
-    let root = data_dir(&app)?;
-    let temporary = root.join("session.tmp");
-    std::fs::write(
-        &temporary,
-        serde_json::to_vec_pretty(&session).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    std::fs::rename(temporary, root.join("session.json")).map_err(|e| e.to_string())
+    clear_core::sessions::save_last(&data_dir(&app)?, &session).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn list_sessions(
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<Vec<LibraryEntry>, String> {
+    let _operation_guard = state.begin()?;
+    let base = data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || clear_core::sessions::list(&base))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn load_library_session(
+    id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<LibraryEntry, String> {
+    let _operation_guard = state.begin()?;
+    let base = data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || clear_core::sessions::load(&base, &id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn save_library_session(
+    id: Option<String>,
+    revision: Option<String>,
+    name: String,
+    session: SavedSession,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<LibraryEntry, String> {
+    let _operation_guard = state.begin()?;
+    let base = data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        clear_core::sessions::save(&base, id.as_deref(), revision.as_deref(), &name, &session)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn archive_session(
+    id: String,
+    revision: String,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<(), String> {
+    let _operation_guard = state.begin()?;
+    let base = data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        clear_core::sessions::archive(&base, &id, &revision)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 fn main() {
@@ -574,6 +619,10 @@ fn main() {
             pick_directory,
             load_session,
             save_session,
+            list_sessions,
+            load_library_session,
+            save_library_session,
+            archive_session,
             open_document,
             close_document,
             save_document,

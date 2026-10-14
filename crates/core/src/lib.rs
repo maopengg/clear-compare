@@ -6,6 +6,7 @@ pub mod merge;
 pub mod native_path;
 pub mod recovery;
 pub mod rules;
+pub mod sessions;
 pub mod sync;
 pub mod table;
 pub mod text;
