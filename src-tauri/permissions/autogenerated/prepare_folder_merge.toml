@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-prepare-folder-merge"
+description = "Enables the prepare_folder_merge command without any pre-configured scope."
+commands.allow = ["prepare_folder_merge"]
+
+[[permission]]
+identifier = "deny-prepare-folder-merge"
+description = "Denies the prepare_folder_merge command without any pre-configured scope."
+commands.deny = ["prepare_folder_merge"]

@@ -70,7 +70,7 @@ pub fn reject_overlap(left: &Path, right: &Path) -> Result<()> {
     Ok(())
 }
 
-fn scan(
+pub(crate) fn scan(
     root: &Path,
     rules: &Rules,
     content: bool,

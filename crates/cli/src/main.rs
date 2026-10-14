@@ -22,6 +22,20 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    MergeFolders {
+        base: String,
+        left: String,
+        right: String,
+        output: String,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long)]
+        journal_dir: PathBuf,
+        #[arg(long = "choose")]
+        choices: Vec<String>,
+        #[arg(long)]
+        apply: bool,
+    },
     Picture {
         left: PathBuf,
         right: PathBuf,
@@ -117,6 +131,70 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             } else {
                 0
             })
+        }
+        Command::MergeFolders {
+            base,
+            left,
+            right,
+            output,
+            exclude,
+            journal_dir,
+            choices,
+            apply,
+        } => {
+            let mut plan = clear_core::folder_merge::prepare(
+                &clear_contracts::FolderMergeRequest {
+                    two_way: base == "-",
+                    base,
+                    left,
+                    right,
+                    output,
+                    exclusions: exclude,
+                },
+                &journal_dir,
+                &cancel,
+            )?;
+            for item in choices {
+                let (path, choice) = item.rsplit_once('=').ok_or_else(|| {
+                    clear_core::Error::Invalid(
+                        "Use --choose relative/path=left|right|base|delete|auto".into(),
+                    )
+                })?;
+                let resolution = match choice {
+                    "combine" => clear_contracts::FolderResolution::Combine,
+                    "left" => clear_contracts::FolderResolution::Left,
+                    "right" => clear_contracts::FolderResolution::Right,
+                    "base" => clear_contracts::FolderResolution::Base,
+                    "delete" => clear_contracts::FolderResolution::Delete,
+                    "auto" => clear_contracts::FolderResolution::Auto,
+                    _ => {
+                        return Err(clear_core::Error::Invalid(
+                            "Invalid folder merge choice".into(),
+                        ));
+                    }
+                };
+                plan.resolve_path(std::path::Path::new(path), resolution)?;
+            }
+            if apply {
+                let result = clear_core::folder_merge::execute(&plan, &cancel)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(
+                    if result
+                        .actions
+                        .iter()
+                        .all(|a| matches!(a.state.as_str(), "completed" | "omitted"))
+                    {
+                        0
+                    } else {
+                        2
+                    },
+                )
+            } else {
+                let preview = plan.preview(0);
+                let conflicts = preview.conflicts;
+                println!("{}", serde_json::to_string_pretty(&preview)?);
+                Ok(i32::from(conflicts > 0))
+            }
         }
         Command::Picture {
             left,

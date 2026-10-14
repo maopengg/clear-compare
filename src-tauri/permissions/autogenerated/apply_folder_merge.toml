@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apply-folder-merge"
+description = "Enables the apply_folder_merge command without any pre-configured scope."
+commands.allow = ["apply_folder_merge"]
+
+[[permission]]
+identifier = "deny-apply-folder-merge"
+description = "Denies the apply_folder_merge command without any pre-configured scope."
+commands.deny = ["apply_folder_merge"]

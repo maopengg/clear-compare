@@ -60,3 +60,9 @@ The immutable snapshot indexes native directory paths. Directory states and regu
 ## Picture comparison
 
 Native image decoding is bounded by input size, dimensions and pixel count. The decoder applies [EXIF orientation](https://docs.rs/image/0.25.10/image/enum.DynamicImage.html#method.apply_orientation) before RGBA8 comparison. Pixel statistics use top-left-aligned full images, while IPC carries normalized PNG previews of at most 1024 pixels per side. The heatmap aggregates changed pixels into preview buckets so a single changed source pixel is retained. Browser image elements display only generated data URLs; image files and paths are not exposed through generic filesystem permissions.
+
+## Folder merge output planning
+
+The merge planner scans a shared baseline and both input trees, classifies changes using verified content and ancestor changes, and owns native paths plus pinned source entries. Two-way mode uses a virtual empty baseline without creating any directory in the input trees. Manual directory choices cascade to their entire subtree. The GUI resolves opaque row IDs; CLI choices match explicit relative paths against scanned entries and never create paths from display labels.
+
+Execution refuses unresolved conflicts and nonempty/overlapping output. It revalidates all input trees before writing, streams copied files into sibling temporary files, verifies hashes and persists without replacing existing files. Generated text is preserved separately with its digest in a private run manifest. Final output is rescanned against the planned inventory and digests. Input trees are never written, and partial output is reported through durable action states.

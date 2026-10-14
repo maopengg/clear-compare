@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, persisted view settings and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -82,6 +82,11 @@ cargo build -p clear-cli --release --locked
 # Text diff: JSON output, optional normalization.
 ./target/release/clear-compare diff ./old.txt ./new.txt --ignore-line-endings
 
+# Folder merge preview; all directories must exist and output must be empty.
+./target/release/clear-compare merge-folders ./base ./left ./right ./merged --journal-dir ./merge-journals
+# Two-way mode uses - as the baseline; choices apply to exact scanned relative paths.
+./target/release/clear-compare merge-folders - ./left ./right ./merged --journal-dir ./merge-journals --choose sub=right --apply
+
 # Picture statistics (PNG/JPEG/BMP/WebP), optional channel tolerance.
 ./target/release/clear-compare picture ./left.png ./right.png --tolerance 2
 
@@ -116,6 +121,9 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 - Text comparison/editing: UTF-8 and BOM-marked UTF-16 LE/BE, at most 4 MiB and 30,000 comparison lines per side. Mixed line-ending documents require an explicit LF/CRLF/CR policy when saving. Encoding/BOM can be converted explicitly; UTF-16 always includes a BOM. Unsupported encodings/binary files return explicit errors.
 - Ignore-whitespace removes whitespace within a line for comparison; it does not change displayed text or saved files. Missing final newlines remain significant.
 - CSV/TSV: strict quoting, up to 4 MiB / 30,000 rows / 200,000 cells / 1,024 columns; columns compare by position. Duplicate keys are errors. Optional finite absolute numeric tolerance uses floating-point values. Desktop results are paged in blocks of 500.
+- Folder merge: separate empty output, at most 200,000 union entries, content-verified inputs and paged conflict choices. Directory choices apply to their entire subtree. Deletions omit output entries; input trees are preserved. Every unresolved conflict blocks execution.
+- Folder auto text merge uses UTF-8/BOM-marked UTF-16, preserves the left encoding/BOM/uniform newline style, and uses at most 4 MiB per input file and 64 MiB of generated buffers. Unsupported text/links/special files become conflicts; manual supported-version selection or omission is available. Unique content matches indicate probable rename-versus-modification conflicts, not all possible renames.
+- Folder-merge manifests, generated text artifacts and execution journals are stored under app data `merge-runs/` or the CLI journal base. All inputs are revalidated before output creation; final output structure and contents are verified. Partial output can remain after an error/cancellation; automatic output cleanup/resume is not implemented.
 - Picture comparison: PNG/JPEG/BMP/WebP, EXIF orientation, top-left alignment and RGBA8 channel differences. Inputs are limited to 16 MiB, each side to 16,384 pixels, and each image/aligned canvas to 8 million pixels. Decoder allocation budget is best-effort 128 MiB, separate from application buffers.
 - Picture tolerance uses the maximum selected channel difference (0–255); missing pixels always differ. Optional alpha-channel ignoring still compares RGB values, including hidden RGB values. High-bit-depth inputs are converted to RGBA8; ICC/perceptual color comparison and animation-frame comparison are not implemented.
 - Picture statistics use the full canvas; aligned previews have at most a 1,024-pixel side. Red heatmap buckets preserve any changed pixel in that region. Preview zoom and opacity do not change statistics.

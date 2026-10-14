@@ -12,8 +12,8 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F06 Text compare | UTF-8/UTF-16 line diff, original-text paired view, bounded computation | Intraline differences, alignment controls and navigation |
 | F07 Editing | Side-specific editor, encoding/BOM/newline retention or explicit conversion, digest-checked atomic save, verified backup and reviewed last-save restore | Editor undo/redo history, persistent backup browser and block-copy workflow |
 | F08 Text rules | Case, within-line whitespace and line-ending normalization | Syntax filters, regex rules and manual alignment |
-| F09 Text merge | Three-way merge buffers, conflict markers, load result into editor; JSON CLI | Conflict navigation and resolution controls, multi-file merge workflows |
-| F10 Folder merge | Planned | Baseline-aware folder merging |
+| F09 Text merge | Three-way merge buffers, conflict markers, load result into editor; JSON CLI | Conflict navigation and resolution controls, normal-save conflict gate, richer merge editing |
+| F10 Folder merge | Two/three-way independent output, baseline/content classification, deletion/modify and probable rename/modify conflicts, auto text merge, paged version choices, source/output validation, durable journals and CLI | Advanced rename analysis, existing-output/in-place policies, resume/cleanup and richer per-file merge editing |
 | F11 Table compare | CSV/TSV strict parser, positional/key row alignment, numeric tolerance, paged paired cells and CLI | Excel/HTML, column-name mapping, table editing and richer tolerances |
 | F12 Binary compare | Streaming hash comparison and bounded 4 KiB hex/ASCII paired pages | Hex editing, byte alignment and search |
 | F13 Picture compare | PNG/JPEG/BMP/WebP RGBA8 pixel diff, EXIF orientation, tolerance, bounds, aligned previews, overlay/heatmap and CLI statistics | Additional formats/animation, ICC/perceptual comparison, alignment controls, pixel inspector and export |

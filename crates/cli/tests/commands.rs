@@ -205,3 +205,80 @@ fn picture_cli_reports_pixel_changes_and_tolerance() {
     ]);
     assert!(tolerant.status.success());
 }
+
+#[test]
+fn folder_merge_cli_preview_is_read_only_and_apply_creates_separate_output() {
+    let t = tempfile::tempdir().unwrap();
+    for name in ["base", "left", "right", "out", "journals"] {
+        fs::create_dir(t.path().join(name)).unwrap();
+    }
+    for (side, text) in [
+        ("base", "a\nb\nc\n"),
+        ("left", "A\nb\nc\n"),
+        ("right", "a\nb\nC\n"),
+    ] {
+        fs::write(t.path().join(side).join("a"), text).unwrap();
+    }
+    let paths = ["base", "left", "right", "out", "journals"].map(|name| t.path().join(name));
+    let args = [
+        "merge-folders".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+        paths[2].as_os_str(),
+        paths[3].as_os_str(),
+        "--journal-dir".as_ref(),
+        paths[4].as_os_str(),
+    ];
+    let preview = run(&args);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    assert!(fs::read_dir(t.path().join("out")).unwrap().next().is_none());
+    let mut apply = args.to_vec();
+    apply.push("--apply".as_ref());
+    let output = run(&apply);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(t.path().join("out/a")).unwrap(),
+        "A\nb\nC\n"
+    );
+    assert_eq!(
+        fs::read_to_string(t.path().join("base/a")).unwrap(),
+        "a\nb\nc\n"
+    );
+}
+
+#[test]
+fn two_way_folder_merge_cli_accepts_explicit_version_choice() {
+    let t = tempfile::tempdir().unwrap();
+    let paths = ["left", "right", "out", "journals"].map(|n| t.path().join(n));
+    for p in &paths {
+        fs::create_dir(p).unwrap();
+    }
+    fs::write(paths[0].join("a"), "left").unwrap();
+    fs::write(paths[1].join("a"), "right").unwrap();
+    let result = run(&[
+        "merge-folders".as_ref(),
+        "-".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+        paths[2].as_os_str(),
+        "--journal-dir".as_ref(),
+        paths[3].as_os_str(),
+        "--choose".as_ref(),
+        "a=right".as_ref(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(fs::read_to_string(paths[2].join("a")).unwrap(), "right");
+}

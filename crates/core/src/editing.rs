@@ -86,7 +86,7 @@ pub fn endings(text: &str) -> LineEnding {
     }
 }
 
-fn encode(text: &str, original: &TextDocument) -> Result<Vec<u8>> {
+pub(crate) fn encode(text: &str, original: &TextDocument) -> Result<Vec<u8>> {
     if text.len() > MAX_DOCUMENT_BYTES {
         return Err(Error::Invalid("Edited document exceeds 4 MiB".into()));
     }

@@ -21,6 +21,7 @@ struct Backend {
     editor_backups: Mutex<BTreeMap<String, PathBuf>>,
     restore: Mutex<Option<(String, clear_core::editing::RestorePlan)>>,
     recovery: Mutex<Option<clear_core::recovery::Plan>>,
+    folder_merge: Mutex<Option<clear_core::folder_merge::Plan>>,
     cancel: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
     documents: Mutex<BTreeMap<String, Arc<clear_core::editing::OpenDocument>>>,
@@ -274,6 +275,81 @@ async fn query_folder(
 ) -> Result<FolderPage, String> {
     let snapshot = state.snapshot(&session)?;
     tauri::async_runtime::spawn_blocking(move || clear_core::tree::query(&snapshot, &query, offset))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn prepare_folder_merge(
+    request: FolderMergeRequest,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<FolderMergePreview, String> {
+    let _operation_guard = state.begin()?;
+    *state.folder_merge.lock().map_err(|_| "State unavailable")? = None;
+    let backup = data_dir(&app)?.join("merge-runs");
+    std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
+    let cancel = state.cancel.clone();
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::folder_merge::prepare(&request, &backup, &cancel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let view = plan.preview(0);
+    *state.folder_merge.lock().map_err(|_| "State unavailable")? = Some(plan);
+    Ok(view)
+}
+#[tauri::command]
+fn folder_merge_page(
+    plan_id: String,
+    offset: usize,
+    state: State<'_, Backend>,
+) -> Result<FolderMergePreview, String> {
+    let guard = state.folder_merge.lock().map_err(|_| "State unavailable")?;
+    let plan = guard.as_ref().ok_or("Preview folder merge first")?;
+    let view = plan.preview(offset);
+    if view.id != plan_id {
+        return Err("Folder merge preview expired".into());
+    }
+    Ok(view)
+}
+#[tauri::command]
+fn resolve_folder_merge(
+    plan_id: String,
+    row_id: String,
+    resolution: FolderResolution,
+    offset: usize,
+    state: State<'_, Backend>,
+) -> Result<FolderMergePreview, String> {
+    let _operation_guard = state.begin()?;
+    let mut guard = state.folder_merge.lock().map_err(|_| "State unavailable")?;
+    let plan = guard.as_mut().ok_or("Preview folder merge first")?;
+    if plan.preview(0).id != plan_id {
+        return Err("Folder merge preview expired".into());
+    }
+    plan.resolve(&row_id, resolution)
+        .map_err(|e| e.to_string())?;
+    Ok(plan.preview(offset))
+}
+#[tauri::command]
+async fn apply_folder_merge(
+    plan_id: String,
+    state: State<'_, Backend>,
+) -> Result<FolderMergeResult, String> {
+    let _operation_guard = state.begin()?;
+    let plan = state
+        .folder_merge
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .take()
+        .ok_or("Preview folder merge first")?;
+    if plan.preview(0).id != plan_id {
+        return Err("Folder merge preview expired".into());
+    }
+    let cancel = state.cancel.clone();
+    tauri::async_runtime::spawn_blocking(move || clear_core::folder_merge::execute(&plan, &cancel))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -628,6 +704,10 @@ fn main() {
             page,
             query_folder,
             picture_preview,
+            prepare_folder_merge,
+            folder_merge_page,
+            resolve_folder_merge,
+            apply_folder_merge,
             text_diff,
             merge_buffers,
             binary_page,

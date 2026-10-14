@@ -405,3 +405,52 @@ pub struct PicturePreview {
     pub right_png: Option<String>,
     pub difference_png: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderMergeRequest {
+    #[serde(default)]
+    pub two_way: bool,
+    pub base: String,
+    pub left: String,
+    pub right: String,
+    pub output: String,
+    pub exclusions: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FolderResolution {
+    Combine,
+    Base,
+    Left,
+    Right,
+    Delete,
+    Auto,
+    Conflict,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderMergeRow {
+    pub id: String,
+    pub path: String,
+    pub classification: String,
+    pub resolution: FolderResolution,
+    pub reason: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderMergePreview {
+    pub id: String,
+    pub two_way: bool,
+    pub base: String,
+    pub left: String,
+    pub right: String,
+    pub output: String,
+    pub backup_root: String,
+    pub conflicts: usize,
+    pub total: usize,
+    pub rows: Vec<FolderMergeRow>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderMergeResult {
+    pub plan: FolderMergePreview,
+    pub actions: Vec<ActionResult>,
+    pub journal: String,
+}

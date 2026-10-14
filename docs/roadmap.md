@@ -103,3 +103,12 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Counts, maximum channel delta and changed bounds come from the full canvas. Aligned thumbnails, opacity overlay and red changed-pixel buckets provide bounded GUI visualization; CLI returns statistics and equality/difference/error exit codes.
 - Tests cover exact tolerance boundaries, alpha policy, missing dimensions, one-pixel differences surviving thumbnail reduction, oversized canvas rejection, malformed data, generated JPEG EXIF orientation and BMP CLI behavior.
 - Resolved dependency declarations and packaged license notices were refreshed for the codecs and other resolved packages. Prior session-library changes passed three-platform CI run 38558364667.
+
+## Baseline-aware folder merge
+
+- Two-way union and three-way baseline classification handle independent changes, matching changes, directory composition, competing additions, deletion/modify and probable unique-content rename/modify conflicts.
+- Conflict-free UTF-8/UTF-16 text changes auto-merge with left-side encoding/BOM/newline preservation; other cases require explicit version choice or omission. Directory choices apply to entire subtrees.
+- GUI previews are paged and consume native cached plan IDs; CLI preview is read-only, supports explicit relative-path choices, and writes only with `--apply`. Every remaining conflict blocks output.
+- Output must be an independent empty directory. Execution revalidates all inputs, creates files without clobbering external files, keeps manifests/generated text/journals outside output, and verifies the resulting tree.
+- Tests verify independent text edits and additions, source preservation, deleted-directory/edited-child conflicts, subtree resolution, probable rename/modify conflicts, changed baseline rejection, nonempty-output protection, two-way competing additions and CLI preview/apply.
+- Previous picture changes passed three-platform CI run 38560311740. New desktop interactions are compiled; packaged-client acceptance remains deferred.
