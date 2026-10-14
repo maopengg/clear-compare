@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Clear Compare</title>
-    <link data-trunk rel="rust" href="crates/ui/Cargo.toml" data-bin="clear-ui" />
+    <link data-trunk rel="rust" href="crates/ui/Cargo.toml" data-bin="clear-ui" data-wasm-opt="s" data-wasm-opt-params="--enable-bulk-memory-opt --enable-nontrapping-float-to-int" />
     <link data-trunk rel="css" href="crates/ui/style.css" />
   </head>
-  <body></body>
+  <body><section id="boot-placeholder" role="status" style="padding:48px;font-family:system-ui"><h1>Clear Compare</h1><p>正在加载客户端界面 · Loading application…</p><p>如果此提示持续显示，请向项目反馈启动问题。If this message remains, please report a startup issue.</p></section></body>
 </html>

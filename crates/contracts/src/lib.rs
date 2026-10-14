@@ -49,6 +49,12 @@ pub struct CompareRequest {
     pub content: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedSession {
+    pub request: CompareRequest,
+    pub english: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Summary {
     pub same: usize,

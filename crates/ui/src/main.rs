@@ -1,6 +1,6 @@
 use clear_contracts::*;
 use leptos::{prelude::*, task::spawn_local};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 use std::collections::BTreeSet;
 use wasm_bindgen::prelude::*;
 
@@ -60,12 +60,6 @@ fn size(entry: Option<&Entry>) -> String {
             }
         }
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct SavedSession {
-    request: CompareRequest,
-    english: bool,
 }
 
 #[component]
@@ -307,4 +301,7 @@ fn App() -> impl IntoView {
 fn main() {
     console_error_panic_hook::set_once();
     leptos::mount::mount_to_body(App);
+    if let Some(placeholder) = document().get_element_by_id("boot-placeholder") {
+        placeholder.remove();
+    }
 }

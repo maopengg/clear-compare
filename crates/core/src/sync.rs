@@ -209,7 +209,8 @@ fn copy_one(
             .map_err(|e| e.error)?;
     }
     // Verification is mandatory even after a successful filesystem replacement.
-    if hash_file(&destination, cancel)? != action.source_digest {
+    // Cancellation after replacement must not misreport a completed write.
+    if hash_file(&destination, &AtomicBool::new(false))? != action.source_digest {
         return Err(Error::Invalid("Copied file failed verification".into()));
     }
     Ok(())
@@ -221,8 +222,21 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
     }
     roots_unchanged(snapshot)?;
     let backup = Path::new(&plan.backup_root);
+    let base = backup
+        .parent()
+        .ok_or_else(|| Error::Invalid("Invalid backup root".into()))?;
+    if fs::canonicalize(base)? != base {
+        return Err(Error::Invalid("Backup base changed after preview".into()));
+    }
+    reject_overlap(base, &snapshot.left)?;
+    reject_overlap(base, &snapshot.right)?;
     // A unique plan directory is never reused: it protects journal and backup ownership.
     fs::create_dir(backup)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(backup, fs::Permissions::from_mode(0o700))?;
+    }
     let journal = backup.join("journal.json");
     let mut result = SyncResult {
         plan: plan.clone(),

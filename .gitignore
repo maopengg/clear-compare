@@ -8,4 +8,5 @@
 .env.*
 !.env.example
 /.impeccable/
-
+/.idea/
+/.vscode/

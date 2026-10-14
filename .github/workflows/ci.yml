@@ -15,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
@@ -24,4 +24,3 @@ jobs:
       - run: cargo test -p clear-core -p clear-contracts -p clear-cli --locked
       - run: cargo clippy -p clear-core -p clear-contracts -p clear-cli --locked -- -D warnings
       - run: cargo check -p clear-ui --target wasm32-unknown-unknown --locked
-

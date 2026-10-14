@@ -11,11 +11,22 @@ The complete scope is in [development-plan.md](development-plan.md). This log tr
 - UTF-8 text preview, file selection, copy preview and verified-backup copy implemented.
 - Initial tests cover nested exclusions, target-only preservation, verified backups, external modification rejection, overlapping roots, cancellation and symlink escape rejection.
 
+## Verified on macOS Apple silicon
+
+- Eight focused tests passed across rules, comparison, text preview and synchronization.
+- Core, CLI and desktop passed Clippy with warnings treated as errors.
+- Leptos WASM release build and native desktop debug package built.
+- Packaged app opened and completed synthetic directory comparison, UTF-8 diff preview, two-file reviewed copy and journal persistence.
+- Filesystem checks confirmed overwrite backup contents, excluded-file preservation and destination-only preservation.
+- A startup CSP defect was identified in the real packaged app, corrected and retested.
+
+These results validate the preview workflows only; they do not prove the full plan or Windows/Linux runtime behavior.
+
 ## Validation still required before a release claim
 
-- WASM and native desktop compilation.
-- Packaged app launch and end-to-end synthetic directory comparison/copy.
-- GitHub push and CI results.
+- Release-mode packages and three-platform build verification.
+- Further UI workflows, keyboard/permission checks and failure recovery.
+- GitHub CI results.
 - Windows/Linux package builds and runtime acceptance.
 - Performance baselines and full P0 feature decomposition.
 

@@ -2,7 +2,6 @@
 
 use clear_contracts::*;
 use clear_core::compare::Snapshot;
-use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     sync::{
@@ -177,12 +176,6 @@ async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String>
     })
     .await
     .map_err(|e| e.to_string())
-}
-
-#[derive(Serialize, Deserialize)]
-struct SavedSession {
-    request: CompareRequest,
-    english: bool,
 }
 
 #[tauri::command]

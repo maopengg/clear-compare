@@ -14,6 +14,9 @@ impl Rules {
     /// Semicolon/newline separated exclusions. ./ anchors at root; bare names
     /// match any component. Trailing slash restricts a rule to directories.
     pub fn parse(input: &str) -> Result<Self> {
+        if input.len() > 32 * 1024 {
+            return Err(Error::Invalid("Exclusion rules exceed 32 KiB".into()));
+        }
         let mut rules = Vec::new();
         for raw in input
             .split([';', '\n'])
@@ -41,6 +44,11 @@ impl Rules {
                 rooted: rooted || pattern.contains('/'),
                 directory,
             });
+            if rules.len() > 256 {
+                return Err(Error::Invalid(
+                    "At most 256 exclusion rules are supported".into(),
+                ));
+            }
         }
         Ok(Self(rules))
     }
