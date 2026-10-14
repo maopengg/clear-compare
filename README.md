@@ -8,9 +8,9 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, persisted view settings and a JSON CLI.
 
-Planned: advanced merge workflows, Excel/HTML table and image viewers, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
+Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
 ## Download
 
@@ -82,6 +82,9 @@ cargo build -p clear-cli --release --locked
 # Text diff: JSON output, optional normalization.
 ./target/release/clear-compare diff ./old.txt ./new.txt --ignore-line-endings
 
+# Picture statistics (PNG/JPEG/BMP/WebP), optional channel tolerance.
+./target/release/clear-compare picture ./left.png ./right.png --tolerance 2
+
 # CSV comparison: zero-based key column, optional absolute numeric tolerance.
 ./target/release/clear-compare table ./old.csv ./new.csv --key-column 0 --numeric-tolerance 0.01
 
@@ -113,6 +116,9 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 - Text comparison/editing: UTF-8 and BOM-marked UTF-16 LE/BE, at most 4 MiB and 30,000 comparison lines per side. Mixed line-ending documents require an explicit LF/CRLF/CR policy when saving. Encoding/BOM can be converted explicitly; UTF-16 always includes a BOM. Unsupported encodings/binary files return explicit errors.
 - Ignore-whitespace removes whitespace within a line for comparison; it does not change displayed text or saved files. Missing final newlines remain significant.
 - CSV/TSV: strict quoting, up to 4 MiB / 30,000 rows / 200,000 cells / 1,024 columns; columns compare by position. Duplicate keys are errors. Optional finite absolute numeric tolerance uses floating-point values. Desktop results are paged in blocks of 500.
+- Picture comparison: PNG/JPEG/BMP/WebP, EXIF orientation, top-left alignment and RGBA8 channel differences. Inputs are limited to 16 MiB, each side to 16,384 pixels, and each image/aligned canvas to 8 million pixels. Decoder allocation budget is best-effort 128 MiB, separate from application buffers.
+- Picture tolerance uses the maximum selected channel difference (0–255); missing pixels always differ. Optional alpha-channel ignoring still compares RGB values, including hidden RGB values. High-bit-depth inputs are converted to RGBA8; ICC/perceptual color comparison and animation-frame comparison are not implemented.
+- Picture statistics use the full canvas; aligned previews have at most a 1,024-pixel side. Red heatmap buckets preserve any changed pixel in that region. Preview zoom and opacity do not change statistics.
 - Merge results are buffers with conflict markers, not automatic file writes. Two-second diff deadlines can yield coarser alignment on pathological inputs. Hex viewing uses fixed 4 KiB pages; hex editing is not implemented.
 - Editor backups: app data `editor-backups/<id>/original.bin` and a digest/state `manifest.json`. Original encoding/BOM and uniform newline style are retained by default; explicit conversion is available. The editor can preview and undo its most recent save, backing up the current contents before restoring. CLI can reopen matching completed editor backups across process restarts; manually inspect unresolved merge markers before saving.
 - Scan: at most200,000 entries per root and500 rows per page. Search, difference filtering and sorting operate across the entire selected directory scope before pagination. Folder navigation uses opaque native IDs and breadcrumbs; optional recursion includes descendants. Directories remain before files in both ascending and descending sorts.

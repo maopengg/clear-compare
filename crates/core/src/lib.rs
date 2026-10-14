@@ -4,6 +4,7 @@ pub mod compare;
 pub mod editing;
 pub mod merge;
 pub mod native_path;
+pub mod picture;
 pub mod recovery;
 pub mod rules;
 pub mod sessions;

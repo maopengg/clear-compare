@@ -5,6 +5,7 @@ fn main() {
             "cancel",
             "page",
             "query_folder",
+            "picture_preview",
             "text_diff",
             "merge_buffers",
             "binary_page",

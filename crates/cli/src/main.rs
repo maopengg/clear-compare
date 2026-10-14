@@ -22,6 +22,14 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    Picture {
+        left: PathBuf,
+        right: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        tolerance: u8,
+        #[arg(long)]
+        ignore_alpha: bool,
+    },
     RecoverSync {
         journal: PathBuf,
         #[arg(long)]
@@ -109,6 +117,24 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             } else {
                 0
             })
+        }
+        Command::Picture {
+            left,
+            right,
+            tolerance,
+            ignore_alpha,
+        } => {
+            let result = clear_core::picture::compare_paths(
+                Some(&left),
+                Some(&right),
+                &clear_contracts::PictureOptions {
+                    tolerance,
+                    ignore_alpha,
+                },
+                &cancel,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result.summary)?);
+            Ok(i32::from(result.summary.changed_pixels != "0"))
         }
         Command::RecoverSync {
             journal,

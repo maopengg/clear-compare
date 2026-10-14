@@ -370,3 +370,38 @@ pub struct LibraryEntry {
     pub revision: String,
     pub session: SavedSession,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PictureOptions {
+    pub tolerance: u8,
+    pub ignore_alpha: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PixelBounds {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PictureSummary {
+    pub left_dimensions: Option<(u32, u32)>,
+    pub right_dimensions: Option<(u32, u32)>,
+    pub canvas_width: u32,
+    pub canvas_height: u32,
+    pub total_pixels: String,
+    pub changed_pixels: String,
+    pub max_channel_delta: u8,
+    pub bounds: Option<PixelBounds>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PicturePreview {
+    pub path: String,
+    pub summary: PictureSummary,
+    pub preview_width: u32,
+    pub preview_height: u32,
+    pub left_png: Option<String>,
+    pub right_png: Option<String>,
+    pub difference_png: String,
+}

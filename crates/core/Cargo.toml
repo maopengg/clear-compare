@@ -15,3 +15,5 @@ similar = "2"
 tempfile = "3"
 thiserror = "2"
 
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "webp"] }
+base64 = "0.22"

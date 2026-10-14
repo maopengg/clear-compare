@@ -280,6 +280,24 @@ async fn query_folder(
 }
 
 #[tauri::command]
+async fn picture_preview(
+    session: String,
+    row_id: String,
+    options: PictureOptions,
+    state: State<'_, Backend>,
+) -> Result<PicturePreview, String> {
+    let _operation_guard = state.begin()?;
+    let snapshot = state.snapshot(&session)?;
+    let cancel = state.cancel.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        clear_core::picture::preview(&snapshot, &row_id, &options, &cancel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn text_diff(
     session: String,
     row_id: String,
@@ -609,6 +627,7 @@ fn main() {
             cancel,
             page,
             query_folder,
+            picture_preview,
             text_diff,
             merge_buffers,
             binary_page,

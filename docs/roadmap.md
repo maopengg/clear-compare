@@ -96,3 +96,10 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Versioned session files are atomically persisted with revision checks and a nonblocking storage lock for cooperating processes. Archiving retains files under `sessions/trash`.
 - Last-session persistence now uses bounded regular-file reads and atomic replacement. Legacy settings default the added view fields.
 - Tests cover reopen/update/archive, stale revisions, legacy defaults, invalid IDs, symlink rejection and lock contention. Previous directory-query changes passed three-platform CI run 38557214016.
+
+## Picture comparison
+
+- Native PNG/JPEG/BMP/WebP decoding uses input/dimension/pixel limits and EXIF orientation. Pixels compare as RGBA8 at top-left alignment, with explicit channel tolerance and alpha-channel policy.
+- Counts, maximum channel delta and changed bounds come from the full canvas. Aligned thumbnails, opacity overlay and red changed-pixel buckets provide bounded GUI visualization; CLI returns statistics and equality/difference/error exit codes.
+- Tests cover exact tolerance boundaries, alpha policy, missing dimensions, one-pixel differences surviving thumbnail reduction, oversized canvas rejection, malformed data, generated JPEG EXIF orientation and BMP CLI behavior.
+- Resolved dependency declarations and packaged license notices were refreshed for the codecs and other resolved packages. Prior session-library changes passed three-platform CI run 38558364667.

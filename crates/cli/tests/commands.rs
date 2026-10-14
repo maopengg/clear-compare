@@ -165,3 +165,43 @@ fn directory_only_differences_produce_a_difference_exit_code() {
     ]);
     assert_eq!(output.status.code(), Some(1));
 }
+
+#[test]
+fn picture_cli_reports_pixel_changes_and_tolerance() {
+    fn bmp(red: u8) -> Vec<u8> {
+        let mut data = vec![0u8; 58];
+        data[..2].copy_from_slice(b"BM");
+        data[2..6].copy_from_slice(&58u32.to_le_bytes());
+        data[10..14].copy_from_slice(&54u32.to_le_bytes());
+        data[14..18].copy_from_slice(&40u32.to_le_bytes());
+        data[18..22].copy_from_slice(&1u32.to_le_bytes());
+        data[22..26].copy_from_slice(&1u32.to_le_bytes());
+        data[26..28].copy_from_slice(&1u16.to_le_bytes());
+        data[28..30].copy_from_slice(&24u16.to_le_bytes());
+        data[34..38].copy_from_slice(&4u32.to_le_bytes());
+        data[56] = red;
+        data
+    }
+    let t = tempfile::tempdir().unwrap();
+    let left = t.path().join("left.bmp");
+    let right = t.path().join("right.bmp");
+    fs::write(&left, bmp(10)).unwrap();
+    fs::write(&right, bmp(11)).unwrap();
+    let result = run(&["picture".as_ref(), left.as_os_str(), right.as_os_str()]);
+    assert_eq!(
+        result.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let summary: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(summary["changed_pixels"], "1");
+    let tolerant = run(&[
+        "picture".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--tolerance".as_ref(),
+        "1".as_ref(),
+    ]);
+    assert!(tolerant.status.success());
+}

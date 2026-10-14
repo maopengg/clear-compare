@@ -112,6 +112,10 @@ fn App() -> impl IntoView {
     let table_key = RwSignal::new(String::new());
     let table_tolerance = RwSignal::new(String::new());
     let table_offset = RwSignal::new(0usize);
+    let picture = RwSignal::new(None::<PicturePreview>);
+    let picture_id = RwSignal::new(String::new());
+    let picture_tolerance = RwSignal::new(String::from("0"));
+    let picture_ignore_alpha = RwSignal::new(false);
     let binary = RwSignal::new(None::<BinaryPage>);
     let binary_id = RwSignal::new(String::new());
     let merge_visible = RwSignal::new(false);
@@ -263,6 +267,45 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let open_picture = move |id: String| {
+        let Some(c) = comparison.get_untracked() else {
+            return;
+        };
+        let tolerance = match picture_tolerance.get_untracked().parse::<u8>() {
+            Ok(t) => t,
+            Err(_) => {
+                error.set(
+                    tr(
+                        english.get_untracked(),
+                        "图片容差必须在 0–255 之间。",
+                        "Picture tolerance must be 0–255.",
+                    )
+                    .into(),
+                );
+                return;
+            }
+        };
+        let options = PictureOptions {
+            tolerance,
+            ignore_alpha: picture_ignore_alpha.get_untracked(),
+        };
+        busy.set(true);
+        error.set(String::new());
+        picture.set(None);
+        picture_id.set(id.clone());
+        spawn_local(async move {
+            match invoke::<PicturePreview>(
+                "picture_preview",
+                serde_json::json!({"session":c.session,"rowId":id,"options":options}),
+            )
+            .await
+            {
+                Ok(p) => picture.set(Some(p)),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
     let open_binary = move |id: String, offset: String| {
         let Some(c) = comparison.get_untracked() else {
             return;
@@ -327,6 +370,7 @@ fn App() -> impl IntoView {
         recursive.set(false);
         diff.set(None);
         binary.set(None);
+        picture.set(None);
         table.set(None);
         table_visible.set(false);
         load_folder(0);
@@ -340,6 +384,7 @@ fn App() -> impl IntoView {
         selected.set(BTreeSet::new());
         diff.set(None);
         binary.set(None);
+        picture.set(None);
         table.set(None);
         table_visible.set(false);
         plan.set(None);
@@ -888,7 +933,7 @@ fn App() -> impl IntoView {
                         let can_directory=row.left.as_ref().is_some_and(|e|e.kind==Kind::Directory) ||row.right.as_ref().is_some_and(|e|e.kind==Kind::Directory);
                         let can_left=row.left.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());
                         let can_right=row.right.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());
-                        let edit_left=id.clone();let edit_right=id.clone();let hex_id=id.clone();let table_row_id=id.clone();
+                        let edit_left=id.clone();let edit_right=id.clone();let hex_id=id.clone();let table_row_id=id.clone();let picture_row_id=id.clone();
                         let left_size=size(row.left.as_ref()); let right_size=size(row.right.as_ref()); let state=row.status.clone(); let css=status_class(&state); let path=row.path.clone();
                         let folder_detail=row.directory_summary.as_ref().map(|d|format!("{} · {} changed · {} left-only · {} right-only · {} unverified · {} errors",path,d.changed,d.left_only,d.right_only,d.unverified,d.errors));
                         let detail=row.left.as_ref().and_then(|e| e.error.clone()).or_else(|| row.right.as_ref().and_then(|e| e.error.clone())).or(folder_detail).unwrap_or_else(|| path.clone());
@@ -897,7 +942,7 @@ fn App() -> impl IntoView {
                                 if can_directory{browse_folder(Some(open_id.clone()));return;}
                                 let Some(c)=comparison.get_untracked() else {return;}; let id=open_id.clone();busy.set(true);error.set(String::new());diff.set(None);diff_limit.set(500);
                                 spawn_local(async move {match invoke::<TextDiff>("text_diff",serde_json::json!({"session":c.session,"rowId":id,"options":{"ignore_case":ignore_case.get_untracked(),"ignore_whitespace":ignore_space.get_untracked(),"ignore_line_endings":ignore_endings.get_untracked()}})).await {Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)} busy.set(false);});
-                            }>{if can_directory{format!("▸ {path}")}else{path}}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move ||busy.get() || !(can_left || can_right) on:click=move |_|open_table(table_row_id.clone())>{move ||tr(english.get(),"表","CSV")}</button><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
+                            }>{if can_directory{format!("▸ {path}")}else{path}}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move ||busy.get() || !(can_left ||can_right) on:click=move |_|open_picture(picture_row_id.clone())>{move ||tr(english.get(),"图","Pic")}</button><button class="quiet" disabled=move ||busy.get() || !(can_left || can_right) on:click=move |_|open_table(table_row_id.clone())>{move ||tr(english.get(),"表","CSV")}</button><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
                     }/></div>
                 </section>
                 <div class="pagination"><span>{move || format!("{}–{} / {}",offset.get()+usize::from(visible_total.get()>0),(offset.get()+500).min(visible_total.get()),visible_total.get())}</span><button class="quiet" disabled=move || offset.get()==0 || busy.get() on:click=move |_| paginate(false)>{move || tr(english.get(),"上一页","Previous")}</button><button class="quiet" disabled=move || busy.get() || (offset.get()+500>=visible_total.get()) on:click=move |_| paginate(true)>{move || tr(english.get(),"下一页","Next")}</button></div>
@@ -907,6 +952,7 @@ fn App() -> impl IntoView {
                 let left_text=if line.tag=="insert" {String::new()} else {line.text.clone()};let right_text=if line.tag=="delete" {String::new()} else {line.right_text.unwrap_or(line.text)};
                 view! {<div class=format!("diff-line {}",line.tag)><div class="diff-cell"><span class="line-number">{line.old_line.map(|n|n.to_string())}</span><pre>{left_text}</pre></div><div class="diff-cell"><span class="line-number">{line.new_line.map(|n|n.to_string())}</span><pre>{right_text}</pre></div></div>}
             }/></div><Show when=move || diff.get().is_some_and(|d|d.lines.len()>diff_limit.get())><button class="quiet" on:click=move |_| diff_limit.update(|n|*n+=500)>{move || tr(english.get(),"再显示 500 行","Show 500 more lines")}</button></Show></section></Show>
+            {panels::picture::panel(english,busy,panels::picture::Signals{picture,picture_id,picture_tolerance,picture_ignore_alpha},open_picture)}
             {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_id, table_tsv, table_headers, table_key, table_tolerance, table_offset}, open_table, paginate_table)}
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id}, open_binary)}
             {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, error})}

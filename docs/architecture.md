@@ -56,3 +56,7 @@ Recovery previews own a native plan with pinned expected digests. Tauri resolves
 ## Directory scope queries
 
 The immutable snapshot indexes native directory paths. Directory states and regular-file byte totals propagate from scanned descendants; exclusions, errors and unverified entries remain visible in that aggregation. Query inputs use directory IDs, not display-path reconstruction. Native filtering and stable sorting run across the selected scope before a maximum-500-row response is cloned for IPC. Descendant aggregation walks ancestor paths rather than rescanning the full row set for each directory.
+
+## Picture comparison
+
+Native image decoding is bounded by input size, dimensions and pixel count. The decoder applies [EXIF orientation](https://docs.rs/image/0.25.10/image/enum.DynamicImage.html#method.apply_orientation) before RGBA8 comparison. Pixel statistics use top-left-aligned full images, while IPC carries normalized PNG previews of at most 1024 pixels per side. The heatmap aggregates changed pixels into preview buckets so a single changed source pixel is retained. Browser image elements display only generated data URLs; image files and paths are not exposed through generic filesystem permissions.
