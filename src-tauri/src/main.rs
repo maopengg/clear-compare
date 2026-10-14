@@ -16,6 +16,7 @@ use tauri_plugin_dialog::DialogExt;
 #[derive(Default)]
 struct Backend {
     snapshot: Mutex<Option<Arc<Snapshot>>>,
+    table: Mutex<Option<(String, Arc<TableComparison>)>>,
     plan: Mutex<Option<SyncPlan>>,
     cancel: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
@@ -189,6 +190,52 @@ async fn text_diff(
 }
 
 #[tauri::command]
+async fn table_compare(
+    session: String,
+    row_id: String,
+    options: TableOptions,
+    state: State<'_, Backend>,
+) -> Result<OpenedTable, String> {
+    let _operation_guard = state.begin()?;
+    let snapshot = state.snapshot(&session)?;
+    let (path, report) = tauri::async_runtime::spawn_blocking(move || {
+        let (path, left, right) = clear_core::text::load_pair(&snapshot, &row_id)?;
+        Ok::<_, clear_core::Error>((path, clear_core::table::compare(&left, &right, &options)?))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let id = clear_core::unique_id();
+    let total = report.rows.len();
+    let view = TableComparison {
+        left_headers: report.left_headers.clone(),
+        right_headers: report.right_headers.clone(),
+        summary: report.summary.clone(),
+        rows: report.rows.iter().take(500).cloned().collect(),
+    };
+    *state.table.lock().map_err(|_| "State unavailable")? = Some((id.clone(), Arc::new(report)));
+    Ok(OpenedTable {
+        id,
+        path,
+        report: view,
+        total,
+    })
+}
+#[tauri::command]
+fn table_page(
+    table_id: String,
+    offset: usize,
+    state: State<'_, Backend>,
+) -> Result<Vec<TableRow>, String> {
+    let cache = state.table.lock().map_err(|_| "State unavailable")?;
+    let (id, report) = cache.as_ref().ok_or("Compare a table first")?;
+    if id != &table_id {
+        return Err("Table expired".into());
+    }
+    Ok(report.rows.iter().skip(offset).take(500).cloned().collect())
+}
+
+#[tauri::command]
 async fn binary_page(
     session: String,
     row_id: String,
@@ -308,6 +355,8 @@ fn main() {
             text_diff,
             merge_buffers,
             binary_page,
+            table_compare,
+            table_page,
             preview_sync,
             apply_sync,
             pick_directory,

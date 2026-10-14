@@ -86,6 +86,13 @@ fn App() -> impl IntoView {
     let plan = RwSignal::new(None::<SyncPlan>);
     let editor = RwSignal::new(None::<TextDocument>);
     let draft = RwSignal::new(String::new());
+    let table = RwSignal::new(None::<OpenedTable>);
+    let table_id = RwSignal::new(String::new());
+    let table_tsv = RwSignal::new(false);
+    let table_headers = RwSignal::new(true);
+    let table_key = RwSignal::new(String::new());
+    let table_tolerance = RwSignal::new(String::new());
+    let table_offset = RwSignal::new(0usize);
     let binary = RwSignal::new(None::<BinaryPage>);
     let binary_id = RwSignal::new(String::new());
     let merge_visible = RwSignal::new(false);
@@ -108,6 +115,89 @@ fn App() -> impl IntoView {
         }
     });
 
+    let open_table = move |id: String| {
+        let Some(c) = comparison.get_untracked() else {
+            return;
+        };
+        let key = table_key.get_untracked();
+        let key_column = if key.is_empty() {
+            None
+        } else {
+            match key.parse::<usize>() {
+                Ok(n) => Some(n),
+                Err(_) => {
+                    error.set(
+                        tr(
+                            english.get_untracked(),
+                            "主键列必须是从 0 开始的列号",
+                            "Key column must be a zero-based column number",
+                        )
+                        .into(),
+                    );
+                    return;
+                }
+            }
+        };
+        let tolerance = table_tolerance.get_untracked();
+        let options = TableOptions {
+            delimiter: if table_tsv.get_untracked() { "\t" } else { "," }.into(),
+            headers: table_headers.get_untracked(),
+            key_column,
+            numeric_tolerance: if tolerance.is_empty() {
+                None
+            } else {
+                Some(tolerance)
+            },
+        };
+        busy.set(true);
+        error.set(String::new());
+        table_id.set(id.clone());
+        spawn_local(async move {
+            match invoke::<OpenedTable>(
+                "table_compare",
+                serde_json::json!({"session":c.session,"rowId":id,"options":options}),
+            )
+            .await
+            {
+                Ok(value) => {
+                    table.set(Some(value));
+                    table_offset.set(0);
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let paginate_table = move |forward: bool| {
+        let Some(t) = table.get_untracked() else {
+            return;
+        };
+        let next = if forward {
+            table_offset.get_untracked() + 500
+        } else {
+            table_offset.get_untracked().saturating_sub(500)
+        };
+        busy.set(true);
+        spawn_local(async move {
+            match invoke::<Vec<TableRow>>(
+                "table_page",
+                serde_json::json!({"tableId":t.id,"offset":next}),
+            )
+            .await
+            {
+                Ok(rows) => {
+                    table.update(|t| {
+                        if let Some(t) = t {
+                            t.report.rows = rows;
+                        }
+                    });
+                    table_offset.set(next);
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
     let open_binary = move |id: String, offset: String| {
         let Some(c) = comparison.get_untracked() else {
             return;
@@ -134,6 +224,7 @@ fn App() -> impl IntoView {
         selected.set(BTreeSet::new());
         diff.set(None);
         binary.set(None);
+        table.set(None);
         plan.set(None);
         message.set(String::new());
     };
@@ -413,14 +504,14 @@ fn App() -> impl IntoView {
                         let eligible=matches!(row.status,Status::Changed|Status::LeftOnly) && row.left.as_ref().is_some_and(|e| e.kind==Kind::File);
                         let can_left=row.left.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());
                         let can_right=row.right.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());
-                        let edit_left=id.clone();let edit_right=id.clone();let hex_id=id.clone();
+                        let edit_left=id.clone();let edit_right=id.clone();let hex_id=id.clone();let table_row_id=id.clone();
                         let left_size=size(row.left.as_ref()); let right_size=size(row.right.as_ref()); let state=row.status.clone(); let css=status_class(&state); let path=row.path.clone();
                         let detail=row.left.as_ref().and_then(|e| e.error.clone()).or_else(|| row.right.as_ref().and_then(|e| e.error.clone())).unwrap_or_else(|| path.clone());
                         view! {<div class="file-row" title=detail><input type="checkbox" aria-label=format!("Select {}",path) disabled=move || !eligible || busy.get() prop:checked=move || selected.get().contains(&check_id) on:change=move |ev| { let checked=event_target_checked(&ev);selected.update(|s| {if checked {s.insert(select_id.clone());} else {s.remove(&select_id);}});plan.set(None); }/>
                             <button class="file-name" disabled=move || busy.get() on:click=move |_| {
                                 let Some(c)=comparison.get_untracked() else {return;}; let id=open_id.clone();busy.set(true);error.set(String::new());diff.set(None);diff_limit.set(500);
                                 spawn_local(async move {match invoke::<TextDiff>("text_diff",serde_json::json!({"session":c.session,"rowId":id,"options":{"ignore_case":ignore_case.get_untracked(),"ignore_whitespace":ignore_space.get_untracked(),"ignore_line_endings":ignore_endings.get_untracked()}})).await {Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)} busy.set(false);});
-                            }>{path}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
+                            }>{path}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move ||busy.get() || !(can_left || can_right) on:click=move |_|open_table(table_row_id.clone())>{move ||tr(english.get(),"表","CSV")}</button><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
                     }/></div>
                 </section>
                 <div class="pagination"><span>{move || comparison.get().map(|c| format!("{}–{} / {}",offset.get()+1,(offset.get()+500).min(c.page.total),c.page.total)).unwrap_or_default()}</span><button class="quiet" disabled=move || offset.get()==0 || busy.get() on:click=move |_| paginate(false)>{move || tr(english.get(),"上一页","Previous")}</button><button class="quiet" disabled=move || busy.get() || comparison.get().is_none_or(|c| offset.get()+500>=c.page.total) on:click=move |_| paginate(true)>{move || tr(english.get(),"下一页","Next")}</button></div>
@@ -430,6 +521,7 @@ fn App() -> impl IntoView {
                 let left_text=if line.tag=="insert" {String::new()} else {line.text.clone()};let right_text=if line.tag=="delete" {String::new()} else {line.right_text.unwrap_or(line.text)};
                 view! {<div class=format!("diff-line {}",line.tag)><div class="diff-cell"><span class="line-number">{line.old_line.map(|n|n.to_string())}</span><pre>{left_text}</pre></div><div class="diff-cell"><span class="line-number">{line.new_line.map(|n|n.to_string())}</span><pre>{right_text}</pre></div></div>}
             }/></div><Show when=move || diff.get().is_some_and(|d|d.lines.len()>diff_limit.get())><button class="quiet" on:click=move |_| diff_limit.update(|n|*n+=500)>{move || tr(english.get(),"再显示 500 行","Show 500 more lines")}</button></Show></section></Show>
+            <Show when=move ||table.get().is_some()><section class="table-panel"><header><strong>{move ||table.get().map(|t|t.path)}</strong><button class="quiet" on:click=move |_|table.set(None)>{move ||tr(english.get(),"关闭表格预览","Close table preview")}</button></header><div class="table-options"><label><input type="checkbox" prop:checked=move ||table_tsv.get() on:change=move |ev|table_tsv.set(event_target_checked(&ev))/>"TSV"</label><label><input type="checkbox" prop:checked=move ||table_headers.get() on:change=move |ev|table_headers.set(event_target_checked(&ev))/>{move ||tr(english.get(),"首行是表头","Header row")}</label><label>{move ||tr(english.get(),"主键列（从 0 开始，可留空）","Key column (zero-based, optional)")}<input aria-label="Key column" prop:value=move ||table_key.get() on:input=move |ev|table_key.set(event_target_value(&ev))/></label><label>{move ||tr(english.get(),"数值绝对容差（可留空）","Absolute numeric tolerance (optional)")}<input aria-label="Numeric tolerance" prop:value=move ||table_tolerance.get() on:input=move |ev|table_tolerance.set(event_target_value(&ev))/></label><button class="quiet" disabled=move ||busy.get() on:click=move |_|open_table(table_id.get_untracked())>{move ||tr(english.get(),"应用规则重新比较","Compare with these rules")}</button></div><p>{move ||table.get().map(|t|format!("{} {} · {} {} · {} {} · {} {}",tr(english.get(),"一致","Same"),t.report.summary.same,tr(english.get(),"修改","Changed"),t.report.summary.changed,tr(english.get(),"仅左","Left only"),t.report.summary.left_only,tr(english.get(),"仅右","Right only"),t.report.summary.right_only))}</p><Show when=move ||table.get().is_some_and(|t|t.report.left_headers!=t.report.right_headers)><p class="warnings">{move ||tr(english.get(),"两侧表头不同；当前按列位置比较，请检查列顺序。","Headers differ; columns are compared by position. Check column order.")}</p></Show><div class="table-scroll"><table><thead><tr><th>{move ||tr(english.get(),"主键 / 行号","Key / row")}</th><th>{move ||table.get().map(|t|format!("{}: {}",tr(english.get(),"左","Left"),t.report.left_headers.join(" | ")))}</th><th>{move ||table.get().map(|t|format!("{}: {}",tr(english.get(),"右","Right"),t.report.right_headers.join(" | ")))}</th><th>{move ||tr(english.get(),"状态","Status")}</th></tr></thead><tbody><For each=move ||table.get().map(|t|t.report.rows).unwrap_or_default() key=|r|r.key.clone() children=move |row|{let status=row.status.clone();let css=status_class(&status);view!{<tr class=css><td>{row.key}</td><td><div class="table-cells">{row.left.map(|cells|cells.into_iter().enumerate().map(|(i,c)|view!{<span class=if row.changed_columns.contains(&i){"cell changed"}else{"cell"}>{c}</span>}).collect_view())}</div></td><td><div class="table-cells">{row.right.map(|cells|cells.into_iter().enumerate().map(|(i,c)|view!{<span class=if row.changed_columns.contains(&i){"cell changed"}else{"cell"}>{c}</span>}).collect_view())}</div></td><td>{move ||label(&status,english.get())}</td></tr>}}/></tbody></table></div><footer><button class="quiet" disabled=move ||busy.get() ||table_offset.get()==0 on:click=move |_|paginate_table(false)>{move ||tr(english.get(),"上一页","Previous")}</button><span>{move ||table.get().map(|t|format!("{}–{} / {}",table_offset.get()+usize::from(t.total>0),(table_offset.get()+500).min(t.total),t.total))}</span><button class="quiet" disabled=move ||busy.get() ||table.get().is_none_or(|t|table_offset.get()+500>=t.total) on:click=move |_|paginate_table(true)>{move ||tr(english.get(),"下一页","Next")}</button></footer></section></Show>
             <Show when=move ||binary.get().is_some()><section class="binary-panel"><header><strong>{move ||binary.get().map(|p|format!("{} · {} / {} bytes",p.path,p.left_size,p.right_size))}</strong><button class="quiet" on:click=move |_|binary.set(None)>{move ||tr(english.get(),"关闭二进制预览","Close binary preview")}</button></header><div class="binary-scroll"><For each=move ||binary.get().map(|p|p.lines).unwrap_or_default() key=|l|l.offset.clone() children=move |line|view! {<div class=if line.changed{"binary-line changed"}else{"binary-line"}><span>{format!("{:08X}",line.offset.parse::<u64>().unwrap_or_default())}</span><pre>{line.left_hex}</pre><pre>{line.left_ascii}</pre><pre>{line.right_hex}</pre><pre>{line.right_ascii}</pre></div>}/></div><footer><button class="quiet" disabled=move ||busy.get() ||binary.get().is_none_or(|p|p.offset=="0") on:click=move |_|{if let Some(p)=binary.get_untracked(){let n=p.offset.parse::<u64>().unwrap_or_default().saturating_sub(4096);open_binary(binary_id.get_untracked(),n.to_string());}}>{move ||tr(english.get(),"上一页","Previous")}</button><span>{move ||binary.get().map(|p|format!("Offset {} · 4096 bytes/page",p.offset))}</span><button class="quiet" disabled=move ||busy.get() ||binary.get().is_none_or(|p|{let n=p.offset.parse::<u64>().unwrap_or_default();n.saturating_add(4096)>=p.left_size.parse::<u64>().unwrap_or_default().max(p.right_size.parse::<u64>().unwrap_or_default())}) on:click=move |_|{if let Some(p)=binary.get_untracked(){if let Some(n)=p.offset.parse::<u64>().unwrap_or_default().checked_add(4096){open_binary(binary_id.get_untracked(),n.to_string());}}}>{move ||tr(english.get(),"下一页","Next")}</button></footer></section></Show>
             <Show when=move || merge_visible.get()><section class="merge-panel"><header><strong>{move || tr(english.get(),"三方文本合并","Three-way text merge")}</strong><button class="quiet" on:click=move |_|merge_visible.set(false)>{move || tr(english.get(),"收起","Collapse")}</button></header><p>{move || tr(english.get(),"填写共同基础版本及左右版本。结果先保留在缓冲区；冲突用标记展示，可手动处理后载入已打开的编辑器。","Enter the common base and both versions. The result stays in a buffer; resolve conflict markers before loading it into an open editor.")}</p><div class="merge-inputs"><label>{move || tr(english.get(),"基础版本","Base")}<textarea aria-label="Merge base" spellcheck="false" prop:value=move ||merge_base.get() on:input=move |ev|{merge_base.set(event_target_value(&ev));merge_result.set(None);}/></label><label>{move || tr(english.get(),"左侧版本","Left")}<textarea aria-label="Merge left" spellcheck="false" prop:value=move ||merge_left.get() on:input=move |ev|{merge_left.set(event_target_value(&ev));merge_result.set(None);}/></label><label>{move || tr(english.get(),"右侧版本","Right")}<textarea aria-label="Merge right" spellcheck="false" prop:value=move ||merge_right.get() on:input=move |ev|{merge_right.set(event_target_value(&ev));merge_result.set(None);}/></label></div><button class="primary" disabled=move ||busy.get() on:click=move |_|{busy.set(true);error.set(String::new());let args=serde_json::json!({"base":merge_base.get_untracked(),"left":merge_left.get_untracked(),"right":merge_right.get_untracked()});spawn_local(async move {match invoke::<MergeResult>("merge_buffers",args).await{Ok(value)=>merge_result.set(Some(value)),Err(e)=>error.set(e)}busy.set(false);});}>{move || tr(english.get(),"生成合并结果","Generate merge result")}</button><Show when=move ||merge_result.get().is_some()><p>{move ||merge_result.get().map(|m|format!("{}: {}",tr(english.get(),"冲突组数","Conflict groups"),m.conflicts))}</p><textarea class="text-editor" aria-label="Merge result" spellcheck="false" prop:value=move ||merge_result.get().map(|m|m.text).unwrap_or_default() on:input=move |ev|merge_result.update(|m|{if let Some(m)=m{m.text=event_target_value(&ev);}})/><button class="quiet" disabled=move ||busy.get() ||editor.get().is_none() ||editor.get().is_some_and(|d|d.text!=draft.get()) on:click=move |_|{if let Some(m)=merge_result.get_untracked(){draft.set(m.text);}}>{move || tr(english.get(),"载入已打开的编辑器","Load into open editor")}</button></Show></section></Show>
             <Show when=move || editor.get().is_some()><section class="editor-panel"><header><strong>{move || editor.get().map(|d|format!("{} · {:?} · {:?}",d.absolute_path,d.encoding,d.line_ending))}</strong><span>{move || editor.get().map(|d|if d.text==draft.get(){tr(english.get(),"已保存","Saved")}else{tr(english.get(),"未保存","Unsaved")})}</span></header><textarea class="text-editor" aria-label="Text editor" spellcheck="false" disabled=move || busy.get() prop:value=move || draft.get() on:input=move |ev|draft.set(event_target_value(&ev))/><footer><button class="quiet" disabled=move || busy.get() on:click=move |_|close_editor()>{move || tr(english.get(),"关闭编辑","Close editor")}</button><button class="quiet" disabled=move || busy.get() on:click=move |_|{if let Some(d)=editor.get_untracked(){draft.set(d.text);}}>{move || tr(english.get(),"重置内容","Reset buffer")}</button><button class="primary" disabled=move || busy.get() || editor.get().is_none_or(|d|d.text==draft.get()) on:click=move |_|save_editor()>{move || tr(english.get(),"备份并保存","Backup and save")}</button></footer></section></Show>

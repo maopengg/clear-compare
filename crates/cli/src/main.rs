@@ -22,6 +22,18 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    Table {
+        left: PathBuf,
+        right: PathBuf,
+        #[arg(long)]
+        tsv: bool,
+        #[arg(long)]
+        no_headers: bool,
+        #[arg(long)]
+        key_column: Option<usize>,
+        #[arg(long)]
+        numeric_tolerance: Option<String>,
+    },
     Merge {
         base: PathBuf,
         left: PathBuf,
@@ -80,6 +92,30 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             } else {
                 0
             })
+        }
+        Command::Table {
+            left,
+            right,
+            tsv,
+            no_headers,
+            key_column,
+            numeric_tolerance,
+        } => {
+            let result = clear_core::table::compare(
+                &clear_core::text::read_text(&left)?,
+                &clear_core::text::read_text(&right)?,
+                &clear_contracts::TableOptions {
+                    delimiter: if tsv { "\t" } else { "," }.into(),
+                    headers: !no_headers,
+                    key_column,
+                    numeric_tolerance,
+                },
+            )?;
+            let changed =
+                result.summary.changed + result.summary.left_only + result.summary.right_only > 0
+                    || result.left_headers != result.right_headers;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(i32::from(changed))
         }
         Command::Merge { base, left, right } => {
             let result = clear_core::merge::three_way(

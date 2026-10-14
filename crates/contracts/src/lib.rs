@@ -213,3 +213,36 @@ pub struct BinaryPage {
     pub right_size: String,
     pub lines: Vec<BinaryLine>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableOptions {
+    pub delimiter: String,
+    pub headers: bool,
+    /// Zero-based key column. Duplicate keys are rejected.
+    pub key_column: Option<usize>,
+    /// Absolute numeric tolerance; enabled explicitly, finite and nonnegative.
+    pub numeric_tolerance: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableRow {
+    pub key: String,
+    pub left: Option<Vec<String>>,
+    pub right: Option<Vec<String>>,
+    pub changed_columns: Vec<usize>,
+    pub status: Status,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableComparison {
+    pub left_headers: Vec<String>,
+    pub right_headers: Vec<String>,
+    pub rows: Vec<TableRow>,
+    pub summary: Summary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenedTable {
+    pub id: String,
+    pub path: String,
+    pub report: TableComparison,
+    pub total: usize,
+}

@@ -147,11 +147,7 @@ pub fn preview(snapshot: &Snapshot, row_id: &str) -> Result<TextDiff> {
     preview_with_options(snapshot, row_id, &TextOptions::default())
 }
 
-pub fn preview_with_options(
-    snapshot: &Snapshot,
-    row_id: &str,
-    options: &TextOptions,
-) -> Result<TextDiff> {
+pub fn load_pair(snapshot: &Snapshot, row_id: &str) -> Result<(String, String, String)> {
     let path = snapshot
         .paths
         .get(row_id)
@@ -169,10 +165,17 @@ pub fn preview_with_options(
             _ => Err(Error::Invalid("Select a regular text file".into())),
         }
     };
-    compare_strings(
-        &row.path,
-        &load(&snapshot.left, row.left.as_ref())?,
-        &load(&snapshot.right, row.right.as_ref())?,
-        options,
-    )
+    Ok((
+        row.path.clone(),
+        load(&snapshot.left, row.left.as_ref())?,
+        load(&snapshot.right, row.right.as_ref())?,
+    ))
+}
+pub fn preview_with_options(
+    snapshot: &Snapshot,
+    row_id: &str,
+    options: &TextOptions,
+) -> Result<TextDiff> {
+    let (path, left, right) = load_pair(snapshot, row_id)?;
+    compare_strings(&path, &left, &right, options)
 }

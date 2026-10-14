@@ -207,7 +207,10 @@ pub fn save(
         .ok_or_else(|| Error::Invalid("Invalid file parent".into()))?;
     let mut temporary = NamedTempFile::new_in(parent)?;
     temporary.write_all(&bytes)?;
-    temporary.as_file().set_permissions(permissions)?;
+    temporary
+        .as_file()
+        .set_permissions(permissions)
+        .map_err(|e| std::io::Error::new(e.kind(), format!("Set edited-file permissions: {e}")))?;
     temporary.as_file().sync_all()?;
     let backup_dir = base.join(unique_id());
     fs::create_dir(&backup_dir)?;
@@ -220,6 +223,7 @@ pub fn save(
     let mut writer = File::create_new(&backup)?;
     let mut reader = File::open(&path)?;
     std::io::copy(&mut reader, &mut writer)?;
+    drop(reader);
     writer.sync_all()?;
     drop(writer);
     if hash_file(&backup, &cancel)? != original.view.digest {
@@ -239,11 +243,21 @@ pub fn save(
         let mut metadata = NamedTempFile::new_in(&backup_dir)?;
         metadata.write_all(&serde_json::to_vec_pretty(&value)?)?;
         metadata.as_file().sync_all()?;
-        metadata.persist(&manifest).map_err(|e| e.error)?;
+        metadata.persist(&manifest).map_err(|e| {
+            std::io::Error::new(
+                e.error.kind(),
+                format!("Persist editor manifest: {}", e.error),
+            )
+        })?;
         Ok(())
     };
     write_manifest("prepared")?;
-    temporary.persist(&path).map_err(|e| e.error)?;
+    temporary.persist(&path).map_err(|e| {
+        std::io::Error::new(
+            e.error.kind(),
+            format!("Replace edited document: {}", e.error),
+        )
+    })?;
     if hash_file(&path, &cancel)? != digest {
         return Err(Error::Invalid("Saved document failed verification".into()));
     }

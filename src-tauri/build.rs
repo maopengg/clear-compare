@@ -7,6 +7,8 @@ fn main() {
             "text_diff",
             "merge_buffers",
             "binary_page",
+            "table_compare",
+            "table_page",
             "preview_sync",
             "apply_sync",
             "pick_directory",

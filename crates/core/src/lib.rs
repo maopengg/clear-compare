@@ -5,6 +5,7 @@ pub mod editing;
 pub mod merge;
 pub mod rules;
 pub mod sync;
+pub mod table;
 pub mod text;
 
 #[derive(Debug, thiserror::Error)]

@@ -49,3 +49,12 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Hex/ASCII comparison reads fixed 4 KiB pages, independently of file size.
 - Focused tests cover encoding retention, external edits, malformed inputs, normalization, final newline significance, adjacent edits, deletion, conflicting insertions and binary page boundaries.
 - Core/CLI tests and compiler/static checks continue; the new desktop interaction and installation acceptance are deferred per the agreed validation sequence.
+
+## CSV/TSV comparison
+
+- Strict quoting retains quoted commas, escaped quotes, field newlines and empty cells.
+- Optional unique keys align rows independently of order; duplicate keys and malformed records are explicit errors.
+- Optional finite nonnegative absolute numeric tolerance is compared using floating-point values. Columns remain positional; differing headers are visible.
+- Native table state retains the full bounded report while IPC/UI pages contain at most 500 rows.
+- Parser, keyed comparison, missing rows, duplicate keys and invalid-tolerance tests pass locally.
+- Windows CI exposed an editor-save access error; the backup source handle is now closed before replacement and error stages are labeled. Three-platform CI must confirm the correction.

@@ -8,9 +8,9 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, file selection, reviewed left-to-right copy, verified overwrite backups, operation journals, native folder selection, persisted settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, paged results, UTF-8/UTF-16 text comparison and editing, normalization rules, three-way merge buffers, paged hexadecimal preview, CSV/TSV key/position table comparison, file selection, reviewed left-to-right copy, verified overwrite backups, operation journals, native folder selection, persisted settings and a JSON CLI.
 
-Planned: advanced merge workflows, table/image viewers, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
+Planned: advanced merge workflows, Excel/HTML table and image viewers, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
 ## Download
 
@@ -76,6 +76,9 @@ cargo build -p clear-cli --release --locked
 # Text diff: JSON output, optional normalization.
 ./target/release/clear-compare diff ./old.txt ./new.txt --ignore-line-endings
 
+# CSV comparison: zero-based key column, optional absolute numeric tolerance.
+./target/release/clear-compare table ./old.csv ./new.csv --key-column 0 --numeric-tolerance 0.01
+
 # Three-way merge: JSON result, conflict markers, no file writes.
 ./target/release/clear-compare merge ./base.txt ./left.txt ./right.txt
 
@@ -92,6 +95,7 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 
 - Text comparison/editing: UTF-8 and BOM-marked UTF-16 LE/BE, at most 4 MiB and 30,000 comparison lines per side. Mixed line-ending documents can be read but saving requires a future explicit normalization policy. Unsupported encodings/binary files return explicit errors.
 - Ignore-whitespace removes whitespace within a line for comparison; it does not change displayed text or saved files. Missing final newlines remain significant.
+- CSV/TSV: strict quoting, up to 4 MiB / 30,000 rows / 200,000 cells / 1,024 columns; columns compare by position. Duplicate keys are errors. Optional finite absolute numeric tolerance uses floating-point values. Desktop results are paged in blocks of 500.
 - Merge results are buffers with conflict markers, not automatic file writes. Two-second diff deadlines can yield coarser alignment on pathological inputs. Hex viewing uses fixed 4 KiB pages; hex editing is not implemented.
 - Editor backups: app data `editor-backups/<id>/original.bin` and a digest/state `manifest.json`. Original encoding/BOM and uniform newline style are retained; manually inspect unresolved merge markers before saving.
 - Scan: at most200,000 entries per root and500 rows per page. Search and difference filtering operate on the current page.

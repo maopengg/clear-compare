@@ -14,7 +14,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F08 Text rules | Case, within-line whitespace and line-ending normalization | Syntax filters, regex rules and manual alignment |
 | F09 Text merge | Three-way merge buffers, conflict markers, load result into editor; JSON CLI | Conflict navigation and resolution controls, multi-file merge workflows |
 | F10 Folder merge | Planned | Baseline-aware folder merging |
-| F11 Table compare | Planned | CSV/TSV/Excel/HTML, key alignment and tolerances |
+| F11 Table compare | CSV/TSV strict parser, positional/key row alignment, numeric tolerance, paged paired cells and CLI | Excel/HTML, column-name mapping, table editing and richer tolerances |
 | F12 Binary compare | Streaming hash comparison and bounded 4 KiB hex/ASCII paired pages | Hex editing, byte alignment and search |
 | F13 Picture compare | Planned | Pixel diff, overlay and tolerance |
 | F14 Conversion | Planned | Document converters and format policies |
