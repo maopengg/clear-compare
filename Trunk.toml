@@ -1,0 +1,11 @@
+[build]
+target = "index.html"
+dist = "dist"
+filehash = true
+
+[serve]
+port = 1420
+open = false
+
+[watch]
+ignore = ["src-tauri", "crates/core", "crates/cli", "target"]

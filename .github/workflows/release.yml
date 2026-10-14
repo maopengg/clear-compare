@@ -1,0 +1,48 @@
+name: Desktop preview release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev
+      - name: Install frontend builder
+        run: cargo install trunk --version 0.21.14 --locked
+      - name: Validate core
+        run: cargo test -p clear-core -p clear-contracts -p clear-cli --locked
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Clear Compare ${{ github.ref_name }}'
+          releaseBody: 'Preview release: local folder comparison, UTF-8 text preview and reviewed left-to-right copy with backups. Read the feature matrix and platform notes before use. Packages are unsigned unless release notes explicitly state otherwise.'
+          releaseDraft: false
+          prerelease: true
+      - name: Build CLI
+        run: cargo build -p clear-cli --release --locked
+      - name: Publish CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clear-compare-cli-${{ runner.os }}
+          path: |
+            target/release/clear-compare
+            target/release/clear-compare.exe
+          if-no-files-found: error
+

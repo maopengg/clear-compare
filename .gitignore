@@ -1,0 +1,11 @@
+/target/
+/dist/
+/.DS_Store
+**/.DS_Store
+/src-tauri/gen/
+*.log
+.env
+.env.*
+!.env.example
+/.impeccable/
+

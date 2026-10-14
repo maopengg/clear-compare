@@ -1,0 +1,18 @@
+[package]
+name = "clear-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "clear-desktop"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "=2.10.2", features = [] }
+tauri-plugin-dialog = "2"
+clear-contracts.workspace = true
+clear-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+

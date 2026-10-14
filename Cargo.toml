@@ -1,0 +1,28 @@
+[workspace]
+members = ["crates/contracts", "crates/core", "crates/cli", "crates/ui", "src-tauri"]
+default-members = ["crates/contracts", "crates/core", "crates/cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/maopengg/clear-compare"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clear-contracts = { path = "crates/contracts" }
+clear-core = { path = "crates/core" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+panic = "abort"
+
