@@ -102,4 +102,4 @@ Read [architecture](docs/architecture.md), [contributing](CONTRIBUTING.md) and [
 
 ## License
 
-Original code is [MIT](LICENSE). Dependencies retain their own licenses. Beyond Compare is a functional reference; Clear Compare is independently implemented and is not affiliated with Scooter Software. No proprietary code, icons or branding is distributed.
+Original code is [MIT](LICENSE). Dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md) and the [resolved dependency list](docs/third-party-dependencies.md). License notices are included in desktop packages. Beyond Compare is a functional reference; Clear Compare is independently implemented and is not affiliated with Scooter Software. No proprietary code, icons or branding is distributed.

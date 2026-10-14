@@ -37,7 +37,11 @@ fn copies_with_verified_backup_preserving_exclusions_and_target_only() {
         .collect::<Vec<_>>();
     let p = sync::plan(&s, &ids, &backups, &cancel).unwrap();
     let result = sync::execute(&s, &p, &cancel).unwrap();
-    assert!(result.actions.iter().all(|a| a.state == "completed"));
+    assert!(
+        result.actions.iter().all(|a| a.state == "completed"),
+        "{:?}",
+        result.actions
+    );
     assert_eq!(
         fs::read_to_string(right.join("changed.txt")).unwrap(),
         "new"

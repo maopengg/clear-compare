@@ -189,8 +189,20 @@ fn copy_one(
                 .parent()
                 .ok_or_else(|| Error::Invalid("Invalid backup path".into()))?,
         )?;
-        fs::copy(&destination, &backup)?;
-        File::open(&backup)?.sync_all()?;
+        // FlushFileBuffers on Windows requires a writable handle. Keep the
+        // backup writer open until durable flush instead of reopening read-only.
+        let mut backup_writer = File::create_new(&backup)?;
+        let mut old = File::open(&destination)?;
+        loop {
+            check_cancel(cancel)?;
+            let n = old.read(&mut chunk)?;
+            if n == 0 {
+                break;
+            }
+            backup_writer.write_all(&chunk[..n])?;
+        }
+        backup_writer.sync_all()?;
+        drop(backup_writer);
         if hash_file(&backup, cancel)? != *expected {
             return Err(Error::Invalid("Backup verification failed".into()));
         }
