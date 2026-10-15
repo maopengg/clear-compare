@@ -142,3 +142,10 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Git subprocesses use argument arrays, isolated Git environment, disabled transports/prompts/fsmonitor, bounded stdout/stderr, cancellation and a 15-second deadline. Git must support `--no-lazy-fetch`; the adapter fails explicitly otherwise.
 - Real temporary-repository tests verify commit equality/changes/additions, dirty worktree/index preservation, branch movement after comparison, excluded subtrees, invalid revisions, filenames containing spaces/tabs, oversize text, missing objects without fetching, symlinks, executable-mode changes and CLI return codes. Client GUI/installer acceptance remains deferred.
 - Tree-snapshot changes passed three-platform CI run 38672977224. Git working-tree/index comparison, difftool/mergetool registration and SVN integration remain planned.
+
+## Structured merge conflict controls
+
+- Merge buffers now support stable conflict groups, previous/next/current navigation, original left/base/right selection, exact left-then-right concatenation, bounded undo/redo and keyboard controls with composition handling.
+- Shared parsing rejects malformed, duplicated, nested or incomplete markers. Resolution rejects manually edited blocks, preserves exact original line endings/final-newline absence and does not discard surrounding text. DOM selection uses UTF-16 offsets.
+- Tests cover all version choices, Unicode offsets, shifted multi-group positions, malformed markers, manual-edit protection, undo restoring guarded tags, original no-final-newline fragments and oversize generated output. The existing native save/undo regression also exercises the new marker form.
+- Previous Git changes passed three-platform CI run 38673619729. Local automated checks and WASM/native builds are recorded with this commit; client GUI/installer acceptance stays deferred.

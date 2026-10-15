@@ -26,3 +26,5 @@ select{font:inherit}
 .archive-metadata{font:10px ui-monospace,monospace;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}.archive-panel select{font:inherit;padding:6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink)}.archive-panel select:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
 
 .archive-panel p{overflow-wrap:anywhere}.archive-controls input{min-width:0}.archive-controls label>input:not([type=checkbox]){padding:7px}
+
+.merge-conflict-toolbar,.merge-conflict-choices{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}.merge-conflict-toolbar span{font-size:12px;color:var(--muted);margin-right:auto}.merge-marker-error{color:var(--red)!important}.merge-output{line-height:20px;min-height:240px;white-space:pre;overflow:auto}.merge-conflict-choices{padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}

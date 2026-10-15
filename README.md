@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -39,6 +39,14 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 勾选“右 → 左”可切换同步方向；切换后需重新选择文件并预览。
 
 目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录状态会聚合按当前规则扫描到的子项；目录大小是已列出的常规文件大小之和，不是实际磁盘占用。子项有差异、错误或未验证内容时，目录不会标为内容一致。
+
+### 文本冲突处理
+
+三方合并结果保留在缓冲区。使用“定位当前冲突”和上一/下一冲突跳转，再选择左侧、基础或右侧原文，也可按左后右直接拼接。选择会保留原始换行字节，拼接不自动增加换行；即使原片段末尾没有换行也不会补入；载入编辑器后，最终磁盘编码及换行格式仍由目标编辑器设置决定。已经手动修改的冲突组会阻止版本选择，请手动完成或先撤销修改。
+
+合并缓冲区支持独立的撤销/重做，以及 Ctrl/Cmd+Z、Shift+Z、Ctrl/Cmd+Y。定位使用 UTF-16 选区偏移，中文和 emoji 不会因 UTF-8 字节长度而错位。标记被破坏、复制或缺失时停止自动处理，原生保存检查仍会阻止带有未解决标记的结果落盘。更改任一输入或重新生成结果会重置本轮历史。
+
+输入与生成结果均限制为 8 MiB 解码文本，输入最多 30,000 行。结果可载入没有未保存修改的编辑器，再经过备份和外部变更检查保存；尚未提供独立工作副本导出。合并 JSON 新增原始冲突片段与稳定组 ID，旧式标记需手动处理。
 
 ### 会话库
 

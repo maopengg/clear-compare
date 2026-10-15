@@ -45,15 +45,6 @@ fn render(base: &[&str], group: &[Edit<'_>], span: Range<usize>, side: usize) ->
     }
     result
 }
-fn section(output: &mut String, label: &str, text: &str) {
-    output.push_str(label);
-    output.push('\n');
-    output.push_str(text);
-    if !text.is_empty() && !text.ends_with(['\n', '\r']) {
-        output.push('\n');
-    }
-}
-
 pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
     if [base, left, right].iter().any(|s| {
         s.len() > clear_contracts::edit_history::MAX_TEXT_BYTES || split_lines(s).len() > 30_000
@@ -65,6 +56,7 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
     // Exact shortcuts avoid algorithm timeouts creating unnecessary conflicts.
     if left == right {
         return Ok(MergeResult {
+            conflict_versions: Vec::new(),
             id: None,
             conflict_token: None,
             text: left.into(),
@@ -73,6 +65,7 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
     }
     if left == base {
         return Ok(MergeResult {
+            conflict_versions: Vec::new(),
             id: None,
             conflict_token: None,
             text: right.into(),
@@ -81,6 +74,7 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
     }
     if right == base {
         return Ok(MergeResult {
+            conflict_versions: Vec::new(),
             id: None,
             conflict_token: None,
             text: left.into(),
@@ -98,12 +92,7 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
     let mut index = 0;
     let mut conflicts = 0;
     let token = crate::unique_id();
-    let marker = |label: &str| {
-        format!(
-            "{label} {}",
-            clear_contracts::edit_history::conflict_tag(&token)
-        )
-    };
+    let mut versions = Vec::new();
     while index < changes.len() {
         let begin = index;
         let start = changes[index].range.start;
@@ -137,18 +126,27 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
             if !output.is_empty() && !output.ends_with(['\n', '\r']) {
                 output.push('\n');
             }
-            section(&mut output, &marker("<<<<<<< LEFT"), &left);
-            section(&mut output, &marker("||||||| BASE"), &original);
-            section(&mut output, &marker("======="), &right);
-            output.push_str(&marker(">>>>>>> RIGHT"));
-            output.push('\n');
+            let conflict = clear_contracts::MergeConflict {
+                id: conflicts - 1,
+                left,
+                base: original,
+                right,
+            };
+            output.push_str(&clear_contracts::merge_edit::render(&token, &conflict));
+            versions.push(conflict);
         }
         cursor = end;
     }
     for line in &b[cursor..] {
         output.push_str(line);
     }
+    if output.len() > clear_contracts::edit_history::MAX_TEXT_BYTES {
+        return Err(Error::Invalid(
+            "Merge output exceeds 8 MiB decoded UTF-8".into(),
+        ));
+    }
     Ok(MergeResult {
+        conflict_versions: versions,
         id: None,
         conflict_token: if conflicts > 0 { Some(token) } else { None },
         text: output,
