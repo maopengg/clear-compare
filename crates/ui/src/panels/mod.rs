@@ -11,3 +11,5 @@ pub mod sessions;
 pub mod table;
 
 pub mod text;
+
+pub mod reports;

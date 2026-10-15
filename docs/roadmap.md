@@ -156,3 +156,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - A separate shared-scroll text panel provides 500-row aligned pages, change-group navigation (F7 / Shift+F7 while focused), case-sensitive literal row search across all results and visible original EOL markers. Long display lines are capped at 8192 characters with a truncation label.
 - Tests cover emoji/multibyte ranges, whitespace/case/EOL rules, contextual lowercase and expansions, CRLF-only changes, budget fallback, original-text reconstruction, cross-page alignment/search, invalid/overlapping spans and Unicode-safe clipping.
 - Structured-merge changes passed three-platform CI run 38674396092. New local tests/lints/builds are recorded with this commit; interactive client/installer validation remains deferred.
+
+## Full comparison reports
+
+- Native/CLI export of HTML and versioned JSON covers complete local, ZIP/directory, tree-snapshot and committed Git results, independent of GUI scope/search/page. An optional differences filter retains unverified/error/type-conflict rows without rewriting the original summary.
+- Frozen policies record exclusion input and SHA-256, size/time, size-only or Git-object verification basis. HTML escapes paths, warnings, errors and metadata; no source text, executable script or external resource is embedded.
+- Export is bounded, cancellable and no-clobber, with temporary-file cleanup and source/repository path protection. Git roots include linked-worktree common storage and actual top-level roots discovered from subdirectories.
+- Tests cover HTML injection payloads, JSON policy/schema/summary, rows beyond 500, changed source files after comparison, uncertainty/error filtering, overwrite/source containment, symlink aliases, stale sessions, cancellation and byte budgets. CLI tests verify saved results and exit codes, including committed Git snapshots with dirty working copies.
+- Text-navigation changes passed three-platform CI run 38675843060. New local tests/lints/builds are recorded with this commit; GUI/installer verification remains deferred.

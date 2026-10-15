@@ -291,6 +291,7 @@ fn load(input: &str, rules: &Rules, cancel: &AtomicBool) -> Result<BTreeMap<Path
     }
 }
 pub struct Snapshot {
+    roots: Vec<PathBuf>,
     pub report: Comparison,
 }
 pub fn compare(request: &ArchiveRequest, cancel: &AtomicBool) -> Result<Snapshot> {
@@ -301,6 +302,16 @@ pub fn compare(request: &ArchiveRequest, cancel: &AtomicBool) -> Result<Snapshot
         ));
     }
     let rules = Rules::parse(&request.exclusions)?;
+    let roots = [&request.left, &request.right]
+        .iter()
+        .filter(|s| !s.trim().is_empty())
+        .filter_map(|s| {
+            fs::metadata(s)
+                .ok()
+                .filter(|m| m.is_dir())
+                .map(|_| fs::canonicalize(s))
+        })
+        .collect::<std::io::Result<Vec<_>>>()?;
     let l = load(&request.left, &rules, cancel)?;
     let r = if request.right.trim().is_empty() {
         BTreeMap::new()
@@ -350,9 +361,13 @@ pub fn compare(request: &ArchiveRequest, cancel: &AtomicBool) -> Result<Snapshot
         });
     }
     tree::aggregate(&mut rows, &paths);
-    Ok(Snapshot{report:Comparison{session:unique_id(),left:request.left.clone(),right:request.right.clone(),summary,rows,warnings:vec!["Historical metadata inventory only. Size/time matches never verify file contents. No text preview, editing, synchronization or restore is available.".into()]}})
+    Ok(Snapshot{roots,report:Comparison{policy:Some(clear_contracts::ComparisonPolicy{exclusions:request.exclusions.clone(),verification:clear_contracts::VerificationBasis::SizeAndTime}),session:unique_id(),left:request.left.clone(),right:request.right.clone(),summary,rows,warnings:vec!["Historical metadata inventory only. Size/time matches never verify file contents. No text preview, editing, synchronization or restore is available.".into()]}})
 }
 impl Snapshot {
+    pub fn report_roots(&self) -> Vec<PathBuf> {
+        self.roots.clone()
+    }
+
     pub fn page(&self, offset: usize, search: &str, differences_only: bool) -> Result<Page> {
         crate::archive::page_report(&self.report, offset, search, differences_only)
     }

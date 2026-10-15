@@ -22,7 +22,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F16 Archives/snapshots | Read-only classic ZIP Stored/Deflate browsing, ZIP/directory comparison, exclusions, member SHA-256, paged search and bounded text preview; content-free versioned tree export and historical metadata comparisons | Archive updates and nested/other formats |
 | F17 Remote filesystems | Planned | FTP/FTPS/SFTP/network adapters |
 | F18 Cloud storage | Planned | WebDAV/S3/Dropbox/OneDrive |
-| F19 Automation | JSON compare and copy-preview/apply CLI | Scripts, reports, scheduled workflows |
+| F19 Automation | JSON compare and copy-preview/apply CLI; self-contained HTML/versioned JSON reports for directory, ZIP, snapshot and Git comparisons | Scripts, specialized-viewer/operation reports and scheduled workflows |
 | F20 Version control | Read-only local Git commit-tree comparison, pinned revisions, executable-mode differences, paged search, bounded blob text previews and JSON CLI | Working tree/index comparisons, Git diff/merge-tool integration, SVN and traditional interfaces |
 | F21 System integration | Native folder dialog | Drag/drop, file associations, context menus |
 | F22 Platform specifics | Local filesystem only | ACL, registry, device and metadata adapters |

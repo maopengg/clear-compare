@@ -219,3 +219,57 @@ fn missing_local_objects_fail_without_fetching_or_using_worktree_fallbacks() {
     assert!(git::compare(&q, &cancel()).is_err());
     assert!(!object.exists());
 }
+
+#[test]
+fn report_protection_uses_actual_repository_roots_from_a_subdirectory() {
+    let source = fixture();
+    let outer = tempfile::tempdir().unwrap();
+    let moved = outer.path().join("repo with space");
+    std::fs::rename(source.path(), &moved).unwrap();
+    let r = git::compare(&req(&moved.join("sub")), &cancel()).unwrap();
+    let roots = r.report_roots();
+    assert!(roots.contains(&fs::canonicalize(&moved).unwrap()));
+    assert!(roots.contains(&fs::canonicalize(moved.join(".git")).unwrap()));
+    let request = clear_contracts::ReportRequest {
+        source: clear_contracts::ReportSource::Git,
+        format: clear_contracts::ReportFormat::Json,
+        session: r.report.session.clone(),
+        destination: moved.join("report.json").display().to_string(),
+        english: true,
+        differences_only: false,
+    };
+    assert!(clear_core::report::export(&r.report, &request, &roots, &cancel()).is_err());
+    assert!(!moved.join("report.json").exists());
+}
+
+#[test]
+fn linked_worktree_reports_protect_common_object_storage() {
+    let repo = fixture();
+    let outer = tempfile::tempdir().unwrap();
+    let worktree = outer.path().join("linked");
+    run(
+        repo.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            worktree.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    let r = git::compare(&req(&worktree), &cancel()).unwrap();
+    let roots = r.report_roots();
+    assert!(roots.contains(&fs::canonicalize(repo.path().join(".git")).unwrap()));
+    assert!(roots.contains(&fs::canonicalize(&worktree).unwrap()));
+    let request = clear_contracts::ReportRequest {
+        source: clear_contracts::ReportSource::Git,
+        format: clear_contracts::ReportFormat::Json,
+        session: r.report.session.clone(),
+        destination: repo.path().join(".git/report.json").display().to_string(),
+        english: true,
+        differences_only: false,
+    };
+    assert!(clear_core::report::export(&r.report, &request, &roots, &cancel()).is_err());
+    assert!(!repo.path().join(".git/report.json").exists());
+}

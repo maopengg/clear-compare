@@ -141,6 +141,35 @@ fn resolve(repo: &Path, revision: &str, cancel: &AtomicBool) -> Result<String> {
     }
     Ok(oid)
 }
+
+fn directory(repo: &Path, argument: &str, cancel: &AtomicBool) -> Result<PathBuf> {
+    let output = command(
+        repo,
+        &["rev-parse", "--path-format=absolute", argument],
+        32768,
+        cancel,
+    )?;
+    let bytes = output.strip_suffix(b"\n").unwrap_or(&output);
+    #[cfg(windows)]
+    let bytes = bytes.strip_suffix(b"\r").unwrap_or(bytes);
+    #[cfg(unix)]
+    let path = {
+        use std::os::unix::ffi::OsStringExt;
+        PathBuf::from(std::ffi::OsString::from_vec(bytes.to_vec()))
+    };
+    #[cfg(not(unix))]
+    let path = PathBuf::from(
+        std::str::from_utf8(bytes)
+            .map_err(|_| Error::Invalid("Git returned an unsupported repository path".into()))?,
+    );
+    let path = fs::canonicalize(path)?;
+    if !path.is_dir() {
+        return Err(Error::Invalid(
+            "Git repository path is not a directory".into(),
+        ));
+    }
+    Ok(path)
+}
 #[derive(Clone)]
 struct GitEntry {
     oid: String,
@@ -269,6 +298,7 @@ fn status(a: Option<&GitEntry>, b: Option<&GitEntry>) -> Status {
     }
 }
 pub struct Snapshot {
+    report_roots: Vec<PathBuf>,
     pub report: Comparison,
     repo: PathBuf,
     blobs: BTreeMap<String, (Option<GitEntry>, Option<GitEntry>)>,
@@ -284,6 +314,20 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
     let rules = Rules::parse(&request.exclusions)?;
     let left = resolve(&repo, &request.left_revision, cancel)?;
     let right = resolve(&repo, &request.right_revision, cancel)?;
+    let git_dir = directory(&repo, "--absolute-git-dir", cancel)?;
+    let bare = command(&repo, &["rev-parse", "--is-bare-repository"], 32, cancel)?;
+    let common_dir = directory(&repo, "--git-common-dir", cancel)?;
+    let mut report_roots = vec![git_dir];
+    if !report_roots.contains(&common_dir) {
+        report_roots.push(common_dir);
+    }
+    if bare == b"false\n" || bare == b"false\r\n" {
+        report_roots.push(directory(&repo, "--show-toplevel", cancel)?);
+    } else if bare != b"true\n" && bare != b"true\r\n" {
+        return Err(Error::Invalid(
+            "Invalid Git repository classification".into(),
+        ));
+    }
     let l = load(&repo, &left, &rules, cancel)?;
     let r = load(&repo, &right, &rules, cancel)?;
     let all = l.keys().chain(r.keys()).cloned().collect::<BTreeSet<_>>();
@@ -327,9 +371,13 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
         blobs.insert(id, (a, b));
     }
     tree::aggregate(&mut rows, &paths);
-    Ok(Snapshot{repo,blobs,report:Comparison{session:unique_id(),left:format!("{} @ {}",request.left_revision,left),right:format!("{} @ {}",request.right_revision,right),summary,rows,warnings:vec!["Read-only committed Git objects; equality uses Git object identity, not timestamps. Executable-mode changes count as changes. Links are not followed, submodules are not expanded, and LFS pointers are not dereferenced. Working tree/index changes are not included.".into()]}})
+    Ok(Snapshot{report_roots,repo,blobs,report:Comparison{policy:Some(clear_contracts::ComparisonPolicy{exclusions:request.exclusions.clone(),verification:clear_contracts::VerificationBasis::GitObjectIdentity}),session:unique_id(),left:format!("{} @ {}",request.left_revision,left),right:format!("{} @ {}",request.right_revision,right),summary,rows,warnings:vec!["Read-only committed Git objects; equality uses Git object identity, not timestamps. Executable-mode changes count as changes. Links are not followed, submodules are not expanded, and LFS pointers are not dereferenced. Working tree/index changes are not included.".into()]}})
 }
 impl Snapshot {
+    pub fn report_roots(&self) -> Vec<PathBuf> {
+        self.report_roots.clone()
+    }
+
     pub fn page(&self, offset: usize, search: &str, differences_only: bool) -> Result<Page> {
         crate::archive::page_report(&self.report, offset, search, differences_only)
     }

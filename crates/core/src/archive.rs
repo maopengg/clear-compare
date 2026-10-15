@@ -369,9 +369,19 @@ pub fn compare(request: &ArchiveRequest, cancel: &AtomicBool) -> Result<Snapshot
         });
     }
     tree::aggregate(&mut rows, &paths);
-    Ok(Snapshot {report:Comparison{session:unique_id(),left:request.left.clone(),right:request.right.clone(),summary,rows,warnings:vec!["Archive comparison is read-only. ZIP symlinks are listed without following them. Metadata matches are not verified content equality.".into()]},left,right,paths})
+    Ok(Snapshot {report:Comparison{policy:Some(clear_contracts::ComparisonPolicy{exclusions:request.exclusions.clone(),verification:if request.content{clear_contracts::VerificationBasis::Sha256}else{clear_contracts::VerificationBasis::SizeOnly}}),session:unique_id(),left:request.left.clone(),right:request.right.clone(),summary,rows,warnings:vec!["Archive comparison is read-only. ZIP symlinks are listed without following them. Metadata matches are not verified content equality.".into()]},left,right,paths})
 }
 impl Snapshot {
+    pub fn report_roots(&self) -> Vec<PathBuf> {
+        [&self.left, &self.right]
+            .iter()
+            .filter_map(|s| match s {
+                Source::Directory(p) => Some(p.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub fn page(&self, offset: usize, search: &str, differences_only: bool) -> Result<Page> {
         page_report(&self.report, offset, search, differences_only)
     }

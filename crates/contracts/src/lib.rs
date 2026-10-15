@@ -74,6 +74,8 @@ pub struct Summary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Comparison {
+    #[serde(default)]
+    pub policy: Option<ComparisonPolicy>,
     pub session: String,
     pub left: String,
     pub right: String,
@@ -517,4 +519,49 @@ pub struct MergeConflict {
 pub struct TextRange {
     pub start: usize,
     pub end: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportSource {
+    Local,
+    Archive,
+    TreeSnapshot,
+    Git,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportFormat {
+    Html,
+    Json,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportRequest {
+    pub source: ReportSource,
+    pub format: ReportFormat,
+    pub session: String,
+    pub destination: String,
+    pub english: bool,
+    pub differences_only: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportResult {
+    pub path: String,
+    pub session: String,
+    pub rows: usize,
+    pub bytes: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationBasis {
+    Sha256,
+    SizeAndTime,
+    SizeOnly,
+    GitObjectIdentity,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComparisonPolicy {
+    pub exclusions: String,
+    pub verification: VerificationBasis,
 }

@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use clear_contracts::CompareRequest;
 use std::{path::PathBuf, sync::atomic::AtomicBool};
 
@@ -12,8 +12,40 @@ struct Cli {
     command: Command,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum ReportKind {
+    Local,
+    Archive,
+    Snapshot,
+    Git,
+}
+#[derive(Clone, Copy, ValueEnum)]
+enum OutputFormat {
+    Html,
+    Json,
+}
+
 #[derive(Subcommand)]
 enum Command {
+    Report {
+        left: String,
+        right: String,
+        destination: String,
+        #[arg(long, value_enum, default_value = "local")]
+        source: ReportKind,
+        #[arg(long, value_enum, default_value = "html")]
+        format: OutputFormat,
+        #[arg(long)]
+        repository: Option<String>,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long)]
+        metadata_only: bool,
+        #[arg(long)]
+        differences_only: bool,
+        #[arg(long)]
+        english: bool,
+    },
     Compare {
         left: String,
         right: String,
@@ -130,6 +162,118 @@ enum Command {
 fn run(cli: Cli) -> clear_core::Result<i32> {
     let cancel = AtomicBool::new(false);
     match cli.command {
+        Command::Report {
+            left,
+            right,
+            destination,
+            source,
+            format,
+            repository,
+            exclude,
+            metadata_only,
+            differences_only,
+            english,
+        } => {
+            use clear_contracts::{ReportFormat, ReportSource};
+            if repository.is_some() && !matches!(source, ReportKind::Git) {
+                return Err(clear_core::Error::Invalid(
+                    "--repository only applies to --source git".into(),
+                ));
+            }
+
+            let (report, roots, source) = match source {
+                ReportKind::Local => {
+                    let snapshot = clear_core::compare::compare(
+                        &CompareRequest {
+                            left,
+                            right,
+                            exclusions: exclude,
+                            content: !metadata_only,
+                        },
+                        &cancel,
+                    )?;
+                    let roots = vec![snapshot.left.clone(), snapshot.right.clone()];
+                    (snapshot.report, roots, ReportSource::Local)
+                }
+                ReportKind::Archive => {
+                    let snapshot = clear_core::archive::compare(
+                        &clear_contracts::ArchiveRequest {
+                            left,
+                            right: if right == "-" { String::new() } else { right },
+                            exclusions: exclude,
+                            content: !metadata_only,
+                        },
+                        &cancel,
+                    )?;
+                    let roots = snapshot.report_roots();
+                    (snapshot.report, roots, ReportSource::Archive)
+                }
+                ReportKind::Snapshot => {
+                    let snapshot = clear_core::tree_snapshot::compare(
+                        &clear_contracts::ArchiveRequest {
+                            left,
+                            right: if right == "-" { String::new() } else { right },
+                            exclusions: exclude,
+                            content: false,
+                        },
+                        &cancel,
+                    )?;
+                    let roots = snapshot.report_roots();
+                    (snapshot.report, roots, ReportSource::TreeSnapshot)
+                }
+                ReportKind::Git => {
+                    if metadata_only {
+                        return Err(clear_core::Error::Invalid(
+                            "Git report uses object identity; --metadata-only is not applicable"
+                                .into(),
+                        ));
+                    }
+                    let repository = repository.ok_or_else(|| {
+                        clear_core::Error::Invalid("Git reports require --repository".into())
+                    })?;
+                    let snapshot = clear_core::git::compare(
+                        &clear_contracts::GitCompareRequest {
+                            repository,
+                            left_revision: left,
+                            right_revision: right,
+                            exclusions: exclude,
+                        },
+                        &cancel,
+                    )?;
+                    let roots = snapshot.report_roots();
+                    (snapshot.report, roots, ReportSource::Git)
+                }
+            };
+            let result = clear_core::report::export(
+                &report,
+                &clear_contracts::ReportRequest {
+                    source,
+                    format: match format {
+                        OutputFormat::Html => ReportFormat::Html,
+                        OutputFormat::Json => ReportFormat::Json,
+                    },
+                    session: report.session.clone(),
+                    destination,
+                    english,
+                    differences_only,
+                },
+                &roots,
+                &cancel,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(if report.summary.errors > 0 {
+                2
+            } else if report
+                .rows
+                .iter()
+                .any(|r| r.status != clear_contracts::Status::Same)
+            {
+                1
+            } else {
+                0
+            })
+        }
+
         Command::Compare {
             left,
             right,

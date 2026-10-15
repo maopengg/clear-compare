@@ -252,6 +252,14 @@ pub fn compare(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot
     Ok(Snapshot {
         directory_index,
         report: Comparison {
+            policy: Some(clear_contracts::ComparisonPolicy {
+                exclusions: request.exclusions.clone(),
+                verification: if request.content {
+                    clear_contracts::VerificationBasis::Sha256
+                } else {
+                    clear_contracts::VerificationBasis::SizeAndTime
+                },
+            }),
             session: unique_id(),
             left: left.to_string_lossy().into_owned(),
             right: right.to_string_lossy().into_owned(),

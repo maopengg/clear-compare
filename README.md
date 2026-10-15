@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -39,6 +39,14 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 勾选“右 → 左”可切换同步方向；切换后需重新选择文件并预览。
 
 目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录状态会聚合按当前规则扫描到的子项；目录大小是已列出的常规文件大小之和，不是实际磁盘占用。子项有差异、错误或未验证内容时，目录不会标为内容一致。
+
+### 比较报告
+
+目录、ZIP/目录、目录快照和 Git 比较均可导出 HTML 或 JSON 报告。导出读取原生端保存的完整结果，不受当前搜索、目录范围或 500 行分页限制。可选择仅导出差异，这仍会保留未验证、读取错误和类型冲突；汇总数字始终对应完整比较。
+
+报告包含来源、排除规则、比较依据、状态、文件元数据及已有摘要，不包含文件正文。HTML 可离线打开，无脚本或外部资源；所有动态内容转义。JSON 使用带 schema/version 的格式，见 [报告格式](docs/report-format.md)。报告记录历史结果，不重新扫描，不证明文件当前状态，也不是文件恢复输入。
+
+请保存到比较目录、Git 工作树与 Git 数据目录之外的新文件，现有文件不会被覆盖。导出采用有大小上限的临时文件，成功后才保留目标；取消或失败会清理临时输出。文本/表格/图片专用报告与同步任务报告尚未实现。
 
 ### 文本差异导航
 
@@ -120,6 +128,15 @@ cargo build -p clear-cli --release --locked
 ./target/release/clear-compare merge-folders ./base ./left ./right ./merged --journal-dir ./merge-journals
 # Two-way mode uses - as the baseline; choices apply to exact scanned relative paths.
 ./target/release/clear-compare merge-folders - ./left ./right ./merged --journal-dir ./merge-journals --choose sub=right --apply
+
+# Reports must be NEW files outside compared roots.
+./target/release/clear-compare report ./source ./target ./comparison.html --exclude '-./.git/'
+./target/release/clear-compare report ./source ./target ./comparison.json --format json --differences-only
+./target/release/clear-compare report ./backup.zip ./folder ./archive.html --source archive
+./target/release/clear-compare report ./saved.cctree ./folder ./snapshot.json --source snapshot --format json
+./target/release/clear-compare report 'HEAD~1' HEAD ./git-report.html --source git --repository ./repository
+# Exit 1 means differences/unverified entries even when the report was saved.
+# Exit 2 can mean recorded comparison errors or an export failure; inspect JSON stdout/stderr.
 
 # Compare locally available Git commits without checkout or fetching.
 ./target/release/clear-compare git-compare ./repository 'HEAD~1' HEAD --exclude '-./docs/'

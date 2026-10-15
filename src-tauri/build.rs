@@ -4,6 +4,8 @@ fn main() {
             "compare",
             "compare_archives",
             "compare_git",
+            "export_report",
+            "pick_report_destination",
             "git_page",
             "git_text_diff",
             "capture_tree_snapshot",

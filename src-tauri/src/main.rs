@@ -325,6 +325,93 @@ async fn query_folder(
 }
 
 #[tauri::command]
+async fn pick_report_destination(
+    format: ReportFormat,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (label, ext) = match format {
+            ReportFormat::Html => ("HTML report", "html"),
+            ReportFormat::Json => ("JSON report", "json"),
+        };
+        app.dialog()
+            .file()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("comparison-{}.{}", clear_core::unique_id(), ext))
+            .blocking_save_file()
+            .map(|p| p.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn export_report(
+    request: ReportRequest,
+    state: State<'_, Backend>,
+) -> Result<ReportResult, String> {
+    let _guard = state.begin()?;
+    let cancel = state.cancel.clone();
+    let job: Box<dyn FnOnce() -> clear_core::Result<ReportResult> + Send> = match request.source {
+        ReportSource::Local => {
+            let snapshot = state.snapshot(&request.session)?;
+            Box::new(move || {
+                clear_core::report::export(
+                    &snapshot.report,
+                    &request,
+                    &[snapshot.left.clone(), snapshot.right.clone()],
+                    &cancel,
+                )
+            })
+        }
+        ReportSource::Archive => {
+            let snapshot = archive_snapshot(&state, &request.session)?;
+            Box::new(move || {
+                clear_core::report::export(
+                    &snapshot.report,
+                    &request,
+                    &snapshot.report_roots(),
+                    &cancel,
+                )
+            })
+        }
+        ReportSource::Git => {
+            let snapshot = git_snapshot(&state, &request.session)?;
+            Box::new(move || {
+                clear_core::report::export(
+                    &snapshot.report,
+                    &request,
+                    &snapshot.report_roots(),
+                    &cancel,
+                )
+            })
+        }
+        ReportSource::TreeSnapshot => {
+            let snapshot = state
+                .tree_snapshot
+                .lock()
+                .map_err(|_| "State unavailable")?
+                .clone()
+                .ok_or("Open a tree comparison first")?;
+            if snapshot.report.session != request.session {
+                return Err("Tree snapshot comparison expired".into());
+            }
+            Box::new(move || {
+                clear_core::report::export(
+                    &snapshot.report,
+                    &request,
+                    &snapshot.report_roots(),
+                    &cancel,
+                )
+            })
+        }
+    };
+    tauri::async_runtime::spawn_blocking(job)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn compare_git(
     request: GitCompareRequest,
     state: State<'_, Backend>,
@@ -1025,6 +1112,8 @@ fn main() {
             compare,
             compare_archives,
             compare_git,
+            export_report,
+            pick_report_destination,
             git_page,
             git_text_diff,
             capture_tree_snapshot,

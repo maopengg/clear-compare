@@ -9,6 +9,7 @@ pub mod merge;
 pub mod native_path;
 pub mod picture;
 pub mod recovery;
+pub mod report;
 pub mod rules;
 pub mod sessions;
 pub mod sync;

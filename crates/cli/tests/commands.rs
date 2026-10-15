@@ -392,3 +392,108 @@ fn git_cli_compares_local_commits_and_reports_invalid_revisions() {
     assert_eq!(data["summary"]["changed"], 1);
     assert_eq!(compare("invalid-ref", "HEAD").status.code(), Some(2));
 }
+
+#[test]
+fn report_cli_exports_full_native_results_and_keeps_difference_exit_codes() {
+    let t = tempfile::tempdir().unwrap();
+    let l = t.path().join("left");
+    let r = t.path().join("right");
+    fs::create_dir(&l).unwrap();
+    fs::create_dir(&r).unwrap();
+    fs::write(l.join("a"), "left body").unwrap();
+    fs::write(r.join("a"), "right body").unwrap();
+    let output = t.path().join("report.json");
+    let args = [
+        "report".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        output.as_os_str(),
+        "--format".as_ref(),
+        "json".as_ref(),
+        "--differences-only".as_ref(),
+    ];
+    let result = run(&args);
+    assert_eq!(
+        result.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let saved = fs::read(&output).unwrap();
+    let data: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(data["source"], "local");
+    assert_eq!(data["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(data["summary"]["changed"], 1);
+    let status: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(status["rows"], 1);
+    assert_eq!(status["bytes"], saved.len().to_string());
+    assert_eq!(run(&args).status.code(), Some(2));
+    assert_eq!(fs::read(&output).unwrap(), saved);
+    let html = t.path().join("report.html");
+    let result = run(&[
+        "report".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        html.as_os_str(),
+        "--english".as_ref(),
+    ]);
+    assert_eq!(result.status.code(), Some(1));
+    let html = fs::read_to_string(html).unwrap();
+    assert!(html.contains("Comparison report"));
+    assert!(!html.contains("left body"));
+}
+#[test]
+fn git_report_cli_uses_pinned_committed_objects() {
+    let repo = tempfile::tempdir().unwrap();
+    let output = tempfile::tempdir().unwrap();
+    for args in [
+        vec!["init", "-q", "--template="],
+        vec!["add", "a"],
+        vec!["commit", "-qm", "initial"],
+    ] {
+        if args[0] == "add" {
+            fs::write(repo.path().join("a"), "committed body").unwrap();
+        }
+        let r = std::process::Command::new("git")
+            .current_dir(repo.path())
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "core.autocrlf=false",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+    }
+    fs::write(repo.path().join("a"), "uncommitted").unwrap();
+    let file = output.path().join("git.json");
+    let r = run(&[
+        "report".as_ref(),
+        "HEAD".as_ref(),
+        "HEAD".as_ref(),
+        file.as_os_str(),
+        "--source".as_ref(),
+        "git".as_ref(),
+        "--repository".as_ref(),
+        repo.path().as_os_str(),
+        "--format".as_ref(),
+        "json".as_ref(),
+    ]);
+    assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+    let json: serde_json::Value = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+    assert_eq!(json["source"], "git");
+    assert_eq!(json["policy"]["verification"], "git_object_identity");
+    assert_eq!(json["summary"]["same"], 1);
+    assert_eq!(
+        fs::read_to_string(repo.path().join("a")).unwrap(),
+        "uncommitted"
+    );
+}
