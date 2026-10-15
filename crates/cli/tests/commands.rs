@@ -282,3 +282,35 @@ fn two_way_folder_merge_cli_accepts_explicit_version_choice() {
     );
     assert_eq!(fs::read_to_string(paths[2].join("a")).unwrap(), "right");
 }
+
+#[test]
+fn archive_cli_browses_without_extracting_and_reports_differences() {
+    use std::io::Write;
+    let t = tempfile::tempdir().unwrap();
+    let z = t.path().join("a.zip");
+    let directory = t.path().join("folder");
+    fs::create_dir(&directory).unwrap();
+    fs::write(directory.join("a.txt"), "same").unwrap();
+    let mut writer = zip::ZipWriter::new(fs::File::create(&z).unwrap());
+    writer
+        .start_file(
+            "a.txt",
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated),
+        )
+        .unwrap();
+    writer.write_all(b"same").unwrap();
+    writer.finish().unwrap();
+    let browse = run(&["archives".as_ref(), z.as_os_str()]);
+    assert!(
+        browse.status.success(),
+        "{}",
+        String::from_utf8_lossy(&browse.stderr)
+    );
+    let equal = run(&["archives".as_ref(), z.as_os_str(), directory.as_os_str()]);
+    assert!(equal.status.success());
+    fs::write(directory.join("a.txt"), "different").unwrap();
+    let changed = run(&["archives".as_ref(), z.as_os_str(), directory.as_os_str()]);
+    assert_eq!(changed.status.code(), Some(1));
+    assert_eq!(fs::read_dir(t.path()).unwrap().count(), 2);
+}

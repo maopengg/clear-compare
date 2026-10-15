@@ -22,6 +22,14 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    Archives {
+        left: String,
+        right: Option<String>,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long)]
+        metadata_only: bool,
+    },
     MergeFolders {
         base: String,
         left: String,
@@ -126,6 +134,37 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
                 .rows
                 .iter()
                 .any(|r| r.status != clear_contracts::Status::Same)
+            {
+                1
+            } else {
+                0
+            })
+        }
+        Command::Archives {
+            left,
+            right,
+            exclude,
+            metadata_only,
+        } => {
+            let paired = right.is_some();
+            let snapshot = clear_core::archive::compare(
+                &clear_contracts::ArchiveRequest {
+                    left,
+                    right: right.unwrap_or_default(),
+                    exclusions: exclude,
+                    content: !metadata_only,
+                },
+                &cancel,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&snapshot.report)?);
+            Ok(if snapshot.report.summary.errors > 0 {
+                2
+            } else if paired
+                && snapshot
+                    .report
+                    .rows
+                    .iter()
+                    .any(|r| r.status != clear_contracts::Status::Same)
             {
                 1
             } else {

@@ -120,3 +120,10 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Text file bytes remain bounded at 4 MiB; decoded text can use 8 MiB so UTF-16 expansion does not artificially block valid saves.
 - Tests cover Unicode byte boundaries, undo/redo branching, history pruning, tag/separator discrimination and blocked saves before/after a resolved save. Previous folder-merge changes passed three-platform CI run 38570516680.
 - The original projectless temporary directory was removed externally; development logs now reside under ignored `target/work`. Packaged-client interaction/installation acceptance is still deferred.
+
+## Read-only archive comparison
+
+- Classic ZIP Stored/Deflate trees can be browsed singly or compared with ZIP/local directory trees, including implicit directories, shared exclusions, descendant aggregation, paged search and UTF-8/UTF-16 member text previews.
+- Central-directory preflight, container fingerprints, decoded size/count/ratio budgets, duplicate/unsafe-path rejection and CRC failures prevent malformed or unverified data from appearing equal. No extraction or source writes occur. ZIP64, multidisk, encrypted and unsupported compression formats are not supported.
+- Tests cover ZIP/directory equality and changes, exclusions, metadata-only uncertainty, rewritten containers, traversal names, duplicates, expansion limits, cancellation, CRC corruption and CLI exit codes. Local tests and both native/WASM Clippy checks passed; builds are recorded with the commit.
+- Previous editor-history changes passed three-platform CI run 38670528131. Packaged-client interaction/install acceptance remains deferred until all planned features are implemented.

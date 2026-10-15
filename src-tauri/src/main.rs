@@ -16,6 +16,7 @@ use tauri_plugin_dialog::DialogExt;
 #[derive(Default)]
 struct Backend {
     snapshot: Mutex<Option<Arc<Snapshot>>>,
+    archive: Mutex<Option<Arc<clear_core::archive::Snapshot>>>,
     table: Mutex<Option<(String, Arc<TableComparison>)>>,
     plan: Mutex<Option<SyncPlan>>,
     editor_backups: Mutex<BTreeMap<String, PathBuf>>,
@@ -319,6 +320,88 @@ async fn query_folder(
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn compare_archives(
+    request: ArchiveRequest,
+    state: State<'_, Backend>,
+) -> Result<OpenedComparison, String> {
+    let _operation_guard = state.begin()?;
+    *state.archive.lock().map_err(|_| "State unavailable")? = None;
+    let cancel = state.cancel.clone();
+    let snapshot = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::archive::compare(&request, &cancel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let view = OpenedComparison {
+        session: snapshot.report.session.clone(),
+        left: snapshot.report.left.clone(),
+        right: snapshot.report.right.clone(),
+        summary: snapshot.report.summary.clone(),
+        warnings: snapshot.report.warnings.clone(),
+        page: snapshot.page(0, "", false).map_err(|e| e.to_string())?,
+    };
+    *state.archive.lock().map_err(|_| "State unavailable")? = Some(Arc::new(snapshot));
+    Ok(view)
+}
+fn archive_snapshot(
+    state: &Backend,
+    session: &str,
+) -> Result<Arc<clear_core::archive::Snapshot>, String> {
+    let snapshot = state
+        .archive
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .clone()
+        .ok_or("Compare archives first")?;
+    if snapshot.report.session != session {
+        return Err("Archive comparison expired".into());
+    }
+    Ok(snapshot)
+}
+#[tauri::command]
+async fn archive_page(
+    session: String,
+    offset: usize,
+    search: String,
+    differences_only: bool,
+    state: State<'_, Backend>,
+) -> Result<Page, String> {
+    let snapshot = archive_snapshot(&state, &session)?;
+    tauri::async_runtime::spawn_blocking(move || snapshot.page(offset, &search, differences_only))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn archive_text_diff(
+    session: String,
+    row_id: String,
+    options: TextOptions,
+    state: State<'_, Backend>,
+) -> Result<TextDiff, String> {
+    let _operation_guard = state.begin()?;
+    let snapshot = archive_snapshot(&state, &session)?;
+    let cancel = state.cancel.clone();
+    tauri::async_runtime::spawn_blocking(move || snapshot.text_diff(&row_id, &options, &cancel))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn pick_archive(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("ZIP", &["zip"])
+            .blocking_pick_file()
+            .map(|p| p.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -787,6 +870,10 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             compare,
+            compare_archives,
+            archive_page,
+            archive_text_diff,
+            pick_archive,
             cancel,
             page,
             query_folder,

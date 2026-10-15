@@ -55,6 +55,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | cfb | 0.14.0 | MIT | [crate](https://crates.io/crates/cfb/0.14.0) |
 | cfg-expr | 0.15.8 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/cfg-expr/0.15.8) |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/cfg-if/1.0.5) |
+| cfg_aliases | 0.2.2 | MIT | [crate](https://crates.io/crates/cfg_aliases/0.2.2) |
 | chrono | 0.4.45 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/chrono/0.4.45) |
 | clap | 4.6.7 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/clap/4.6.7) |
 | clap_builder | 4.6.7 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/clap_builder/4.6.7) |
@@ -251,6 +252,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | ndk-sys | 0.6.0+11769913 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/ndk-sys/0.6.0+11769913) |
 | new_debug_unreachable | 1.0.6 | MIT | [crate](https://crates.io/crates/new_debug_unreachable/1.0.6) |
 | next_tuple | 0.1.0 | MIT | [crate](https://crates.io/crates/next_tuple/0.1.0) |
+| nix | 0.31.3 | MIT | [crate](https://crates.io/crates/nix/0.31.3) |
 | num-conv | 0.2.2 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/num-conv/0.2.2) |
 | num-traits | 0.2.19 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/num-traits/0.2.19) |
 | num_enum | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | [crate](https://crates.io/crates/num_enum/0.7.6) |
@@ -436,6 +438,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | try-lock | 0.2.5 | MIT | [crate](https://crates.io/crates/try-lock/0.2.5) |
 | typed-builder | 0.23.2 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typed-builder/0.23.2) |
 | typed-builder-macro | 0.23.2 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typed-builder-macro/0.23.2) |
+| typed-path | 0.12.3 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typed-path/0.12.3) |
 | typeid | 1.0.3 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typeid/1.0.3) |
 | typenum | 1.20.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typenum/1.20.1) |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | [crate](https://crates.io/crates/unicode-ident/1.0.27) |
@@ -523,6 +526,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | zerotrie | 0.2.5 | Unicode-3.0 | [crate](https://crates.io/crates/zerotrie/0.2.5) |
 | zerovec | 0.11.8 | Unicode-3.0 | [crate](https://crates.io/crates/zerovec/0.11.8) |
 | zerovec-derive | 0.11.6 | Unicode-3.0 | [crate](https://crates.io/crates/zerovec-derive/0.11.6) |
+| zip | 9.0.3 | MIT | [crate](https://crates.io/crates/zip/9.0.3) |
 | zlib-rs | 0.6.8 | Zlib | [crate](https://crates.io/crates/zlib-rs/0.6.8) |
 | zmij | 1.0.23 | MIT | [crate](https://crates.io/crates/zmij/1.0.23) |
 | zune-core | 0.5.3 | MIT OR Apache-2.0 OR Zlib | [crate](https://crates.io/crates/zune-core/0.5.3) |

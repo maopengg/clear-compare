@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-archive-text-diff"
+description = "Enables the archive_text_diff command without any pre-configured scope."
+commands.allow = ["archive_text_diff"]
+
+[[permission]]
+identifier = "deny-archive-text-diff"
+description = "Denies the archive_text_diff command without any pre-configured scope."
+commands.deny = ["archive_text_diff"]

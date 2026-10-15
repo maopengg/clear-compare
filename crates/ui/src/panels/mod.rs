@@ -1,3 +1,4 @@
+pub mod archives;
 pub mod binary;
 pub mod editor;
 pub mod folder_merge;

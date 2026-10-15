@@ -8,9 +8,9 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, persisted view settings and a JSON CLI.
 
-Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archives, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
+Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/snapshots, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
 ## Download
 
@@ -43,6 +43,12 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 ### 会话库
 
 “会话库”可命名保存两侧路径、排除规则、语言、内容校验、搜索、排序、递归范围和文本比较规则。打开会话只加载配置，不触发比较或同步；目录位置回到根范围。更新使用修订校验，归档将配置移到本机会话库的 `trash/` 目录。每份配置最多 64 KiB，库最多 200 个活动会话。最新比较配置会在下次启动时恢复；结果和未保存编辑缓冲区不持久化。
+
+### ZIP 只读比较
+
+“归档比较”支持 ZIP 对 ZIP、ZIP 对目录，右侧留空可浏览单包。可搜索全部成员、分页、导入排除规则并预览文本差异；不解压到磁盘、不更新原包。当前支持经典 ZIP 的 Stored/Deflate，拒绝 ZIP64、多卷、加密、重复/不安全路径及超预算输入；其他压缩算法报告读取错误。符号链接只列出、不跟随。元数据匹配不代表内容一致。
+
+输入上限 256 MiB，最多 50,000 个成员及虚拟目录、16 MiB 中央目录；内容校验限制单成员 128 MiB、总展开内容 1 GiB，并限制异常膨胀比例。文本预览限制 4 MiB，容器或已校验成员发生变化后需要重新比较。嵌套包、写入更新及其他格式尚未实现。
 
 ### 排除规则
 
@@ -86,6 +92,10 @@ cargo build -p clear-cli --release --locked
 ./target/release/clear-compare merge-folders ./base ./left ./right ./merged --journal-dir ./merge-journals
 # Two-way mode uses - as the baseline; choices apply to exact scanned relative paths.
 ./target/release/clear-compare merge-folders - ./left ./right ./merged --journal-dir ./merge-journals --choose sub=right --apply
+
+# Read-only ZIP browse or compare, JSON output.
+./target/release/clear-compare archives ./backup.zip
+./target/release/clear-compare archives ./backup.zip ./folder --exclude '-node_modules/'
 
 # Picture statistics (PNG/JPEG/BMP/WebP), optional channel tolerance.
 ./target/release/clear-compare picture ./left.png ./right.png --tolerance 2

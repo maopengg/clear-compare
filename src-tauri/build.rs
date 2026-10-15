@@ -2,6 +2,10 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "compare",
+            "compare_archives",
+            "archive_page",
+            "archive_text_diff",
+            "pick_archive",
             "cancel",
             "page",
             "query_folder",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-archive-page"
+description = "Enables the archive_page command without any pre-configured scope."
+commands.allow = ["archive_page"]
+
+[[permission]]
+identifier = "deny-archive-page"
+description = "Denies the archive_page command without any pre-configured scope."
+commands.deny = ["archive_page"]

@@ -459,3 +459,11 @@ pub struct FolderMergeResult {
     pub actions: Vec<ActionResult>,
     pub journal: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveRequest {
+    pub left: String,
+    pub right: String,
+    pub exclusions: String,
+    pub content: bool,
+}
