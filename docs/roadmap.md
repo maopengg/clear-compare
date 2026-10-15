@@ -135,3 +135,10 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Tests cover removed original directories, empty/excluded directories, metadata changes, missing entries, refusal of content verification, no-clobber/source containment, cancellation, invalid schemas, forged digest fields, traversal/duplicates/missing ancestors, native-name collisions, symlink non-following and CLI exit codes.
 - Archive changes passed three-platform CI run 38672279805.
 - macOS does not create arbitrary invalid UTF-8 filenames on this volume; the reader test uses a synthetic native-name inventory to check lossless identity independently of host filesystem restrictions. GUI/installer acceptance remains deferred.
+
+## Read-only Git revision comparison
+
+- Local commits, branches and tags resolve to immutable full IDs; trees compare by object identity and executable mode, with shared exclusions, directory aggregation, paged search, bounded blob text diff and CLI exit codes. No checkout, index/worktree writes, lazy fetch, textconv or LFS resolution occurs.
+- Git subprocesses use argument arrays, isolated Git environment, disabled transports/prompts/fsmonitor, bounded stdout/stderr, cancellation and a 15-second deadline. Git must support `--no-lazy-fetch`; the adapter fails explicitly otherwise.
+- Real temporary-repository tests verify commit equality/changes/additions, dirty worktree/index preservation, branch movement after comparison, excluded subtrees, invalid revisions, filenames containing spaces/tabs, oversize text, missing objects without fetching, symlinks, executable-mode changes and CLI return codes. Client GUI/installer acceptance remains deferred.
+- Tree-snapshot changes passed three-platform CI run 38672977224. Git working-tree/index comparison, difftool/mergetool registration and SVN integration remain planned.

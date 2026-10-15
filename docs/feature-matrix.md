@@ -23,7 +23,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F17 Remote filesystems | Planned | FTP/FTPS/SFTP/network adapters |
 | F18 Cloud storage | Planned | WebDAV/S3/Dropbox/OneDrive |
 | F19 Automation | JSON compare and copy-preview/apply CLI | Scripts, reports, scheduled workflows |
-| F20 Version control | Planned | Git/SVN integration |
+| F20 Version control | Read-only local Git commit-tree comparison, pinned revisions, executable-mode differences, paged search, bounded blob text previews and JSON CLI | Working tree/index comparisons, Git diff/merge-tool integration, SVN and traditional interfaces |
 | F21 System integration | Native folder dialog | Drag/drop, file associations, context menus |
 | F22 Platform specifics | Local filesystem only | ACL, registry, device and metadata adapters |
 | F23 Preferences/help | Chinese/English switch and persisted basic settings | Themes, shortcut settings, updater and comprehensive help |

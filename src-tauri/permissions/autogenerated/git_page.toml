@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-git-page"
+description = "Enables the git_page command without any pre-configured scope."
+commands.allow = ["git_page"]
+
+[[permission]]
+identifier = "deny-git-page"
+description = "Denies the git_page command without any pre-configured scope."
+commands.deny = ["git_page"]

@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -56,6 +56,12 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 可浏览快照、比较两个快照，或与当前目录比较。大小/修改时间变化显示为修改；匹配仍是“未验证内容”。不提供编辑、同步、正文预览或恢复操作。最多 200,000 项、64 MiB；Unicode 组件使用可移植路径，非可移植名称保留原生编码并限同系统读取。应用会拒绝损坏、重复、越界或结构不完整的清单。
 
+### Git 修订版本比较
+
+“Git”面板选择本地仓库，输入两个提交、分支或标签（例如 `HEAD~1` / `HEAD`），即可搜索版本树、筛选差异并查看 UTF-8/UTF-16 文本。引用在比较时解析为完整提交 ID，后续分支移动不会切换已经打开的结果。可执行位变化也计为修改；一致使用 Git 对象身份判定，未运行额外的 SHA-256 全树读取。
+
+需要 PATH 中安装支持 `--no-lazy-fetch` 的 Git（本地已验证 Git 2.50.1）；不支持该参数会报错。只读提交对象，不参与工作区/暂存区修改，不检出、提交或下载缺失对象。符号链接不跟随，子模块不展开，Git LFS 比较指针文本。树输出限制 64 MiB、比较最多 200,000 条路径，单条命令限时 15 秒，文本预览限制 4 MiB。Git difftool/mergetool 注册、工作区对照、SVN 和写入集成尚未实现。
+
 ### 排除规则
 
 ```text
@@ -98,6 +104,9 @@ cargo build -p clear-cli --release --locked
 ./target/release/clear-compare merge-folders ./base ./left ./right ./merged --journal-dir ./merge-journals
 # Two-way mode uses - as the baseline; choices apply to exact scanned relative paths.
 ./target/release/clear-compare merge-folders - ./left ./right ./merged --journal-dir ./merge-journals --choose sub=right --apply
+
+# Compare locally available Git commits without checkout or fetching.
+./target/release/clear-compare git-compare ./repository 'HEAD~1' HEAD --exclude '-./docs/'
 
 # Export a content-free inventory to a NEW file outside the source.
 ./target/release/clear-compare snapshot ./folder ./saved.cctree --exclude '-node_modules/'

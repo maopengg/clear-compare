@@ -65,6 +65,7 @@ fn size(entry: Option<&Entry>) -> String {
 
 #[component]
 fn App() -> impl IntoView {
+    let git_visible = RwSignal::new(false);
     let archive_visible = RwSignal::new(false);
     let folder_merge_visible = RwSignal::new(false);
     let folder_merge_preview = RwSignal::new(None::<FolderMergePreview>);
@@ -968,7 +969,7 @@ fn App() -> impl IntoView {
         <main class="workspace">
             <header class="topbar">
                 <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">"0.1 preview"</span></div>
-                <div class="top-actions"><button class="quiet" disabled=move ||busy.get() on:click=move |_|archive_visible.set(!archive_visible.get_untracked())>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
+                <div class="top-actions"><button class="quiet" disabled=move ||busy.get() on:click=move |_|git_visible.set(!git_visible.get_untracked())>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|archive_visible.set(!archive_visible.get_untracked())>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
                 <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
             </header>
             {panels::sessions::panel(english,busy,panels::sessions::Signals{library,session_name,active_library},refresh_library,save_library,open_library,archive_library)}
@@ -983,6 +984,7 @@ fn App() -> impl IntoView {
                 </div>
                 <details class="rules"><summary>{move || tr(english.get(),"排除规则","Exclusion rules")}</summary><p>{move || tr(english.get(),"分号或换行分隔；./ 从根目录匹配，目录以 / 结尾。","Separate with semicolons or newlines; ./ anchors at root, / marks a directory.")}</p><textarea aria-label="Exclusion rules" prop:value=move || exclusions.get() disabled=move || busy.get() on:input=move |ev| {reset();exclusions.set(event_target_value(&ev));}/></details>
             </section>
+            {panels::git::panel(english,busy,git_visible,error,diff,diff_limit)}
             {panels::archives::panel(english,busy,archive_visible,error,diff,diff_limit)}
             {panels::folder_merge::panel(english,busy,panels::folder_merge::Signals{visible:folder_merge_visible,preview:folder_merge_preview,left,right,exclusions,error,message})}
             <Show when=move || !error.get().is_empty()><div class="notice error-notice" role="alert">{move || error.get()}</div></Show>

@@ -342,3 +342,53 @@ fn snapshot_cli_exports_metadata_without_content_and_never_overwrites() {
     assert_eq!(json["summary"]["unverified"], 1);
     assert_eq!(json["summary"]["same"], 0);
 }
+
+#[test]
+fn git_cli_compares_local_commits_and_reports_invalid_revisions() {
+    let t = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        let result = std::process::Command::new("git")
+            .current_dir(t.path())
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "core.autocrlf=false",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    };
+    git(&["init", "-q", "--template="]);
+    fs::write(t.path().join("a"), "first").unwrap();
+    git(&["add", "a"]);
+    git(&["commit", "-qm", "first"]);
+    fs::write(t.path().join("a"), "second").unwrap();
+    git(&["add", "a"]);
+    git(&["commit", "-qm", "second"]);
+    let compare = |a: &str, b: &str| {
+        run(&[
+            "git-compare".as_ref(),
+            t.path().as_os_str(),
+            a.as_ref(),
+            b.as_ref(),
+        ])
+    };
+    assert!(compare("HEAD", "HEAD").status.success());
+    let changed = compare("HEAD~1", "HEAD");
+    assert_eq!(changed.status.code(), Some(1));
+    let data: serde_json::Value = serde_json::from_slice(&changed.stdout).unwrap();
+    assert_eq!(data["summary"]["changed"], 1);
+    assert_eq!(compare("invalid-ref", "HEAD").status.code(), Some(2));
+}

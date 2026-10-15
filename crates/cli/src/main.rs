@@ -22,6 +22,13 @@ enum Command {
         #[arg(long)]
         metadata_only: bool,
     },
+    GitCompare {
+        repository: String,
+        left_revision: String,
+        right_revision: String,
+        #[arg(long, default_value = "")]
+        exclude: String,
+    },
     Snapshot {
         root: String,
         destination: String,
@@ -135,6 +142,35 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
                     right,
                     exclusions: exclude,
                     content: !metadata_only,
+                },
+                &cancel,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&snapshot.report)?);
+            Ok(if snapshot.report.summary.errors > 0 {
+                2
+            } else if snapshot
+                .report
+                .rows
+                .iter()
+                .any(|r| r.status != clear_contracts::Status::Same)
+            {
+                1
+            } else {
+                0
+            })
+        }
+        Command::GitCompare {
+            repository,
+            left_revision,
+            right_revision,
+            exclude,
+        } => {
+            let snapshot = clear_core::git::compare(
+                &clear_contracts::GitCompareRequest {
+                    repository,
+                    left_revision,
+                    right_revision,
+                    exclusions: exclude,
                 },
                 &cancel,
             )?;

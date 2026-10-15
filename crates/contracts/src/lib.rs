@@ -483,3 +483,11 @@ pub struct TreeSnapshotInfo {
     pub entries: usize,
     pub errors: usize,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCompareRequest {
+    pub repository: String,
+    pub left_revision: String,
+    pub right_revision: String,
+    pub exclusions: String,
+}

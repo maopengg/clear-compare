@@ -4,6 +4,7 @@ pub mod binary;
 pub mod compare;
 pub mod editing;
 pub mod folder_merge;
+pub mod git;
 pub mod merge;
 pub mod native_path;
 pub mod picture;

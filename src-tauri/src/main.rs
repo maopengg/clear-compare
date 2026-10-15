@@ -17,6 +17,7 @@ use tauri_plugin_dialog::DialogExt;
 struct Backend {
     snapshot: Mutex<Option<Arc<Snapshot>>>,
     archive: Mutex<Option<Arc<clear_core::archive::Snapshot>>>,
+    git: Mutex<Option<Arc<clear_core::git::Snapshot>>>,
     tree_snapshot: Mutex<Option<Arc<clear_core::tree_snapshot::Snapshot>>>,
     table: Mutex<Option<(String, Arc<TableComparison>)>>,
     plan: Mutex<Option<SyncPlan>>,
@@ -318,6 +319,72 @@ async fn query_folder(
 ) -> Result<FolderPage, String> {
     let snapshot = state.snapshot(&session)?;
     tauri::async_runtime::spawn_blocking(move || clear_core::tree::query(&snapshot, &query, offset))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn compare_git(
+    request: GitCompareRequest,
+    state: State<'_, Backend>,
+) -> Result<OpenedComparison, String> {
+    let _guard = state.begin()?;
+    *state.git.lock().map_err(|_| "State unavailable")? = None;
+    let cancel = state.cancel.clone();
+    let snapshot =
+        tauri::async_runtime::spawn_blocking(move || clear_core::git::compare(&request, &cancel))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+    let view = OpenedComparison {
+        session: snapshot.report.session.clone(),
+        left: snapshot.report.left.clone(),
+        right: snapshot.report.right.clone(),
+        summary: snapshot.report.summary.clone(),
+        warnings: snapshot.report.warnings.clone(),
+        page: snapshot.page(0, "", false).map_err(|e| e.to_string())?,
+    };
+    *state.git.lock().map_err(|_| "State unavailable")? = Some(Arc::new(snapshot));
+    Ok(view)
+}
+fn git_snapshot(state: &Backend, session: &str) -> Result<Arc<clear_core::git::Snapshot>, String> {
+    let snapshot = state
+        .git
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .clone()
+        .ok_or("Compare Git revisions first")?;
+    if snapshot.report.session != session {
+        return Err("Git comparison expired".into());
+    }
+    Ok(snapshot)
+}
+#[tauri::command]
+async fn git_page(
+    session: String,
+    offset: usize,
+    search: String,
+    differences_only: bool,
+    state: State<'_, Backend>,
+) -> Result<Page, String> {
+    let snapshot = git_snapshot(&state, &session)?;
+    tauri::async_runtime::spawn_blocking(move || snapshot.page(offset, &search, differences_only))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn git_text_diff(
+    session: String,
+    row_id: String,
+    options: TextOptions,
+    state: State<'_, Backend>,
+) -> Result<TextDiff, String> {
+    let _guard = state.begin()?;
+    let snapshot = git_snapshot(&state, &session)?;
+    let cancel = state.cancel.clone();
+    tauri::async_runtime::spawn_blocking(move || snapshot.text_diff(&row_id, &options, &cancel))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -957,6 +1024,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             compare,
             compare_archives,
+            compare_git,
+            git_page,
+            git_text_diff,
             capture_tree_snapshot,
             compare_tree_snapshots,
             tree_snapshot_page,
