@@ -196,3 +196,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Reordered identical name sets compare equal under this option; schema additions/removals remain differences, including header-only tables. Missing columns, short-row missing cells and explicit empty strings remain distinct. UI rows/headers share mapped ordering and column paging; CLI exposes the option and schema flag.
 - Focused cases cover reordered/keyed numeric rows, exact-name sensitivity, missing/empty distinctions, malformed schemas, logical limits, mixed HTML/CSV and CLI exit codes. Core/contracts/CLI tests pass locally; UI and native validation are tracked separately from postponed runtime/install acceptance.
 - Previous themes/offline-help changes passed three-platform core/WASM CI run 38683146761.
+
+## Captured Git index sources
+
+- Each Git comparison side can select a commit or captured index. Default requests retain commit behavior. Native formatted ls-files output provides modes, object IDs/sizes and stages; previews reuse pinned blobs without reading working-tree paths. Both index sides share one listing.
+- Unmerged stage groups produce errors, intent-to-add uses indexed empty blobs with explicit warnings, and index display fingerprints identify the listing rather than index-file bytes. Root-scoped exclusions and synthesized directory aggregation use existing contracts.
+- CLI source flags support comparison and HTML/JSON reports. Subdirectory selectors use the complete worktree index; linked worktrees use their own index. Bare indexes reject explicitly. No write-tree, staging, checkout, network, text conversion or source-file writes are introduced.
+- Focused tests cover staged-versus-working bytes, frozen previews after later staging, additions/removals, executable modes, exclusions, intent-to-add, unmerged stages, empty/unborn repositories, split/sparse indexes, linked worktrees, SHA-256 object IDs, submodules and CLI/report exit codes. Final client interaction/install acceptance remains deferred.
+- Preceding named table-column changes passed three-platform core/WASM CI run 38683576053.

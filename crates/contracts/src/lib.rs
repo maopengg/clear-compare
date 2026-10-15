@@ -548,8 +548,20 @@ pub struct TreeSnapshotInfo {
     pub errors: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GitSource {
+    #[default]
+    Commit,
+    Index,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitCompareRequest {
+    #[serde(default)]
+    pub left_source: GitSource,
+    #[serde(default)]
+    pub right_source: GitSource,
     pub repository: String,
     pub left_revision: String,
     pub right_revision: String,

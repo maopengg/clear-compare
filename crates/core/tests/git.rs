@@ -43,6 +43,8 @@ fn fixture() -> tempfile::TempDir {
 }
 fn req(repo: &Path) -> GitCompareRequest {
     GitCompareRequest {
+        left_source: clear_contracts::GitSource::Commit,
+        right_source: clear_contracts::GitSource::Commit,
         repository: repo.display().to_string(),
         left_revision: "HEAD~1".into(),
         right_revision: "HEAD".into(),
@@ -272,4 +274,301 @@ fn linked_worktree_reports_protect_common_object_storage() {
     };
     assert!(clear_core::report::export(&r.report, &request, &roots, &cancel()).is_err());
     assert!(!repo.path().join(".git/report.json").exists());
+}
+
+fn index_request(repo: &Path) -> GitCompareRequest {
+    let mut request = req(repo);
+    request.left_revision = "HEAD".into();
+    request.right_source = clear_contracts::GitSource::Index;
+    request
+}
+#[test]
+fn captured_index_ignores_worktree_bytes_and_pins_staged_objects() {
+    let t = fixture();
+    let repo = t.path();
+    fs::write(repo.join("sub/a.txt"), "staged version\n").unwrap();
+    fs::write(repo.join("added"), "added\n").unwrap();
+    run(repo, &["add", "sub/a.txt", "added"]);
+    run(repo, &["rm", "--cached", "new file.txt"]);
+    fs::write(repo.join("sub/a.txt"), "working only\n").unwrap();
+    fs::write(repo.join("untracked"), "untracked\n").unwrap();
+    let before = fs::read(repo.join(".git/index")).unwrap();
+    let head = fs::read(repo.join(".git/HEAD")).unwrap();
+    let q = index_request(&repo.join("sub"));
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
+    assert_eq!(fs::read(repo.join(".git/HEAD")).unwrap(), head);
+    assert!(!repo.join(".git/index.lock").exists());
+    assert_eq!(
+        fs::read_to_string(repo.join("sub/a.txt")).unwrap(),
+        "working only\n"
+    );
+    assert!(result.report.right.starts_with("Index @ "));
+    let row = |path: &str| result.report.rows.iter().find(|r| r.path == path).unwrap();
+    assert_eq!(row("added").status, Status::RightOnly);
+    assert_eq!(row("new file.txt").status, Status::LeftOnly);
+    assert_eq!(row("sub").status, Status::Changed);
+    assert_eq!(row("sub/a.txt").right.as_ref().unwrap().bytes, "15");
+    assert!(!result.report.rows.iter().any(|r| r.path == "untracked"));
+    run(repo, &["add", "sub/a.txt"]);
+    let diff = result
+        .text_diff(&row("sub/a.txt").id, &TextOptions::default(), &cancel())
+        .unwrap();
+    assert!(
+        diff.lines
+            .iter()
+            .any(|l| l.right_text.as_deref().unwrap_or(&l.text) == "staged version\n")
+    );
+    assert!(!diff.lines.iter().any(|l| {
+        l.text.contains("working only")
+            || l.right_text
+                .as_ref()
+                .is_some_and(|t| t.contains("working only"))
+    }));
+    let refreshed = git::compare(&q, &cancel()).unwrap();
+    assert_ne!(result.report.right, refreshed.report.right);
+    let mut reverse = index_request(repo);
+    reverse.left_source = clear_contracts::GitSource::Index;
+    reverse.right_source = clear_contracts::GitSource::Commit;
+    let reverse = git::compare(&reverse, &cancel()).unwrap();
+    assert_eq!(
+        reverse
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "added")
+            .unwrap()
+            .status,
+        Status::LeftOnly
+    );
+}
+#[test]
+fn empty_and_unborn_index_sources_do_not_require_a_commit() {
+    let t = tempfile::tempdir().unwrap();
+    run(t.path(), &["init", "-q", "--template="]);
+    let mut q = index_request(t.path());
+    q.left_source = clear_contracts::GitSource::Index;
+    q.left_revision = String::new();
+    q.right_revision = "--not-a-revision".into();
+    let empty = git::compare(&q, &cancel()).unwrap();
+    assert!(empty.report.rows.is_empty());
+    assert_eq!(empty.report.left, empty.report.right);
+    assert!(!t.path().join(".git/index").exists());
+    fs::write(t.path().join("first"), "first\n").unwrap();
+    run(t.path(), &["add", "first"]);
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(result.report.summary.same, 1);
+    let row = &result.report.rows[0];
+    assert_eq!(
+        result
+            .text_diff(&row.id, &TextOptions::default(), &cancel())
+            .unwrap()
+            .lines[0]
+            .text,
+        "first\n"
+    );
+}
+#[test]
+fn index_executable_modes_exclusions_and_intent_to_add_are_explicit() {
+    let t = fixture();
+    let repo = t.path();
+    run(repo, &["update-index", "--chmod=+x", "same"]);
+    fs::create_dir(repo.join("hidden")).unwrap();
+    fs::write(repo.join("hidden/item"), "secret\n").unwrap();
+    run(repo, &["add", "hidden/item"]);
+    fs::write(repo.join("intent"), "not staged contents\n").unwrap();
+    run(repo, &["add", "-N", "intent"]);
+    let mut q = index_request(repo);
+    q.exclusions = "-./hidden/".into();
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "same")
+            .unwrap()
+            .status,
+        Status::Changed
+    );
+    assert!(
+        !result
+            .report
+            .rows
+            .iter()
+            .any(|r| r.path.starts_with("hidden"))
+    );
+    let intent = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "intent")
+        .unwrap();
+    assert_eq!(intent.right.as_ref().unwrap().bytes, "0");
+    assert!(
+        result
+            .text_diff(&intent.id, &TextOptions::default(), &cancel())
+            .unwrap()
+            .lines
+            .is_empty()
+    );
+    assert!(
+        result
+            .report
+            .warnings
+            .iter()
+            .any(|w| w.contains("Intent-to-add"))
+    );
+}
+#[test]
+fn unmerged_index_stages_are_errors_instead_of_an_arbitrary_version() {
+    use std::{io::Write, process::Stdio};
+    let t = fixture();
+    let repo = t.path();
+    let base = run(repo, &["rev-parse", "HEAD~1:sub/a.txt"]);
+    let changed = run(repo, &["rev-parse", "HEAD:sub/a.txt"]);
+    let mut child = Command::new("git")
+        .current_dir(repo)
+        .args(["update-index", "--index-info"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(format!("100644 {base} 1\tconflict.txt\n100644 {base} 2\tconflict.txt\n100644 {changed} 3\tconflict.txt\n").as_bytes()).unwrap();
+    assert!(child.wait().unwrap().success());
+    let before = fs::read(repo.join(".git/index")).unwrap();
+    let result = git::compare(&index_request(repo), &cancel()).unwrap();
+    let row = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "conflict.txt")
+        .unwrap();
+    assert_eq!(row.status, Status::Error);
+    assert!(
+        row.right
+            .as_ref()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("1, 2, 3")
+    );
+    assert!(
+        result
+            .text_diff(&row.id, &TextOptions::default(), &cancel())
+            .is_err()
+    );
+    assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
+}
+#[test]
+fn index_selection_uses_the_linked_worktrees_own_index_and_rejects_bare_repos() {
+    let t = fixture();
+    let outer = tempfile::tempdir().unwrap();
+    let linked = outer.path().join("linked");
+    run(
+        t.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            linked.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    fs::write(linked.join("same"), "linked staged\n").unwrap();
+    run(&linked, &["add", "same"]);
+    let primary = fs::read(t.path().join(".git/index")).unwrap();
+    let result = git::compare(&index_request(&linked), &cancel()).unwrap();
+    assert_eq!(result.report.summary.changed, 1);
+    assert_eq!(fs::read(t.path().join(".git/index")).unwrap(), primary);
+    assert_eq!(
+        git::compare(&index_request(t.path()), &cancel())
+            .unwrap()
+            .report
+            .summary
+            .changed,
+        0
+    );
+    let bare = outer.path().join("bare");
+    fs::create_dir(&bare).unwrap();
+    run(&bare, &["init", "--bare", "-q", "--template="]);
+    assert!(git::compare(&index_request(&bare), &cancel()).is_err());
+}
+#[test]
+fn sha256_index_object_ids_and_submodule_references_are_handled() {
+    let t = tempfile::tempdir().unwrap();
+    let repo = t.path();
+    run(
+        repo,
+        &["init", "-q", "--template=", "--object-format=sha256"],
+    );
+    fs::write(repo.join("a"), "a\n").unwrap();
+    run(repo, &["add", "a"]);
+    run(repo, &["commit", "-qm", "first"]);
+    let mut q = index_request(repo);
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(result.report.summary.same, 1);
+    let head = run(repo, &["rev-parse", "HEAD"]);
+    assert_eq!(head.len(), 64);
+    run(
+        repo,
+        &[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("160000,{head},module"),
+        ],
+    );
+    let result = git::compare(&q, &cancel()).unwrap();
+    let module = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "module")
+        .unwrap();
+    assert_eq!(module.status, Status::Error);
+    q.left_source = clear_contracts::GitSource::Index;
+    assert_eq!(
+        git::compare(&q, &cancel()).unwrap().report.summary.errors,
+        1
+    );
+}
+
+#[test]
+fn split_and_sparse_indexes_are_read_through_git_without_rewriting_them() {
+    let t = fixture();
+    let repo = t.path();
+    fs::create_dir(repo.join("outside")).unwrap();
+    fs::write(repo.join("outside/file"), "outside\n").unwrap();
+    run(repo, &["add", "outside/file"]);
+    run(repo, &["commit", "-qm", "outside"]);
+    run(repo, &["update-index", "--split-index"]);
+    let before = fs::read(repo.join(".git/index")).unwrap();
+    let result = git::compare(&index_request(repo), &cancel()).unwrap();
+    assert_eq!(result.report.summary.changed, 0);
+    assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
+    run(repo, &["update-index", "--no-split-index"]);
+    run(
+        repo,
+        &["sparse-checkout", "init", "--cone", "--sparse-index"],
+    );
+    run(repo, &["sparse-checkout", "set", "sub"]);
+    assert!(!repo.join("outside/file").exists());
+    let before = fs::read(repo.join(".git/index")).unwrap();
+    let result = git::compare(&index_request(repo), &cancel()).unwrap();
+    assert_eq!(result.report.summary.changed, 0);
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "outside/file")
+            .unwrap()
+            .status,
+        Status::Same
+    );
+    assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
+    assert!(!repo.join("outside/file").exists());
 }

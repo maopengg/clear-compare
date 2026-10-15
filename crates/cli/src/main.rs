@@ -73,6 +73,12 @@ enum Command {
         format: OutputFormat,
         #[arg(long)]
         repository: Option<String>,
+        /// Use captured index records for the left Git source; ignores its revision argument.
+        #[arg(long)]
+        left_index: bool,
+        /// Use captured index records for the right Git source; ignores its revision argument.
+        #[arg(long)]
+        right_index: bool,
         #[arg(long, default_value = "")]
         exclude: String,
         #[arg(long)]
@@ -92,8 +98,16 @@ enum Command {
     },
     GitCompare {
         repository: String,
+        #[arg(default_value = "HEAD")]
         left_revision: String,
+        #[arg(default_value = "HEAD")]
         right_revision: String,
+        /// Captured index source; overrides left_revision.
+        #[arg(long)]
+        left_index: bool,
+        /// Captured index source; overrides right_revision.
+        #[arg(long)]
+        right_index: bool,
         #[arg(long, default_value = "")]
         exclude: String,
     },
@@ -245,15 +259,19 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             source,
             format,
             repository,
+            left_index,
+            right_index,
             exclude,
             metadata_only,
             differences_only,
             english,
         } => {
             use clear_contracts::{ReportFormat, ReportSource};
-            if repository.is_some() && !matches!(source, ReportKind::Git) {
+            if (repository.is_some() || left_index || right_index)
+                && !matches!(source, ReportKind::Git)
+            {
                 return Err(clear_core::Error::Invalid(
-                    "--repository only applies to --source git".into(),
+                    "--repository/--left-index/--right-index only apply to --source git".into(),
                 ));
             }
 
@@ -309,6 +327,16 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
                     })?;
                     let snapshot = clear_core::git::compare(
                         &clear_contracts::GitCompareRequest {
+                            left_source: if left_index {
+                                clear_contracts::GitSource::Index
+                            } else {
+                                clear_contracts::GitSource::Commit
+                            },
+                            right_source: if right_index {
+                                clear_contracts::GitSource::Index
+                            } else {
+                                clear_contracts::GitSource::Commit
+                            },
                             repository,
                             left_revision: left,
                             right_revision: right,
@@ -383,10 +411,22 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             repository,
             left_revision,
             right_revision,
+            left_index,
+            right_index,
             exclude,
         } => {
             let snapshot = clear_core::git::compare(
                 &clear_contracts::GitCompareRequest {
+                    left_source: if left_index {
+                        clear_contracts::GitSource::Index
+                    } else {
+                        clear_contracts::GitSource::Commit
+                    },
+                    right_source: if right_index {
+                        clear_contracts::GitSource::Index
+                    } else {
+                        clear_contracts::GitSource::Commit
+                    },
                     repository,
                     left_revision,
                     right_revision,

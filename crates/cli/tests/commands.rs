@@ -666,3 +666,94 @@ fn named_table_columns_make_reordering_equal_and_schema_changes_visible() {
     ]);
     assert_eq!(invalid.status.code(), Some(2));
 }
+
+#[test]
+fn git_index_cli_and_reports_capture_staged_versions_without_writes() {
+    let repo = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        let r = Command::new("git")
+            .current_dir(repo.path())
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "core.autocrlf=false",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+    };
+    git(&["init", "-q", "--template="]);
+    fs::write(repo.path().join("a"), "original\n").unwrap();
+    git(&["add", "a"]);
+    git(&["commit", "-qm", "first"]);
+    fs::write(repo.path().join("a"), "staged\n").unwrap();
+    git(&["add", "a"]);
+    fs::write(repo.path().join("a"), "working only\n").unwrap();
+    let before = fs::read(repo.path().join(".git/index")).unwrap();
+    let result = run(&[
+        "git-compare".as_ref(),
+        repo.path().as_os_str(),
+        "--right-index".as_ref(),
+    ]);
+    assert_eq!(
+        result.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(json["summary"]["changed"], 1);
+    assert_eq!(json["rows"][0]["right"]["bytes"], "7");
+    let same = run(&[
+        "git-compare".as_ref(),
+        repo.path().as_os_str(),
+        "--left-index".as_ref(),
+        "--right-index".as_ref(),
+    ]);
+    assert!(same.status.success());
+    let file = dest.path().join("index.json");
+    let result = run(&[
+        "report".as_ref(),
+        "HEAD".as_ref(),
+        "ignored".as_ref(),
+        file.as_os_str(),
+        "--source".as_ref(),
+        "git".as_ref(),
+        "--repository".as_ref(),
+        repo.path().as_os_str(),
+        "--right-index".as_ref(),
+        "--format".as_ref(),
+        "json".as_ref(),
+    ]);
+    assert_eq!(
+        result.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+    assert!(json["right"].as_str().unwrap().starts_with("Index @ "));
+    assert_eq!(json["summary"]["changed"], 1);
+    let invalid = run(&[
+        "report".as_ref(),
+        repo.path().as_os_str(),
+        repo.path().as_os_str(),
+        dest.path().join("bad.json").as_os_str(),
+        "--right-index".as_ref(),
+    ]);
+    assert_eq!(invalid.status.code(), Some(2));
+    assert_eq!(fs::read(repo.path().join(".git/index")).unwrap(), before);
+    assert_eq!(
+        fs::read_to_string(repo.path().join("a")).unwrap(),
+        "working only\n"
+    );
+}

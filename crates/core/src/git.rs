@@ -1,4 +1,4 @@
-//! Read-only comparison of locally available Git commit trees through bounded plumbing.
+//! Read-only comparison of pinned commit trees and captured index records through bounded Git plumbing.
 use crate::{
     Error, Result,
     compare::{canonical_root, check_cancel},
@@ -8,6 +8,7 @@ use crate::{
 use clear_contracts::{
     Comparison, Entry, GitCompareRequest, Kind, Page, Row, Status, Summary, TextDiff, TextOptions,
 };
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -282,6 +283,160 @@ fn load(
     }
     Ok(entries)
 }
+fn load_index(
+    repo: &Path,
+    rules: &Rules,
+    cancel: &AtomicBool,
+) -> Result<(String, BTreeMap<PathBuf, GitEntry>)> {
+    let output = command(
+        repo,
+        &[
+            "ls-files",
+            "--cached",
+            "--full-name",
+            "-z",
+            "--format=%(objectmode) %(objecttype) %(objectname) %(objectsize) %(stage)%x09%(path)",
+            "--",
+        ],
+        MAX_LIST,
+        cancel,
+    )?;
+    if !output.is_empty() && output.last() != Some(&0) {
+        return Err(Error::Invalid("Truncated Git index response".into()));
+    }
+    let identity = format!("Index @ {:x}", Sha256::digest(&output));
+    let mut paths = BTreeMap::<PathBuf, BTreeMap<u8, GitEntry>>::new();
+    let mut records = 0;
+    for record in output.split(|b| *b == 0).filter(|r| !r.is_empty()) {
+        check_cancel(cancel)?;
+        records += 1;
+        if records > MAX_ENTRIES * 3 {
+            return Err(Error::Invalid(
+                "Git index exceeds 600000 stage records".into(),
+            ));
+        }
+        let tab = record
+            .iter()
+            .position(|b| *b == b'\t')
+            .ok_or_else(|| Error::Invalid("Malformed Git index record".into()))?;
+        let header = std::str::from_utf8(&record[..tab])
+            .map_err(|_| Error::Invalid("Invalid Git index metadata".into()))?
+            .split_ascii_whitespace()
+            .collect::<Vec<_>>();
+        if header.len() != 5 || !valid_oid(header[2]) {
+            return Err(Error::Invalid("Invalid Git index object metadata".into()));
+        }
+        let kind = match (header[0], header[1]) {
+            ("100644" | "100755", "blob") => Kind::File,
+            ("120000", "blob") => Kind::Link,
+            ("160000", "commit") => Kind::Other,
+            _ => {
+                return Err(Error::Invalid(
+                    "Unsupported or unexpanded sparse Git index mode".into(),
+                ));
+            }
+        };
+        let path = path_from_bytes(&record[tab + 1..])?;
+        if rules.excludes(&path, false) {
+            continue;
+        }
+        let stage = header[4]
+            .parse::<u8>()
+            .map_err(|_| Error::Invalid("Invalid Git index stage".into()))?;
+        if stage > 3 {
+            return Err(Error::Invalid("Unsupported Git index stage".into()));
+        }
+        let size = if kind == Kind::Other && header[3] == "-" {
+            0
+        } else {
+            header[3]
+                .parse::<u64>()
+                .map_err(|_| Error::Invalid("Invalid Git index object size".into()))?
+        };
+        let error =
+            (kind == Kind::Other).then(|| "Git submodule references are not expanded".into());
+        let entry = GitEntry {
+            oid: header[2].into(),
+            mode: header[0].into(),
+            entry: Entry {
+                kind,
+                bytes: size.to_string(),
+                modified_ms: None,
+                digest: None,
+                error,
+            },
+        };
+        if paths
+            .entry(path)
+            .or_default()
+            .insert(stage, entry)
+            .is_some()
+        {
+            return Err(Error::Invalid("Duplicate Git index stage".into()));
+        }
+        if paths.len() > MAX_ENTRIES {
+            return Err(Error::Invalid("Git index exceeds 200000 paths".into()));
+        }
+    }
+    let mut entries = BTreeMap::new();
+    for (path, mut stages) in paths {
+        check_cancel(cancel)?;
+        let entry = if let Some(entry) = stages.remove(&0) {
+            if !stages.is_empty() {
+                return Err(Error::Invalid(
+                    "Git index mixes merged and unmerged stages".into(),
+                ));
+            }
+            entry
+        } else {
+            let labels = stages
+                .keys()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut entry = stages
+                .into_values()
+                .next()
+                .ok_or_else(|| Error::Invalid("Empty index stage group".into()))?;
+            entry.entry.kind = Kind::Other;
+            entry.entry.error = Some(format!(
+                "Unmerged Git index path (stages {labels}); resolve the conflict before previewing"
+            ));
+            entry
+        };
+        entries.insert(path, entry);
+    }
+    let files = entries.keys().cloned().collect::<Vec<_>>();
+    for path in files {
+        for parent in path
+            .ancestors()
+            .skip(1)
+            .filter(|p| !p.as_os_str().is_empty())
+        {
+            check_cancel(cancel)?;
+            entries
+                .entry(parent.to_owned())
+                .or_insert_with(|| GitEntry {
+                    oid: String::new(),
+                    mode: "040000".into(),
+                    entry: Entry {
+                        kind: Kind::Directory,
+                        bytes: "0".into(),
+                        modified_ms: None,
+                        digest: None,
+                        error: None,
+                    },
+                });
+            if entries.len() > MAX_ENTRIES {
+                return Err(Error::Invalid(
+                    "Git index with directories exceeds 200000 entries".into(),
+                ));
+            }
+        }
+    }
+    Ok((identity, entries))
+}
+
 fn status(a: Option<&GitEntry>, b: Option<&GitEntry>) -> Status {
     let ordinary = crate::archive::status(a.map(|e| &e.entry), b.map(|e| &e.entry));
     if matches!(
@@ -312,24 +467,57 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
         return Err(Error::Invalid("Choose a real repository directory".into()));
     }
     let rules = Rules::parse(&request.exclusions)?;
-    let left = resolve(&repo, &request.left_revision, cancel)?;
-    let right = resolve(&repo, &request.right_revision, cancel)?;
+
     let git_dir = directory(&repo, "--absolute-git-dir", cancel)?;
     let bare = command(&repo, &["rev-parse", "--is-bare-repository"], 32, cancel)?;
     let common_dir = directory(&repo, "--git-common-dir", cancel)?;
     let mut report_roots = vec![git_dir];
+    let mut worktree = None;
     if !report_roots.contains(&common_dir) {
         report_roots.push(common_dir);
     }
     if bare == b"false\n" || bare == b"false\r\n" {
-        report_roots.push(directory(&repo, "--show-toplevel", cancel)?);
+        let root = directory(&repo, "--show-toplevel", cancel)?;
+        worktree = Some(root.clone());
+        report_roots.push(root);
     } else if bare != b"true\n" && bare != b"true\r\n" {
         return Err(Error::Invalid(
             "Invalid Git repository classification".into(),
         ));
     }
-    let l = load(&repo, &left, &rules, cancel)?;
-    let r = load(&repo, &right, &rules, cancel)?;
+    let index = if request.left_source == clear_contracts::GitSource::Index
+        || request.right_source == clear_contracts::GitSource::Index
+    {
+        Some(load_index(
+            worktree.as_deref().ok_or_else(|| {
+                Error::Invalid("Index comparison requires a non-bare worktree".into())
+            })?,
+            &rules,
+            cancel,
+        )?)
+    } else {
+        None
+    };
+    let has_index = index.is_some();
+    let source = |mode: clear_contracts::GitSource,
+                  revision: &str|
+     -> Result<(String, BTreeMap<PathBuf, GitEntry>)> {
+        match mode {
+            clear_contracts::GitSource::Commit => {
+                let oid = resolve(&repo, revision, cancel)?;
+                Ok((
+                    format!("{revision} @ {oid}"),
+                    load(&repo, &oid, &rules, cancel)?,
+                ))
+            }
+            clear_contracts::GitSource::Index => index
+                .clone()
+                .ok_or_else(|| Error::Invalid("Index source unavailable".into())),
+        }
+    };
+    let (left, l) = source(request.left_source, &request.left_revision)?;
+    let (right, r) = source(request.right_source, &request.right_revision)?;
+    drop(index);
     let all = l.keys().chain(r.keys()).cloned().collect::<BTreeSet<_>>();
     if all.len() > MAX_ENTRIES {
         return Err(Error::Invalid("Git comparison exceeds 200000 paths".into()));
@@ -371,7 +559,27 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
         blobs.insert(id, (a, b));
     }
     tree::aggregate(&mut rows, &paths);
-    Ok(Snapshot{report_roots,repo,blobs,report:Comparison{policy:Some(clear_contracts::ComparisonPolicy{exclusions:request.exclusions.clone(),verification:clear_contracts::VerificationBasis::GitObjectIdentity}),session:unique_id(),left:format!("{} @ {}",request.left_revision,left),right:format!("{} @ {}",request.right_revision,right),summary,rows,warnings:vec!["Read-only committed Git objects; equality uses Git object identity, not timestamps. Executable-mode changes count as changes. Links are not followed, submodules are not expanded, and LFS pointers are not dereferenced. Working tree/index changes are not included.".into()]}})
+    let mut warnings=vec!["Read-only Git objects; equality uses object identity, not timestamps. Executable-mode changes count as changes. Links are not followed, submodules are not expanded, and LFS pointers are not dereferenced. Working-tree bytes and untracked files are not included.".into()];
+    if has_index {
+        warnings.push("Index records are captured once and pinned to object IDs; the displayed SHA-256 identifies the listing, not the index file. Unmerged stages are errors. Intent-to-add records use their indexed empty blob, not working-tree contents. Later staging changes require a new comparison.".into());
+    }
+    Ok(Snapshot {
+        report_roots,
+        repo,
+        blobs,
+        report: Comparison {
+            policy: Some(clear_contracts::ComparisonPolicy {
+                exclusions: request.exclusions.clone(),
+                verification: clear_contracts::VerificationBasis::GitObjectIdentity,
+            }),
+            session: unique_id(),
+            left,
+            right,
+            summary,
+            rows,
+            warnings,
+        },
+    })
 }
 impl Snapshot {
     pub fn report_roots(&self) -> Vec<PathBuf> {
