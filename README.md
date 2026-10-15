@@ -123,6 +123,12 @@ Packages are under `target/release/bundle/`. There is no npm build pipeline: Tru
 trunk --no-color build
 ```
 
+## Help and presentation
+
+The top-bar Help / theme button opens searchable offline guidance in Chinese or English for current workflows, constraints, backups/recovery and keyboard shortcuts. Choose System, Light or Dark; System follows the operating system's color preference, including changes while the app is open. Themes use semantic colors across comparison/editor/dialog panels. Reduced-motion behavior follows the OS preference.
+
+Theme selection is stored in this client's WebView local storage, separately from native named sessions. It stores only a version number and theme, with no paths or compared contents. A storage/validation failure falls back to System and shows a message in Help; changing the theme explicitly retries persistence. Session language behavior remains unchanged. Custom key bindings and an updater are still planned. Packaged-client display and interaction acceptance remains deferred until feature implementation is complete.
+
 ## CLI
 
 ```sh

@@ -1,4 +1,5 @@
 mod panels;
+mod preferences;
 use clear_contracts::*;
 use leptos::{prelude::*, task::spawn_local};
 use serde::{Serialize, de::DeserializeOwned};
@@ -73,6 +74,10 @@ fn App() -> impl IntoView {
     let session_name = RwSignal::new(String::new());
     let active_library = RwSignal::new(None::<(String, String)>);
     let english = RwSignal::new(false);
+    let help_visible = RwSignal::new(false);
+    let stored_theme = preferences::load();
+    let theme_error = RwSignal::new(stored_theme.as_ref().err().cloned().unwrap_or_default());
+    let theme = RwSignal::new(stored_theme.unwrap_or_default());
     let left = RwSignal::new(String::new());
     let right = RwSignal::new(String::new());
     let exclusions = RwSignal::new("-./.git/;-node_modules/;-__pycache__/;-.DS_Store".to_string());
@@ -1081,12 +1086,13 @@ fn App() -> impl IntoView {
     };
 
     view! {
-        <main class="workspace">
+        <main class="workspace" data-theme=move ||theme.get().value()>
             <header class="topbar">
                 <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">"0.1 preview"</span></div>
-                <div class="top-actions"><button class="quiet" disabled=move ||busy.get() on:click=move |_|git_visible.set(!git_visible.get_untracked())>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|archive_visible.set(!archive_visible.get_untracked())>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
+                <div class="top-actions"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|git_visible.set(!git_visible.get_untracked())>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|archive_visible.set(!archive_visible.get_untracked())>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
                 <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
             </header>
+            {panels::help::panel(english,help_visible,theme,theme_error)}
             {panels::sessions::panel(english,busy,panels::sessions::Signals{library,session_name,active_library},refresh_library,save_library,open_library,archive_library)}
             <section class="path-section" aria-label="Comparison directories">
                 <div class="path-pair">

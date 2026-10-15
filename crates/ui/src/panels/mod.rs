@@ -13,3 +13,5 @@ pub mod table;
 pub mod text;
 
 pub mod reports;
+
+pub mod help;

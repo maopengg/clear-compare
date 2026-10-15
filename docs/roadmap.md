@@ -180,3 +180,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Native reads reject nonregular/link inputs and observed metadata changes; these are bounded live reads, not immutable content snapshots. UI range labels and CLI next_offset distinguish an empty batch from a completed search. CLI hex exit 0 means a successful page read, not whole-file equality.
 - Tests cover exhaustive small binary inputs against a naive matcher with multiple scan windows/result limits, read-block boundaries, premature EOF, cancellation, large offsets, byte differences, stale metadata, missing sides, links, encodings and process-level CLI semantics.
 - Previous static HTML table changes passed three-platform core/WASM CI run 38681551239. Packaged-client interaction and installation acceptance remains deferred.
+
+## Presentation themes and offline workflow help
+
+- Added per-client System/Light/Dark themes using shared semantic colors. System responds through prefers-color-scheme; theme choice uses a bounded versioned WebView storage record with explicit failure feedback. Presentation records contain no paths or compared contents.
+- Added searchable Chinese/English offline help covering existing folder/rule, copy/recovery, text/editor/merge, table, binary, picture, archive/snapshot/Git, session/report and keyboard workflows. Help identifies unsupported functions and the preview status.
+- Top-bar actions wrap instead of assuming one fixed-height row. Native semantic details/summary controls keep help topics keyboard-operable without a modal focus trap. Primary hover styling now uses semantic colors in both themes.
+- Calculated dark-theme foreground/background contrast exceeds 4.5:1 for normal/muted text, selected rows, primary buttons and green/amber/red status labels. This calculation is not a formal accessibility or WebView runtime acceptance claim; packaged-client visual/interaction acceptance stays deferred.
+- Preceding binary changes passed three-platform core/WASM CI run 38682764125.

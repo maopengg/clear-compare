@@ -26,6 +26,6 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F20 Version control | Read-only local Git commit-tree comparison, pinned revisions, executable-mode differences, paged search, bounded blob text previews and JSON CLI | Working tree/index comparisons, Git diff/merge-tool integration, SVN and traditional interfaces |
 | F21 System integration | Native folder dialog | Drag/drop, file associations, context menus |
 | F22 Platform specifics | Local filesystem only | ACL, registry, device and metadata adapters |
-| F23 Preferences/help | Chinese/English switch and persisted basic settings | Themes, shortcut settings, updater and comprehensive help |
+| F23 Preferences/help | Chinese/English switch, persisted basic settings, per-client system/light/dark themes and searchable bilingual offline workflow/shortcut help | Custom shortcuts, updater and comprehensive integration documentation |
 
 The long-term project remains the complete plan, not only this preview. A green build does not establish full feature parity or three-platform runtime validation.
