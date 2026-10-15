@@ -19,9 +19,22 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+mod worktree;
 const MAX_LIST: u64 = 64 * 1024 * 1024;
 const MAX_ENTRIES: usize = 200000;
 fn command(repo: &Path, args: &[&str], limit: u64, cancel: &AtomicBool) -> Result<Vec<u8>> {
+    run_command(repo, args, limit, cancel, false)
+}
+fn strict_command(repo: &Path, args: &[&str], limit: u64, cancel: &AtomicBool) -> Result<Vec<u8>> {
+    run_command(repo, args, limit, cancel, true)
+}
+fn run_command(
+    repo: &Path,
+    args: &[&str],
+    limit: u64,
+    cancel: &AtomicBool,
+    strict: bool,
+) -> Result<Vec<u8>> {
     check_cancel(cancel)?;
     let mut cmd = Command::new("git");
     // Do not inherit repository redirection, trace destinations or caller-supplied config.
@@ -38,6 +51,8 @@ fn command(repo: &Path, args: &[&str], limit: u64, cancel: &AtomicBool) -> Resul
             "--no-lazy-fetch",
             "-c",
             "core.fsmonitor=false",
+            "-c",
+            "advice.sparseIndexExpanded=false",
             "-c",
             "protocol.allow=never",
         ])
@@ -109,7 +124,7 @@ fn command(repo: &Path, args: &[&str], limit: u64, cancel: &AtomicBool) -> Resul
             "Git output exceeds the configured limit".into(),
         ));
     }
-    if !status.success() {
+    if !status.success() || strict && !errors.is_empty() {
         return Err(Error::Invalid(format!(
             "Git failed: {}",
             String::from_utf8_lossy(&errors)
@@ -173,6 +188,7 @@ fn directory(repo: &Path, argument: &str, cancel: &AtomicBool) -> Result<PathBuf
 }
 #[derive(Clone)]
 struct GitEntry {
+    working: Option<worktree::FileState>,
     oid: String,
     mode: String,
     entry: Entry,
@@ -271,6 +287,7 @@ fn load(
             .insert(
                 relative,
                 GitEntry {
+                    working: None,
                     oid: header[2].into(),
                     mode: header[0].into(),
                     entry,
@@ -356,6 +373,7 @@ fn load_index(
         let error =
             (kind == Kind::Other).then(|| "Git submodule references are not expanded".into());
         let entry = GitEntry {
+            working: None,
             oid: header[2].into(),
             mode: header[0].into(),
             entry: Entry {
@@ -417,6 +435,7 @@ fn load_index(
             entries
                 .entry(parent.to_owned())
                 .or_insert_with(|| GitEntry {
+                    working: None,
                     oid: String::new(),
                     mode: "040000".into(),
                     entry: Entry {
@@ -447,6 +466,11 @@ fn status(a: Option<&GitEntry>, b: Option<&GitEntry>) -> Status {
     }
     match (a, b) {
         (Some(a), Some(_)) if a.entry.kind == Kind::Directory => Status::Same,
+        (Some(a), Some(b))
+            if a.entry.kind == Kind::Link && (a.oid.is_empty() || b.oid.is_empty()) =>
+        {
+            Status::MetadataMatch
+        }
         (Some(a), Some(b)) if a.oid != b.oid || a.mode != b.mode => Status::Changed,
         (Some(a), Some(_)) if a.entry.kind == Kind::File => Status::Same,
         _ => Status::MetadataMatch,
@@ -456,6 +480,7 @@ pub struct Snapshot {
     report_roots: Vec<PathBuf>,
     pub report: Comparison,
     repo: PathBuf,
+    worktree: Option<PathBuf>,
     blobs: BTreeMap<String, (Option<GitEntry>, Option<GitEntry>)>,
 }
 pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snapshot> {
@@ -467,6 +492,13 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
         return Err(Error::Invalid("Choose a real repository directory".into()));
     }
     let rules = Rules::parse(&request.exclusions)?;
+    let has_worktree = request.left_source == clear_contracts::GitSource::WorkingTree
+        || request.right_source == clear_contracts::GitSource::WorkingTree;
+    if request.include_untracked && !has_worktree {
+        return Err(Error::Invalid(
+            "Untracked paths require a working-tree source".into(),
+        ));
+    }
 
     let git_dir = directory(&repo, "--absolute-git-dir", cancel)?;
     let bare = command(&repo, &["rev-parse", "--is-bare-repository"], 32, cancel)?;
@@ -498,6 +530,18 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
     } else {
         None
     };
+    let working = if has_worktree {
+        Some(worktree::load(
+            worktree.as_deref().ok_or_else(|| {
+                Error::Invalid("Working-tree comparison requires a non-bare worktree".into())
+            })?,
+            &rules,
+            request.include_untracked,
+            cancel,
+        )?)
+    } else {
+        None
+    };
     let has_index = index.is_some();
     let source = |mode: clear_contracts::GitSource,
                   revision: &str|
@@ -513,11 +557,15 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
             clear_contracts::GitSource::Index => index
                 .clone()
                 .ok_or_else(|| Error::Invalid("Index source unavailable".into())),
+            clear_contracts::GitSource::WorkingTree => working
+                .clone()
+                .ok_or_else(|| Error::Invalid("Working-tree source unavailable".into())),
         }
     };
     let (left, l) = source(request.left_source, &request.left_revision)?;
     let (right, r) = source(request.right_source, &request.right_revision)?;
     drop(index);
+    drop(working);
     let all = l.keys().chain(r.keys()).cloned().collect::<BTreeSet<_>>();
     if all.len() > MAX_ENTRIES {
         return Err(Error::Invalid("Git comparison exceeds 200000 paths".into()));
@@ -559,13 +607,17 @@ pub fn compare(request: &GitCompareRequest, cancel: &AtomicBool) -> Result<Snaps
         blobs.insert(id, (a, b));
     }
     tree::aggregate(&mut rows, &paths);
-    let mut warnings=vec!["Read-only Git objects; equality uses object identity, not timestamps. Executable-mode changes count as changes. Links are not followed, submodules are not expanded, and LFS pointers are not dereferenced. Working-tree bytes and untracked files are not included.".into()];
+    let mut warnings=vec!["Read-only Git objects; equality uses object identity, not timestamps. Executable-mode changes count as changes. Links are not followed, submodules are not expanded, and LFS pointers are not dereferenced. Untracked inclusion is explicit for working-tree sources.".into()];
     if has_index {
         warnings.push("Index records are captured once and pinned to object IDs; the displayed SHA-256 identifies the listing, not the index file. Unmerged stages are errors. Intent-to-add records use their indexed empty blob, not working-tree contents. Later staging changes require a new comparison.".into());
+    }
+    if has_worktree {
+        warnings.push("Working-tree files are streamed and hashed as raw Git blobs, without clean/smudge/EOL filters. This is a physical file scan, not a point-in-time snapshot; sparse/skip-worktree missing paths remain absent. Text previews verify the captured content and metadata. Ignored untracked paths are excluded; unmerged index stages do not replace working-tree bytes.".into());
     }
     Ok(Snapshot {
         report_roots,
         repo,
+        worktree,
         blobs,
         report: Comparison {
             policy: Some(clear_contracts::ComparisonPolicy {
@@ -601,12 +653,23 @@ impl Snapshot {
         {
             return Err(Error::Invalid("Git text preview exceeds 4 MiB".into()));
         }
-        let bytes = command(
-            &self.repo,
-            &["cat-file", "blob", &entry.oid],
-            crate::editing::MAX_DOCUMENT_BYTES as u64,
-            cancel,
-        )?;
+        let bytes = if let Some(state) = &entry.working {
+            worktree::preview(
+                self.worktree
+                    .as_deref()
+                    .ok_or_else(|| Error::Invalid("Working-tree root unavailable".into()))?,
+                state,
+                entry,
+                cancel,
+            )?
+        } else {
+            command(
+                &self.repo,
+                &["cat-file", "blob", &entry.oid],
+                crate::editing::MAX_DOCUMENT_BYTES as u64,
+                cancel,
+            )?
+        };
         if bytes.len().to_string() != entry.entry.bytes {
             return Err(Error::Invalid(
                 "Git blob size changed or object is corrupt".into(),

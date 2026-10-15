@@ -554,10 +554,14 @@ pub enum GitSource {
     #[default]
     Commit,
     Index,
+    WorkingTree,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitCompareRequest {
+    /// Include nonignored untracked paths only when a working-tree source is selected.
+    #[serde(default)]
+    pub include_untracked: bool,
     #[serde(default)]
     pub left_source: GitSource,
     #[serde(default)]

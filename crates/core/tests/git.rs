@@ -43,6 +43,7 @@ fn fixture() -> tempfile::TempDir {
 }
 fn req(repo: &Path) -> GitCompareRequest {
     GitCompareRequest {
+        include_untracked: false,
         left_source: clear_contracts::GitSource::Commit,
         right_source: clear_contracts::GitSource::Commit,
         repository: repo.display().to_string(),
@@ -571,4 +572,459 @@ fn split_and_sparse_indexes_are_read_through_git_without_rewriting_them() {
     );
     assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
     assert!(!repo.join("outside/file").exists());
+}
+
+fn working_request(repo: &Path) -> GitCompareRequest {
+    let mut q = index_request(repo);
+    q.right_source = clear_contracts::GitSource::WorkingTree;
+    q
+}
+#[test]
+fn working_tree_compares_raw_contents_deletions_and_explicit_untracked_scope_without_writes() {
+    let t = fixture();
+    let repo = t.path();
+    fs::write(repo.join("sub/a.txt"), "staged\n").unwrap();
+    run(repo, &["add", "sub/a.txt"]);
+    fs::write(repo.join("sub/a.txt"), "working\n").unwrap();
+    fs::remove_file(repo.join("new file.txt")).unwrap();
+    fs::write(repo.join("untracked"), "untracked\n").unwrap();
+    fs::write(repo.join("ignored"), "ignored\n").unwrap();
+    fs::write(repo.join(".gitignore"), "ignored\nsame\n").unwrap();
+    let before = fs::read(repo.join(".git/index")).unwrap();
+    let mut q = working_request(&repo.join("sub"));
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
+    assert!(!repo.join(".git/index.lock").exists());
+    assert!(result.report.right.starts_with("Working tree"));
+    let row = |name: &str| result.report.rows.iter().find(|r| r.path == name).unwrap();
+    assert_eq!(row("new file.txt").status, Status::LeftOnly);
+    assert_eq!(row("same").status, Status::Same); // Tracked files stay included despite ignore rules.
+    assert_eq!(row("sub/a.txt").status, Status::Changed);
+    assert!(row("sub/a.txt").right.as_ref().unwrap().digest.is_some());
+    assert!(
+        !result
+            .report
+            .rows
+            .iter()
+            .any(|r| r.path == "untracked" || r.path == "ignored")
+    );
+    let diff = result
+        .text_diff(&row("sub/a.txt").id, &TextOptions::default(), &cancel())
+        .unwrap();
+    assert!(
+        diff.lines
+            .iter()
+            .any(|l| l.right_text.as_deref().unwrap_or(&l.text) == "working\n")
+    );
+    assert!(!diff.lines.iter().any(|l| l.text.contains("staged")
+        || l.right_text.as_ref().is_some_and(|t| t.contains("staged"))));
+    q.include_untracked = true;
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "untracked")
+            .unwrap()
+            .status,
+        Status::RightOnly
+    );
+    assert!(!result.report.rows.iter().any(|r| r.path == "ignored"));
+    assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
+    q.exclusions = "-untracked;-./sub/".into();
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert!(
+        !result
+            .report
+            .rows
+            .iter()
+            .any(|r| r.path == "untracked" || r.path.starts_with("sub"))
+    );
+}
+#[test]
+fn working_preview_rejects_metadata_changes_and_same_size_time_preserving_edits() {
+    let t = fixture();
+    let repo = t.path();
+    fs::write(repo.join("same"), "aaaa\n").unwrap();
+    let result = git::compare(&working_request(repo), &cancel()).unwrap();
+    let id = &result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "same")
+        .unwrap()
+        .id;
+    let time = fs::metadata(repo.join("same")).unwrap().modified().unwrap();
+    fs::write(repo.join("same"), "bbbb\n").unwrap();
+    fs::File::options()
+        .write(true)
+        .open(repo.join("same"))
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(time))
+        .unwrap();
+    assert_eq!(
+        fs::metadata(repo.join("same")).unwrap().modified().unwrap(),
+        time
+    );
+    assert!(
+        result
+            .text_diff(id, &TextOptions::default(), &cancel())
+            .is_err()
+    );
+    let result = git::compare(&working_request(repo), &cancel()).unwrap();
+    let id = &result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "same")
+        .unwrap()
+        .id;
+    fs::write(repo.join("same"), "longer\n").unwrap();
+    assert!(
+        result
+            .text_diff(id, &TextOptions::default(), &cancel())
+            .is_err()
+    );
+}
+#[test]
+fn raw_working_tree_skips_clean_filters_and_end_of_line_normalization() {
+    let t = fixture();
+    let repo = t.path();
+    fs::write(repo.join(".gitattributes"), "same text eol=lf\n").unwrap();
+    fs::write(repo.join("same"), "line\r\n").unwrap();
+    run(repo, &["add", "same", ".gitattributes"]);
+    let mut q = working_request(repo);
+    q.left_source = clear_contracts::GitSource::Index;
+    let result = git::compare(&q, &cancel()).unwrap();
+    let row = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "same")
+        .unwrap();
+    assert_eq!(row.status, Status::Changed);
+    assert_eq!(row.left.as_ref().unwrap().bytes, "5");
+    assert_eq!(row.right.as_ref().unwrap().bytes, "6");
+    run(
+        repo,
+        &["config", "filter.never.clean", "touch should-not-exist"],
+    );
+    fs::write(repo.join(".gitattributes"), "same filter=never\n").unwrap();
+    let _ = git::compare(&q, &cancel()).unwrap();
+    assert!(!repo.join("should-not-exist").exists());
+}
+#[test]
+fn physical_working_tree_reports_type_conflicts_and_sparse_absence() {
+    let t = fixture();
+    let repo = t.path();
+    fs::remove_file(repo.join("same")).unwrap();
+    fs::create_dir(repo.join("same")).unwrap();
+    let result = git::compare(&working_request(repo), &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "same")
+            .unwrap()
+            .status,
+        Status::TypeConflict
+    );
+    fs::remove_dir(repo.join("same")).unwrap();
+    run(repo, &["checkout", "--", "same"]);
+    fs::create_dir(repo.join("outside")).unwrap();
+    fs::write(repo.join("outside/file"), "outside\n").unwrap();
+    run(repo, &["add", "outside/file"]);
+    run(repo, &["commit", "-qm", "outside"]);
+    run(
+        repo,
+        &["sparse-checkout", "init", "--cone", "--sparse-index"],
+    );
+    run(repo, &["sparse-checkout", "set", "sub"]);
+    assert!(!repo.join("outside/file").exists());
+    let before = fs::read(repo.join(".git/index")).unwrap();
+    let result = git::compare(&working_request(repo), &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "outside/file")
+            .unwrap()
+            .status,
+        Status::LeftOnly
+    );
+    assert_eq!(fs::read(repo.join(".git/index")).unwrap(), before);
+    assert!(!repo.join("outside/file").exists());
+}
+#[test]
+fn unborn_working_sources_and_sha256_blob_identity_work_without_objects_being_written() {
+    for format in ["sha1", "sha256"] {
+        let t = tempfile::tempdir().unwrap();
+        let repo = t.path();
+        run(
+            repo,
+            &[
+                "init",
+                "-q",
+                "--template=",
+                &format!("--object-format={format}"),
+            ],
+        );
+        fs::write(repo.join("a"), "hello\n").unwrap();
+        let mut q = working_request(repo);
+        q.left_source = clear_contracts::GitSource::WorkingTree;
+        q.include_untracked = true;
+        let result = git::compare(&q, &cancel()).unwrap();
+        assert_eq!(result.report.summary.same, 1);
+        assert!(!repo.join(".git/index").exists());
+        let oid = run(repo, &["hash-object", "--no-filters", "a"]);
+        assert!(
+            !repo
+                .join(".git/objects")
+                .join(&oid[..2])
+                .join(&oid[2..])
+                .exists()
+        );
+        run(repo, &["add", "a"]);
+        q.left_source = clear_contracts::GitSource::Index;
+        let result = git::compare(&q, &cancel()).unwrap();
+        assert_eq!(result.report.summary.same, 1);
+        let diff = result
+            .text_diff(
+                &result.report.rows[0].id,
+                &TextOptions::default(),
+                &cancel(),
+            )
+            .unwrap();
+        assert_eq!(diff.lines[0].text, "hello\n");
+        assert!(git::compare(&q, &AtomicBool::new(true)).is_err());
+    }
+    let t = fixture();
+    let mut invalid = index_request(t.path());
+    invalid.include_untracked = true;
+    assert!(git::compare(&invalid, &cancel()).is_err());
+}
+#[cfg(unix)]
+#[test]
+fn working_links_and_link_ancestors_never_read_outside_the_repository() {
+    let t = fixture();
+    let repo = t.path();
+    let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("a.txt"), "outside secret\n").unwrap();
+    fs::remove_file(repo.join("sub/a.txt")).unwrap();
+    fs::remove_dir(repo.join("sub")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), repo.join("sub")).unwrap();
+    fs::remove_file(repo.join("same")).unwrap();
+    std::os::unix::fs::symlink(outside.path().join("a.txt"), repo.join("same")).unwrap();
+    let result = git::compare(&working_request(repo), &cancel()).unwrap();
+    let row = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "sub/a.txt")
+        .unwrap();
+    assert_eq!(row.status, Status::Error);
+    assert!(
+        result
+            .text_diff(&row.id, &TextOptions::default(), &cancel())
+            .is_err()
+    );
+    let row = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "same")
+        .unwrap();
+    assert_eq!(row.status, Status::TypeConflict);
+    assert!(
+        result
+            .text_diff(&row.id, &TextOptions::default(), &cancel())
+            .is_err()
+    );
+}
+#[cfg(unix)]
+#[test]
+fn working_executable_modes_follow_core_filemode_policy() {
+    use std::os::unix::fs::PermissionsExt;
+    let t = fixture();
+    let repo = t.path();
+    run(repo, &["update-index", "--chmod=+x", "same"]);
+    fs::set_permissions(repo.join("same"), fs::Permissions::from_mode(0o644)).unwrap();
+    run(repo, &["config", "core.filemode", "false"]);
+    let mut q = working_request(repo);
+    q.left_source = clear_contracts::GitSource::Index;
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "same")
+            .unwrap()
+            .status,
+        Status::Same
+    );
+    run(repo, &["config", "core.filemode", "true"]);
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "same")
+            .unwrap()
+            .status,
+        Status::Changed
+    );
+}
+
+#[test]
+fn working_tree_streams_large_files_and_keeps_preview_bounded() {
+    let t = fixture();
+    let repo = t.path();
+    let bytes = (0..4 * 1024 * 1024 + 17)
+        .map(|i| (i % 251) as u8)
+        .collect::<Vec<_>>();
+    fs::write(repo.join("large.bin"), bytes).unwrap();
+    run(repo, &["add", "large.bin"]);
+    let mut q = working_request(repo);
+    q.left_source = clear_contracts::GitSource::Index;
+    let result = git::compare(&q, &cancel()).unwrap();
+    let row = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "large.bin")
+        .unwrap();
+    assert_eq!(row.status, Status::Same);
+    assert!(
+        result
+            .text_diff(&row.id, &TextOptions::default(), &cancel())
+            .is_err()
+    );
+}
+#[test]
+fn working_tree_uses_linked_root_and_reports_share_source_protection() {
+    let t = fixture();
+    let outer = tempfile::tempdir().unwrap();
+    let linked = outer.path().join("linked");
+    run(
+        t.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            linked.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    fs::write(linked.join("same"), "linked working\n").unwrap();
+    let result = git::compare(&working_request(&linked.join("sub")), &cancel()).unwrap();
+    assert_eq!(result.report.summary.changed, 1);
+    let r = clear_contracts::ReportRequest {
+        source: clear_contracts::ReportSource::Git,
+        format: clear_contracts::ReportFormat::Json,
+        session: result.report.session.clone(),
+        destination: linked.join("report.json").display().to_string(),
+        english: true,
+        differences_only: false,
+    };
+    assert!(
+        clear_core::report::export(&result.report, &r, &result.report_roots(), &cancel()).is_err()
+    );
+    assert!(!linked.join("report.json").exists());
+    let mut r = r;
+    r.destination = outer.path().join("working.json").display().to_string();
+    clear_core::report::export(&result.report, &r, &result.report_roots(), &cancel()).unwrap();
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(&r.destination).unwrap()).unwrap();
+    assert_eq!(json["summary"]["changed"], 1);
+    assert!(json["right"].as_str().unwrap().starts_with("Working tree"));
+}
+#[cfg(unix)]
+#[test]
+fn working_symbolic_links_remain_unverified_and_nonregular_inputs_are_not_opened() {
+    let t = fixture();
+    let repo = t.path();
+    std::os::unix::fs::symlink("same", repo.join("link")).unwrap();
+    run(repo, &["add", "link"]);
+    run(repo, &["commit", "-qm", "link"]);
+    let result = git::compare(&working_request(repo), &cancel()).unwrap();
+    let row = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "link")
+        .unwrap();
+    assert_eq!(row.status, Status::MetadataMatch);
+    assert!(
+        result
+            .text_diff(&row.id, &TextOptions::default(), &cancel())
+            .is_err()
+    );
+    fs::remove_file(repo.join("same")).unwrap();
+    assert!(
+        Command::new("mkfifo")
+            .arg(repo.join("same"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    let result = git::compare(&working_request(repo), &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "same")
+            .unwrap()
+            .status,
+        Status::Error
+    );
+}
+
+#[test]
+fn working_directory_rules_and_obstructing_parent_files_keep_types_explicit() {
+    let t = fixture();
+    let repo = t.path();
+    fs::remove_file(repo.join("same")).unwrap();
+    fs::create_dir(repo.join("same")).unwrap();
+    let mut q = working_request(repo);
+    q.exclusions = "-./same/".into();
+    let result = git::compare(&q, &cancel()).unwrap();
+    let row = result
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "same")
+        .unwrap();
+    assert_eq!(row.status, Status::LeftOnly);
+    assert!(row.right.is_none());
+    fs::remove_file(repo.join("sub/a.txt")).unwrap();
+    fs::remove_dir(repo.join("sub")).unwrap();
+    fs::write(repo.join("sub"), "obstruction\n").unwrap();
+    let result = git::compare(&q, &cancel()).unwrap();
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "sub")
+            .unwrap()
+            .status,
+        Status::TypeConflict
+    );
+    assert_eq!(
+        result
+            .report
+            .rows
+            .iter()
+            .find(|r| r.path == "sub/a.txt")
+            .unwrap()
+            .status,
+        Status::Error
+    );
 }

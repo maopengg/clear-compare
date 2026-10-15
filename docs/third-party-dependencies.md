@@ -369,6 +369,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | server_fn_macro | 0.8.12 | MIT | [crate](https://crates.io/crates/server_fn_macro/0.8.12) |
 | server_fn_macro_default | 0.8.6 | MIT | [crate](https://crates.io/crates/server_fn_macro_default/0.8.6) |
 | servo_arc | 0.4.3 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/servo_arc/0.4.3) |
+| sha1 | 0.10.7 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/sha1/0.10.7) |
 | sha2 | 0.10.9 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/sha2/0.10.9) |
 | shlex | 2.0.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/shlex/2.0.1) |
 | simd-adler32 | 0.3.10 | MIT | [crate](https://crates.io/crates/simd-adler32/0.3.10) |

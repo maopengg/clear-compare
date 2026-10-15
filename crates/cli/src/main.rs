@@ -79,6 +79,12 @@ enum Command {
         /// Use captured index records for the right Git source; ignores its revision argument.
         #[arg(long)]
         right_index: bool,
+        #[arg(long, conflicts_with = "left_index")]
+        left_worktree: bool,
+        #[arg(long, conflicts_with = "right_index")]
+        right_worktree: bool,
+        #[arg(long)]
+        include_untracked: bool,
         #[arg(long, default_value = "")]
         exclude: String,
         #[arg(long)]
@@ -108,6 +114,12 @@ enum Command {
         /// Captured index source; overrides right_revision.
         #[arg(long)]
         right_index: bool,
+        #[arg(long, conflicts_with = "left_index")]
+        left_worktree: bool,
+        #[arg(long, conflicts_with = "right_index")]
+        right_worktree: bool,
+        #[arg(long)]
+        include_untracked: bool,
         #[arg(long, default_value = "")]
         exclude: String,
     },
@@ -261,17 +273,25 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             repository,
             left_index,
             right_index,
+            left_worktree,
+            right_worktree,
+            include_untracked,
             exclude,
             metadata_only,
             differences_only,
             english,
         } => {
             use clear_contracts::{ReportFormat, ReportSource};
-            if (repository.is_some() || left_index || right_index)
+            if (repository.is_some()
+                || left_index
+                || right_index
+                || left_worktree
+                || right_worktree
+                || include_untracked)
                 && !matches!(source, ReportKind::Git)
             {
                 return Err(clear_core::Error::Invalid(
-                    "--repository/--left-index/--right-index only apply to --source git".into(),
+                    "Git repository/source flags only apply to --source git".into(),
                 ));
             }
 
@@ -327,12 +347,17 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
                     })?;
                     let snapshot = clear_core::git::compare(
                         &clear_contracts::GitCompareRequest {
-                            left_source: if left_index {
+                            include_untracked,
+                            left_source: if left_worktree {
+                                clear_contracts::GitSource::WorkingTree
+                            } else if left_index {
                                 clear_contracts::GitSource::Index
                             } else {
                                 clear_contracts::GitSource::Commit
                             },
-                            right_source: if right_index {
+                            right_source: if right_worktree {
+                                clear_contracts::GitSource::WorkingTree
+                            } else if right_index {
                                 clear_contracts::GitSource::Index
                             } else {
                                 clear_contracts::GitSource::Commit
@@ -413,16 +438,24 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             right_revision,
             left_index,
             right_index,
+            left_worktree,
+            right_worktree,
+            include_untracked,
             exclude,
         } => {
             let snapshot = clear_core::git::compare(
                 &clear_contracts::GitCompareRequest {
-                    left_source: if left_index {
+                    include_untracked,
+                    left_source: if left_worktree {
+                        clear_contracts::GitSource::WorkingTree
+                    } else if left_index {
                         clear_contracts::GitSource::Index
                     } else {
                         clear_contracts::GitSource::Commit
                     },
-                    right_source: if right_index {
+                    right_source: if right_worktree {
+                        clear_contracts::GitSource::WorkingTree
+                    } else if right_index {
                         clear_contracts::GitSource::Index
                     } else {
                         clear_contracts::GitSource::Commit

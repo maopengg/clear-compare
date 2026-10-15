@@ -12,8 +12,9 @@ pub fn panel(
     let repository = RwSignal::new(String::new());
     let left = RwSignal::new("HEAD~1".to_string());
     let right = RwSignal::new("HEAD".to_string());
-    let left_index = RwSignal::new(false);
-    let right_index = RwSignal::new(false);
+    let left_mode = RwSignal::new("commit".to_string());
+    let right_mode = RwSignal::new("commit".to_string());
+    let include_untracked = RwSignal::new(false);
     let exclusions = RwSignal::new(String::new());
     let search = RwSignal::new(String::new());
     let differences = RwSignal::new(false);
@@ -26,17 +27,19 @@ pub fn panel(
         diff.set(None);
     };
     let compare = move || {
+        let source = |mode: String| match mode.as_str() {
+            "index" => GitSource::Index,
+            "working_tree" => GitSource::WorkingTree,
+            _ => GitSource::Commit,
+        };
+        let left_source = source(left_mode.get_untracked());
+        let right_source = source(right_mode.get_untracked());
         let request = GitCompareRequest {
-            left_source: if left_index.get_untracked() {
-                GitSource::Index
-            } else {
-                GitSource::Commit
-            },
-            right_source: if right_index.get_untracked() {
-                GitSource::Index
-            } else {
-                GitSource::Commit
-            },
+            include_untracked: include_untracked.get_untracked()
+                && (left_source == GitSource::WorkingTree
+                    || right_source == GitSource::WorkingTree),
+            left_source,
+            right_source,
             repository: repository.get_untracked(),
             left_revision: left.get_untracked(),
             right_revision: right.get_untracked(),
@@ -79,12 +82,13 @@ pub fn panel(
         });
     };
     view! {
-        <Show when=move ||visible.get()><section class="archive-panel"><header><strong>{move ||tr(english.get(),"Git 提交 / 暂存区比较","Git commit / index comparison")}</strong><button class="quiet" on:click=move |_|visible.set(false)>{move ||tr(english.get(),"收起","Collapse")}</button></header>
-            <p>{move ||tr(english.get(),"选择本地提交、分支、标签或暂存区索引。不会检出、提交、暂存或下载对象；不读取工作区文件内容。需要支持 --no-lazy-fetch 的 Git。","Choose locally available commits, branches, tags or captured index records. No checkout, commit, staging or object download occurs; working-tree file contents are excluded. Requires Git supporting --no-lazy-fetch.")}</p>
+        <Show when=move ||visible.get()><section class="archive-panel"><header><strong>{move ||tr(english.get(),"Git 版本与工作区比较","Git versions and working tree")}</strong><button class="quiet" on:click=move |_|visible.set(false)>{move ||tr(english.get(),"收起","Collapse")}</button></header>
+            <p>{move ||tr(english.get(),"选择本地提交、暂存区索引或当前工作区。工作区按原始文件字节比较，不执行 clean/smudge/换行转换；不检出、不暂存、不提交、不下载对象。需要支持 --no-lazy-fetch 的 Git。","Choose locally available commits, the captured index or physical working-tree files. Working-tree comparison uses raw bytes without clean/smudge/EOL filters. No checkout, staging, commit or object download occurs. Requires Git supporting --no-lazy-fetch.")}</p>
             <div class="archive-controls"><label>{move ||tr(english.get(),"仓库目录","Repository")}<input disabled=move ||busy.get() prop:value=move ||repository.get() on:input=move |ev|{repository.set(event_target_value(&ev));reset();}/></label><button class="quiet" disabled=move ||busy.get() on:click=move |_|{busy.set(true);spawn_local(async move {match invoke::<Option<String>>("pick_directory",serde_json::json!({})).await{Ok(Some(p))=>{repository.set(p);reset();},Ok(None)=>{},Err(e)=>error.set(e)}busy.set(false);});}>{move ||tr(english.get(),"选择仓库…","Choose repository…")}</button></div>
-            <div class="archive-sources"><div><label><input type="checkbox" disabled=move ||busy.get() prop:checked=move ||left_index.get() on:change=move |ev|{left_index.set(event_target_checked(&ev));reset();}/>{move ||tr(english.get(),"左侧使用暂存区索引","Left: captured index")}</label><label>{move ||tr(english.get(),"左侧修订","Left revision")}<input disabled=move ||busy.get() ||left_index.get() prop:value=move ||left.get() on:input=move |ev|{left.set(event_target_value(&ev));reset();}/></label></div><div><label><input type="checkbox" disabled=move ||busy.get() prop:checked=move ||right_index.get() on:change=move |ev|{right_index.set(event_target_checked(&ev));reset();}/>{move ||tr(english.get(),"右侧使用暂存区索引","Right: captured index")}</label><label>{move ||tr(english.get(),"右侧修订","Right revision")}<input disabled=move ||busy.get() ||right_index.get() prop:value=move ||right.get() on:input=move |ev|{right.set(event_target_value(&ev));reset();}/></label></div></div>
+            <div class="archive-sources"><div><label>{move ||tr(english.get(),"左侧来源","Left source")}<select disabled=move ||busy.get() prop:value=move ||left_mode.get() on:change=move |e|{left_mode.set(event_target_value(&e));reset();}><option value="commit">{move ||tr(english.get(),"提交版本","Commit")}</option><option value="index">{move ||tr(english.get(),"暂存区索引","Captured index")}</option><option value="working_tree">{move ||tr(english.get(),"工作区文件","Working-tree files")}</option></select></label><label>{move ||tr(english.get(),"左侧修订","Left revision")}<input disabled=move ||busy.get() ||left_mode.get()!="commit" prop:value=move ||left.get() on:input=move |ev|{left.set(event_target_value(&ev));reset();}/></label></div><div><label>{move ||tr(english.get(),"右侧来源","Right source")}<select disabled=move ||busy.get() prop:value=move ||right_mode.get() on:change=move |e|{right_mode.set(event_target_value(&e));reset();}><option value="commit">{move ||tr(english.get(),"提交版本","Commit")}</option><option value="index">{move ||tr(english.get(),"暂存区索引","Captured index")}</option><option value="working_tree">{move ||tr(english.get(),"工作区文件","Working-tree files")}</option></select></label><label>{move ||tr(english.get(),"右侧修订","Right revision")}<input disabled=move ||busy.get() ||right_mode.get()!="commit" prop:value=move ||right.get() on:input=move |ev|{right.set(event_target_value(&ev));reset();}/></label></div></div>
+            <div class="archive-controls"><label><input type="checkbox" disabled=move ||busy.get() ||(left_mode.get()!="working_tree" && right_mode.get()!="working_tree") prop:checked=move ||include_untracked.get() on:change=move |e|{include_untracked.set(event_target_checked(&e));reset();}/>{move ||tr(english.get(),"工作区包含未跟踪文件（遵循 Git 忽略规则）","Include nonignored untracked files")}</label></div>
             <label class="archive-exclusions">{move ||tr(english.get(),"排除规则","Exclusions")}<input disabled=move ||busy.get() prop:value=move ||exclusions.get() on:input=move |ev|{exclusions.set(event_target_value(&ev));reset();}/></label>
-            <div class="archive-controls"><button class="primary" disabled=move ||busy.get() ||repository.get().is_empty() ||(!left_index.get() && left.get().is_empty()) ||(!right_index.get() && right.get().is_empty()) on:click=move |_|compare()>{move ||tr(english.get(),"比较修订版本","Compare revisions")}</button></div>
+            <div class="archive-controls"><button class="primary" disabled=move ||busy.get() ||repository.get().is_empty() ||(left_mode.get()=="commit" && left.get().is_empty()) ||(right_mode.get()=="commit" && right.get().is_empty()) on:click=move |_|compare()>{move ||tr(english.get(),"比较 Git 来源","Compare Git sources")}</button></div>
             <Show when=move ||comparison.get().is_some()><p>{move ||comparison.get().map(|c|c.warnings.join(" · "))}</p>{super::reports::controls(english,busy,error,move ||comparison.with(|c|c.as_ref().map(|c|(ReportSource::Git,c.session.clone()))))}<p>{move ||comparison.with(|c|c.as_ref().map(|c|format!("{} ↔ {}",c.left,c.right)))}</p><p>{move ||tr(english.get(),"一致按 Git 对象身份判定；可执行位变化也显示为修改。符号链接不跟随，子模块不展开，LFS 仅比较指针文件。","Equality uses Git object identity; executable-mode changes also count as changed. Links are not followed, submodules are not expanded, and LFS comparisons show pointer files.")}</p>
                 <div class="archive-controls"><input aria-label="Search Git files" disabled=move ||busy.get() prop:value=move ||search.get() on:input=move |ev|search.set(event_target_value(&ev))/><button class="quiet" disabled=move ||busy.get() on:click=move |_|query(0)>{move ||tr(english.get(),"搜索全部路径","Search all paths")}</button><label><input type="checkbox" disabled=move ||busy.get() prop:checked=move ||differences.get() on:change=move |ev|{differences.set(event_target_checked(&ev));query(0);}/>{move ||tr(english.get(),"只看差异","Differences only")}</label></div>
                 <div class="archive-rows"><For each=move ||page.get().map(|p|p.rows).unwrap_or_default() key=move |r|(comparison.with_untracked(|c|c.as_ref().map(|c|c.session.clone())),r.id.clone()) children=move |row|{let id=row.id.clone();let state=row.status.clone();let css=format!("status {}",status_class(&state));let preview=row.left.as_ref().or(row.right.as_ref()).is_some_and(|e|e.kind==Kind::File)&&state!=Status::Error;view!{<div><button class="file-name" disabled=move ||busy.get() ||!preview on:click=move |_|{let Some(c)=comparison.get_untracked() else{return;};busy.set(true);error.set(String::new());diff.set(None);let args=serde_json::json!({"session":c.session,"rowId":id,"options":TextOptions::default()});spawn_local(async move {match invoke::<TextDiff>("git_text_diff",args).await{Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)}busy.set(false);});}>{row.path}</button><span class=css>{move ||label(&state,english.get())}</span><span class="archive-error">{row.left.and_then(|e|e.error).or_else(||row.right.and_then(|e|e.error))}</span></div>}}/></div>

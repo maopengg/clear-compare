@@ -204,3 +204,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - CLI source flags support comparison and HTML/JSON reports. Subdirectory selectors use the complete worktree index; linked worktrees use their own index. Bare indexes reject explicitly. No write-tree, staging, checkout, network, text conversion or source-file writes are introduced.
 - Focused tests cover staged-versus-working bytes, frozen previews after later staging, additions/removals, executable modes, exclusions, intent-to-add, unmerged stages, empty/unborn repositories, split/sparse indexes, linked worktrees, SHA-256 object IDs, submodules and CLI/report exit codes. Final client interaction/install acceptance remains deferred.
 - Preceding named table-column changes passed three-platform core/WASM CI run 38683576053.
+
+## Raw Git working-tree comparison
+
+- Added a third typed Git source for physical working files, with optional nonignored untracked inclusion. Tracked scope comes from index names/modes without requiring index blobs; source combinations include commit/index/worktree on either side and fresh/unborn worktrees.
+- Native streaming computes raw Git SHA-1/SHA-256 blob identity and an independent content SHA-256. Metadata checks surround reads; previews verify the captured content even after same-size/time-preserving edits. No clean/smudge/EOL filters, object writes, index updates, checkout or network operations are introduced.
+- Physical missing paths remain absent under sparse checkout; executable modes honor core.filemode with indexed fallback where native bits are unavailable. Links/ancestors are not followed; actual parent types, read errors, unsupported kinds and embedded repositories are explicit.
+- Tests exercise tracked/untracked/ignored scope, deletions, raw CRLF/filter behavior, modified previews, both object formats, large streamed files, type obstructions, links/FIFOs, sparse and linked worktrees, report containment and CLI/source-flag contracts. New sha1 dependency is pinned with packaged notices refreshed.
+- Prior captured-index changes passed three-platform core/WASM CI run 38684273075. Current packaged-client interaction and installation acceptance remains deferred.
