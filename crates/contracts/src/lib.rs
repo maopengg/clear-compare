@@ -199,6 +199,7 @@ pub enum FilePlanPolicy {
     RenameSelected {
         target_side: Side,
     },
+    MirrorFiles,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "platform", rename_all = "snake_case")]

@@ -1,6 +1,6 @@
 # Reviewed file copy, deletion, rename and recovery
 
-The local folder workspace supports directional regular-file copy and explicit selected-file deletion or single-file same-directory rename on either side. These operations use native cached paths, a reviewed plan, content checks, verified backups and a state journal. Directory removal, recursive deletion, cross-directory move, bulk/directory rename, mirror and baseline-aware bidirectional policies remain planned.
+The local folder workspace supports directional regular-file copy and explicit selected-file deletion or single-file same-directory rename on either side. These operations use native cached paths, a reviewed plan, content checks, verified backups and a state journal. Directory removal, recursive deletion, cross-directory move, bulk/directory rename, exact directory-tree mirror and baseline-aware bidirectional policies remain planned. A separate [regular-file mirror](file-mirror.md) policy reviews whole-comparison copy/deletion actions, preserving empty directories.
 
 ## Desktop workflow
 
@@ -44,7 +44,7 @@ Exact-name checks remain case-sensitive even on an insensitive filesystem. Canon
 - `target_existed` records prior target presence. Copy has a source digest and optional prior-target digest; deletion has no source digest and requires a prior-target digest/basic permissions.
 - `target_native` and `relative_native` carry lossless native paths. `target` and `path` are display labels, never filesystem inputs.
 
-Rename plans use version 3 and `policy.mode = rename_selected` with explicit `target_side`, exactly one `operation = rename`, equal original source/target digests, basic permissions, and `rename_to` native destination/temporary paths. These paths must be distinct leaf names under the original parent; the temporary name must match the plan identity. Display labels remain nonauthoritative. Copy/deletion actions have no rename paths.
+Rename plans use version 3 and `policy.mode = rename_selected` with explicit `target_side`, exactly one `operation = rename`, equal original source/target digests, basic permissions, and `rename_to` native destination/temporary paths. These paths must be distinct leaf names under the original parent; the temporary name must match the plan identity. Display labels remain nonauthoritative. Copy/deletion actions have no rename paths. Version-four `mirror_files` plans mix copy/deletion actions with an explicit source side and a complete-scope preflight; see the file-mirror contract.
 
 Version-one copy journals remain readable: absent version/policy/operation default to the earlier copy semantics, and `overwrite` is accepted as the old alias of target_existed. Journals lacking native paths retain the existing explicit manual-recovery limitation. Unsupported versions, inconsistent policies/digests/permissions, duplicate targets and mismatched backup placement are rejected. A new pending journal must fit 32 MiB before execution starts; persisted recovery input remains limited to 64 MiB. Error text is clipped after 64 KiB plus an indicator, leaving room for state changes. This preflight also applies to new copy plans.
 

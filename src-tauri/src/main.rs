@@ -1026,6 +1026,29 @@ async fn preview_delete(
 }
 
 #[tauri::command]
+async fn preview_mirror_files(
+    session: String,
+    source_side: Side,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<SyncPlan, String> {
+    let _guard = state.begin()?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    let snapshot = state.snapshot(&session)?;
+    let cancel = state.cancel.clone();
+    let base = data_dir(&app)?.join("backups");
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::sync::plan_mirror_files(&snapshot, &base, &cancel, source_side)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = Some(plan.clone());
+    Ok(plan)
+}
+
+#[tauri::command]
 async fn preview_rename(
     session: String,
     row_id: String,
@@ -1417,6 +1440,7 @@ fn main() {
             preview_sync,
             preview_delete,
             preview_rename,
+            preview_mirror_files,
             apply_sync,
             pick_directory,
             load_session,

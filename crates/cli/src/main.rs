@@ -59,6 +59,19 @@ impl From<FileSide> for clear_contracts::Side {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Mirror included regular files across the whole comparison, retaining empty directories.
+    MirrorFiles {
+        left: String,
+        right: String,
+        #[arg(long, value_enum)]
+        source: FileSide,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long)]
+        backup_dir: PathBuf,
+        #[arg(long)]
+        apply: bool,
+    },
     /// Preview a same-directory file rename with no overwrite; --apply executes a fresh plan.
     Rename {
         left: String,
@@ -283,6 +296,42 @@ enum Command {
 fn run(cli: Cli) -> clear_core::Result<i32> {
     let cancel = AtomicBool::new(false);
     match cli.command {
+        Command::MirrorFiles {
+            left,
+            right,
+            source,
+            exclude,
+            backup_dir,
+            apply,
+        } => {
+            let snapshot = clear_core::compare::compare(
+                &CompareRequest {
+                    left,
+                    right,
+                    exclusions: exclude,
+                    content: true,
+                },
+                &cancel,
+            )?;
+            let plan = clear_core::sync::plan_mirror_files(
+                &snapshot,
+                &backup_dir,
+                &cancel,
+                source.into(),
+            )?;
+            if apply {
+                let result = clear_core::sync::execute(&snapshot, &plan, &cancel)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(if result.actions.iter().all(|a| a.state == "completed") {
+                    0
+                } else {
+                    2
+                })
+            } else {
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+                Ok(0)
+            }
+        }
         Command::Rename {
             left,
             right,

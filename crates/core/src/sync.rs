@@ -17,9 +17,11 @@ use std::{
 use tempfile::NamedTempFile;
 
 mod delete;
+mod mirror;
 pub(crate) mod rename;
 pub use delete::plan_delete;
 pub(crate) use delete::{permissions, set_permissions};
+pub use mirror::plan_mirror_files;
 pub use rename::plan_rename;
 const MAX_PREVIEW_JOURNAL: usize = 32 * 1024 * 1024;
 fn initial_result(plan: &SyncPlan) -> SyncResult {
@@ -41,7 +43,7 @@ fn initial_result(plan: &SyncPlan) -> SyncResult {
     }
 }
 pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
-    if !matches!(plan.version, 1..=3)
+    if !matches!(plan.version, 1..=4)
         || plan.actions.is_empty()
         || plan.actions.len() > crate::compare::MAX_ENTRIES
     {
@@ -62,16 +64,23 @@ pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
             ));
         }
         match (&plan.policy, action.operation) {
-            (FilePlanPolicy::SelectedCopy, FileOperation::Copy)
-                if action.source_digest.as_deref().is_some_and(digest)
+            (FilePlanPolicy::SelectedCopy | FilePlanPolicy::MirrorFiles, FileOperation::Copy)
+                if (plan.policy == FilePlanPolicy::SelectedCopy
+                    && matches!(plan.version, 1 | 2)
+                    || plan.policy == FilePlanPolicy::MirrorFiles && plan.version == 4)
+                    && action.source_digest.as_deref().is_some_and(digest)
                     && action.target_permissions.is_none()
                     && action.rename_to.is_none() => {}
-            (FilePlanPolicy::DeleteSelected { .. }, FileOperation::Delete)
-                if plan.version == 2
-                    && action.source_digest.is_none()
-                    && action.target_existed
-                    && action.target_permissions.is_some()
-                    && action.rename_to.is_none() => {}
+            (
+                FilePlanPolicy::DeleteSelected { .. } | FilePlanPolicy::MirrorFiles,
+                FileOperation::Delete,
+            ) if (plan.version == 2
+                && matches!(plan.policy, FilePlanPolicy::DeleteSelected { .. })
+                || plan.version == 4 && plan.policy == FilePlanPolicy::MirrorFiles)
+                && action.source_digest.is_none()
+                && action.target_existed
+                && action.target_permissions.is_some()
+                && action.rename_to.is_none() => {}
             (FilePlanPolicy::RenameSelected { .. }, FileOperation::Rename)
                 if plan.version == 3
                     && plan.actions.len() == 1
@@ -122,7 +131,7 @@ pub(crate) fn validate_plan(plan: &SyncPlan) -> Result<()> {
 }
 fn target_root<'a>(snapshot: &'a Snapshot, plan: &SyncPlan) -> &'a Path {
     match &plan.policy {
-        FilePlanPolicy::SelectedCopy => {
+        FilePlanPolicy::SelectedCopy | FilePlanPolicy::MirrorFiles => {
             if plan.source_side == Side::Left {
                 &snapshot.right
             } else {
@@ -466,8 +475,14 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
     if plan.session != snapshot.report.session {
         return Err(Error::Invalid("Plan belongs to another comparison".into()));
     }
-    if plan.policy == FilePlanPolicy::SelectedCopy {
+    if matches!(
+        plan.policy,
+        FilePlanPolicy::SelectedCopy | FilePlanPolicy::MirrorFiles
+    ) {
         roots_unchanged(snapshot)?;
+    }
+    if plan.policy == FilePlanPolicy::MirrorFiles {
+        mirror::revalidate(snapshot, plan, cancel)?;
     }
     let target = target_root(snapshot, plan);
     if plan.version >= 2 && plan.target != target.to_string_lossy() {

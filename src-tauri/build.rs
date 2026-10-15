@@ -36,6 +36,7 @@ fn main() {
             "preview_sync",
             "preview_delete",
             "preview_rename",
+            "preview_mirror_files",
             "apply_sync",
             "pick_directory",
             "load_session",

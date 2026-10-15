@@ -1046,3 +1046,74 @@ fn rename_cli_previews_single_names_applies_and_recovers_without_overwriting() {
     ]);
     assert_eq!(invalid.status.code(), Some(2));
 }
+
+#[test]
+fn file_mirror_cli_requires_direction_previews_deletions_and_applies_with_recovery() {
+    let t = tempfile::tempdir().unwrap();
+    for d in ["l", "r", "b", "recover"] {
+        fs::create_dir(t.path().join(d)).unwrap();
+    }
+    let l = t.path().join("l");
+    let r = t.path().join("r");
+    let b = t.path().join("b");
+    fs::write(l.join("new"), "new").unwrap();
+    fs::write(r.join("extra"), "extra").unwrap();
+    fs::write(r.join("keep"), "excluded").unwrap();
+    let args = [
+        "mirror-files".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--source".as_ref(),
+        "left".as_ref(),
+        "--backup-dir".as_ref(),
+        b.as_os_str(),
+        "--exclude".as_ref(),
+        "keep".as_ref(),
+    ];
+    let preview = run(&args);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+    assert_eq!(plan["version"], 4);
+    assert_eq!(plan["policy"]["mode"], "mirror_files");
+    assert_eq!(plan["actions"].as_array().unwrap().len(), 2);
+    assert!(r.join("extra").exists());
+    assert!(!r.join("new").exists());
+    let mut apply = args.to_vec();
+    apply.push("--apply".as_ref());
+    let out = run(&apply);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(!r.join("extra").exists());
+    assert_eq!(fs::read(r.join("new")).unwrap(), b"new");
+    assert_eq!(fs::read(r.join("keep")).unwrap(), b"excluded");
+    let undo = run(&[
+        "recover-sync".as_ref(),
+        result["journal"].as_str().unwrap().as_ref(),
+        "--backup-dir".as_ref(),
+        t.path().join("recover").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        undo.status.success(),
+        "{}",
+        String::from_utf8_lossy(&undo.stderr)
+    );
+    assert_eq!(fs::read(r.join("extra")).unwrap(), b"extra");
+    assert!(!r.join("new").exists());
+    let missing = run(&[
+        "mirror-files".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--backup-dir".as_ref(),
+        b.as_os_str(),
+    ]);
+    assert_eq!(missing.status.code(), Some(2));
+}

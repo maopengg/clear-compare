@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-mirror-files"
+description = "Enables the preview_mirror_files command without any pre-configured scope."
+commands.allow = ["preview_mirror_files"]
+
+[[permission]]
+identifier = "deny-preview-mirror-files"
+description = "Denies the preview_mirror_files command without any pre-configured scope."
+commands.deny = ["preview_mirror_files"]

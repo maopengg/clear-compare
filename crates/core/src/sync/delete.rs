@@ -168,6 +168,9 @@ pub(super) fn backup_before_change(
         ));
     }
     let path = checked_path(root, relative, false)?;
+    if plan.policy == FilePlanPolicy::MirrorFiles {
+        super::mirror::source_absent(snapshot, plan, relative)?;
+    }
     let expected = action
         .target_digest
         .as_deref()
@@ -246,6 +249,14 @@ pub(super) fn delete_one(
     cancel: &AtomicBool,
 ) -> Result<()> {
     let path = backup_before_change(snapshot, plan, action, cancel)?;
+    if plan.policy == FilePlanPolicy::MirrorFiles {
+        let relative = snapshot
+            .paths
+            .get(&action.row_id)
+            .ok_or_else(|| Error::Invalid("Missing mirror deletion path".into()))?;
+        super::mirror::source_absent(snapshot, plan, relative)?;
+        check_cancel(cancel)?;
+    }
     fs::remove_file(&path)?;
     flush_directory(
         path.parent()
