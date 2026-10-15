@@ -3,6 +3,10 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "compare",
             "compare_archives",
+            "capture_tree_snapshot",
+            "compare_tree_snapshots",
+            "tree_snapshot_page",
+            "pick_tree_snapshot",
             "archive_page",
             "archive_text_diff",
             "pick_archive",

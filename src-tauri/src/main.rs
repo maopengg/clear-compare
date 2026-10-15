@@ -17,6 +17,7 @@ use tauri_plugin_dialog::DialogExt;
 struct Backend {
     snapshot: Mutex<Option<Arc<Snapshot>>>,
     archive: Mutex<Option<Arc<clear_core::archive::Snapshot>>>,
+    tree_snapshot: Mutex<Option<Arc<clear_core::tree_snapshot::Snapshot>>>,
     table: Mutex<Option<(String, Arc<TableComparison>)>>,
     plan: Mutex<Option<SyncPlan>>,
     editor_backups: Mutex<BTreeMap<String, PathBuf>>,
@@ -320,6 +321,91 @@ async fn query_folder(
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn capture_tree_snapshot(
+    request: TreeSnapshotRequest,
+    state: State<'_, Backend>,
+) -> Result<TreeSnapshotInfo, String> {
+    let _guard = state.begin()?;
+    let cancel = state.cancel.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        clear_core::tree_snapshot::capture(&request, &cancel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn compare_tree_snapshots(
+    request: ArchiveRequest,
+    state: State<'_, Backend>,
+) -> Result<OpenedComparison, String> {
+    let _guard = state.begin()?;
+    *state
+        .tree_snapshot
+        .lock()
+        .map_err(|_| "State unavailable")? = None;
+    let cancel = state.cancel.clone();
+    let snapshot = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::tree_snapshot::compare(&request, &cancel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let view = OpenedComparison {
+        session: snapshot.report.session.clone(),
+        left: snapshot.report.left.clone(),
+        right: snapshot.report.right.clone(),
+        summary: snapshot.report.summary.clone(),
+        warnings: snapshot.report.warnings.clone(),
+        page: snapshot.page(0, "", false).map_err(|e| e.to_string())?,
+    };
+    *state
+        .tree_snapshot
+        .lock()
+        .map_err(|_| "State unavailable")? = Some(Arc::new(snapshot));
+    Ok(view)
+}
+#[tauri::command]
+async fn tree_snapshot_page(
+    session: String,
+    offset: usize,
+    search: String,
+    differences_only: bool,
+    state: State<'_, Backend>,
+) -> Result<Page, String> {
+    let snapshot = state
+        .tree_snapshot
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .clone()
+        .ok_or("Open a tree snapshot first")?;
+    if snapshot.report.session != session {
+        return Err("Tree snapshot comparison expired".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || snapshot.page(offset, &search, differences_only))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn pick_tree_snapshot(save: bool, app: tauri::AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dialog = app
+            .dialog()
+            .file()
+            .add_filter("Clear Compare tree", &["cctree"]);
+        let path = if save {
+            dialog.set_file_name("snapshot.cctree").blocking_save_file()
+        } else {
+            dialog.blocking_pick_file()
+        };
+        path.map(|p| p.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -871,6 +957,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             compare,
             compare_archives,
+            capture_tree_snapshot,
+            compare_tree_snapshots,
+            tree_snapshot_page,
+            pick_tree_snapshot,
             archive_page,
             archive_text_diff,
             pick_archive,

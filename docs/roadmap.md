@@ -127,3 +127,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Central-directory preflight, container fingerprints, decoded size/count/ratio budgets, duplicate/unsafe-path rejection and CRC failures prevent malformed or unverified data from appearing equal. No extraction or source writes occur. ZIP64, multidisk, encrypted and unsupported compression formats are not supported.
 - Tests cover ZIP/directory equality and changes, exclusions, metadata-only uncertainty, rewritten containers, traversal names, duplicates, expansion limits, cancellation, CRC corruption and CLI exit codes. Local tests and both native/WASM Clippy checks passed; builds are recorded with the commit.
 - Previous editor-history changes passed three-platform CI run 38670528131. Packaged-client interaction/install acceptance remains deferred until all planned features are implemented.
+
+## Content-free directory snapshots
+
+- CLI and desktop export versioned `.cctree` inventories into new files outside their source trees. Inventories capture exclusions, names/types/sizes/times/errors without file bodies or digests. Export never replaces existing files; cancellation cleans temporary output.
+- Browsing, paged search, snapshot/snapshot and snapshot/current-directory comparison preserve metadata uncertainty. Snapshot sources cannot be edited, synchronized or restored. Portable Unicode components and same-OS native names remain distinct from display labels.
+- Tests cover removed original directories, empty/excluded directories, metadata changes, missing entries, refusal of content verification, no-clobber/source containment, cancellation, invalid schemas, forged digest fields, traversal/duplicates/missing ancestors, native-name collisions, symlink non-following and CLI exit codes.
+- Archive changes passed three-platform CI run 38672279805.
+- macOS does not create arbitrary invalid UTF-8 filenames on this volume; the reader test uses a synthetic native-name inventory to check lossless identity independently of host filesystem restrictions. GUI/installer acceptance remains deferred.

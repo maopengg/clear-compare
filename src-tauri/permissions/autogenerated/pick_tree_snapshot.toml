@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pick-tree-snapshot"
+description = "Enables the pick_tree_snapshot command without any pre-configured scope."
+commands.allow = ["pick_tree_snapshot"]
+
+[[permission]]
+identifier = "deny-pick-tree-snapshot"
+description = "Denies the pick_tree_snapshot command without any pre-configured scope."
+commands.deny = ["pick_tree_snapshot"]

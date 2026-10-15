@@ -305,7 +305,7 @@ fn load(
         Err(Error::Invalid("Choose a directory or ZIP file".into()))
     }
 }
-fn status(left: Option<&Entry>, right: Option<&Entry>) -> Status {
+pub(crate) fn status(left: Option<&Entry>, right: Option<&Entry>) -> Status {
     if left.is_some_and(|e| e.error.is_some()) || right.is_some_and(|e| e.error.is_some()) {
         return Status::Error;
     }
@@ -373,28 +373,7 @@ pub fn compare(request: &ArchiveRequest, cancel: &AtomicBool) -> Result<Snapshot
 }
 impl Snapshot {
     pub fn page(&self, offset: usize, search: &str, differences_only: bool) -> Result<Page> {
-        if search.len() > 4096 {
-            return Err(Error::Invalid("Search exceeds 4096 bytes".into()));
-        }
-        let query = search.to_lowercase();
-        let matched = self
-            .report
-            .rows
-            .iter()
-            .filter(|r| {
-                (!differences_only || r.status != Status::Same)
-                    && (query.is_empty() || r.path.to_lowercase().contains(&query))
-            })
-            .collect::<Vec<_>>();
-        Ok(Page {
-            total: matched.len(),
-            rows: matched
-                .into_iter()
-                .skip(offset)
-                .take(500)
-                .cloned()
-                .collect(),
-        })
+        page_report(&self.report, offset, search, differences_only)
     }
     fn read(
         &self,
@@ -480,4 +459,33 @@ impl Snapshot {
             options,
         )
     }
+}
+
+pub(crate) fn page_report(
+    report: &Comparison,
+    offset: usize,
+    search: &str,
+    differences_only: bool,
+) -> Result<Page> {
+    if search.len() > 4096 {
+        return Err(Error::Invalid("Search exceeds 4096 bytes".into()));
+    }
+    let query = search.to_lowercase();
+    let matched = report
+        .rows
+        .iter()
+        .filter(|r| {
+            (!differences_only || r.status != Status::Same)
+                && (query.is_empty() || r.path.to_lowercase().contains(&query))
+        })
+        .collect::<Vec<_>>();
+    Ok(Page {
+        total: matched.len(),
+        rows: matched
+            .into_iter()
+            .skip(offset)
+            .take(500)
+            .cloned()
+            .collect(),
+    })
 }

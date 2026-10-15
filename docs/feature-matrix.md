@@ -19,7 +19,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F13 Picture compare | PNG/JPEG/BMP/WebP RGBA8 pixel diff, EXIF orientation, tolerance, bounds, aligned previews, overlay/heatmap and CLI statistics | Additional formats/animation, ICC/perceptual comparison, alignment controls, pixel inspector and export |
 | F14 Conversion | Planned | Document converters and format policies |
 | F15 Other viewers | Planned | Patch, clipboard, media/version metadata |
-| F16 Archives/snapshots | Read-only classic ZIP Stored/Deflate browsing, ZIP/directory comparison, exclusions, member SHA-256, paged search and bounded text preview | Archive updates, nested/other formats and tree snapshots |
+| F16 Archives/snapshots | Read-only classic ZIP Stored/Deflate browsing, ZIP/directory comparison, exclusions, member SHA-256, paged search and bounded text preview; content-free versioned tree export and historical metadata comparisons | Archive updates and nested/other formats |
 | F17 Remote filesystems | Planned | FTP/FTPS/SFTP/network adapters |
 | F18 Cloud storage | Planned | WebDAV/S3/Dropbox/OneDrive |
 | F19 Automation | JSON compare and copy-preview/apply CLI | Scripts, reports, scheduled workflows |

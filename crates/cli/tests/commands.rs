@@ -314,3 +314,31 @@ fn archive_cli_browses_without_extracting_and_reports_differences() {
     assert_eq!(changed.status.code(), Some(1));
     assert_eq!(fs::read_dir(t.path()).unwrap().count(), 2);
 }
+
+#[test]
+fn snapshot_cli_exports_metadata_without_content_and_never_overwrites() {
+    let t = tempfile::tempdir().unwrap();
+    let root = t.path().join("folder");
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("a"), b"SECRET-ABCDEF").unwrap();
+    let file = t.path().join("saved.cctree");
+    let args = ["snapshot".as_ref(), root.as_os_str(), file.as_os_str()];
+    let result = run(&args);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(!fs::read_to_string(&file).unwrap().contains("SECRET-ABCDEF"));
+    assert_eq!(run(&args).status.code(), Some(2));
+    assert!(
+        run(&["snapshots".as_ref(), file.as_os_str()])
+            .status
+            .success()
+    );
+    let equal = run(&["snapshots".as_ref(), file.as_os_str(), root.as_os_str()]);
+    assert_eq!(equal.status.code(), Some(1));
+    let json: serde_json::Value = serde_json::from_slice(&equal.stdout).unwrap();
+    assert_eq!(json["summary"]["unverified"], 1);
+    assert_eq!(json["summary"]["same"], 0);
+}

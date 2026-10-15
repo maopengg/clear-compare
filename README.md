@@ -8,9 +8,9 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, persisted view settings and a JSON CLI.
 
-Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/snapshots, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
+Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
 ## Download
 
@@ -49,6 +49,12 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 “归档比较”支持 ZIP 对 ZIP、ZIP 对目录，右侧留空可浏览单包。可搜索全部成员、分页、导入排除规则并预览文本差异；不解压到磁盘、不更新原包。当前支持经典 ZIP 的 Stored/Deflate，拒绝 ZIP64、多卷、加密、重复/不安全路径及超预算输入；其他压缩算法报告读取错误。符号链接只列出、不跟随。元数据匹配不代表内容一致。
 
 输入上限 256 MiB，最多 50,000 个成员及虚拟目录、16 MiB 中央目录；内容校验限制单成员 128 MiB、总展开内容 1 GiB，并限制异常膨胀比例。文本预览限制 4 MiB，容器或已校验成员发生变化后需要重新比较。嵌套包、写入更新及其他格式尚未实现。
+
+### 目录快照
+
+在“归档 / 快照”面板切换到“目录快照”，左侧选择目录后点击“保存左侧目录快照…”。`.cctree` 文件仅保存路径、类型、大小、修改时间、读取错误及捕获规则，不包含文件正文或内容摘要。快照须保存到来源目录之外，现有文件不会被覆盖。比较时按面板当前的排除规则同时筛选两侧；捕获时已排除的条目无法补回。快照是逐项扫描的历史清单，不是文件系统某一瞬间的一致性备份，也不能用于恢复正文。
+
+可浏览快照、比较两个快照，或与当前目录比较。大小/修改时间变化显示为修改；匹配仍是“未验证内容”。不提供编辑、同步、正文预览或恢复操作。最多 200,000 项、64 MiB；Unicode 组件使用可移植路径，非可移植名称保留原生编码并限同系统读取。应用会拒绝损坏、重复、越界或结构不完整的清单。
 
 ### 排除规则
 
@@ -92,6 +98,12 @@ cargo build -p clear-cli --release --locked
 ./target/release/clear-compare merge-folders ./base ./left ./right ./merged --journal-dir ./merge-journals
 # Two-way mode uses - as the baseline; choices apply to exact scanned relative paths.
 ./target/release/clear-compare merge-folders - ./left ./right ./merged --journal-dir ./merge-journals --choose sub=right --apply
+
+# Export a content-free inventory to a NEW file outside the source.
+./target/release/clear-compare snapshot ./folder ./saved.cctree --exclude '-node_modules/'
+./target/release/clear-compare snapshots ./saved.cctree
+./target/release/clear-compare snapshots ./saved.cctree ./folder
+# Paired metadata matches return 1 (unverified), not verified equality (0).
 
 # Read-only ZIP browse or compare, JSON output.
 ./target/release/clear-compare archives ./backup.zip

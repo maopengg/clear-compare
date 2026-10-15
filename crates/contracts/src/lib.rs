@@ -467,3 +467,19 @@ pub struct ArchiveRequest {
     pub exclusions: String,
     pub content: bool,
 }
+
+/// Export a content-free tree inventory into a new file outside the source tree.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TreeSnapshotRequest {
+    pub root: String,
+    pub destination: String,
+    pub exclusions: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TreeSnapshotInfo {
+    pub version: u32,
+    pub captured_ms: String,
+    pub source_name: String,
+    pub entries: usize,
+    pub errors: usize,
+}
