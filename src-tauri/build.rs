@@ -27,6 +27,7 @@ fn main() {
             "merge_buffers",
             "stage_merge_result",
             "binary_page",
+            "binary_search",
             "table_compare",
             "open_table_document",
             "table_catalog",

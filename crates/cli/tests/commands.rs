@@ -583,3 +583,44 @@ fn utf16_html_and_literal_delimited_overrides_are_explicit() {
     let auto = run(&["table".as_ref(), l.as_os_str(), r.as_os_str()]);
     assert_eq!(auto.status.code(), Some(2));
 }
+
+#[test]
+fn binary_commands_expose_bounds_continuation_and_exit_codes() {
+    let t = tempfile::tempdir().unwrap();
+    let a = t.path().join("a");
+    let b = t.path().join("b");
+    fs::write(&a, b"aaaa").unwrap();
+    fs::write(&b, b"aaba").unwrap();
+    let found = run(&[
+        "binary-search".as_ref(),
+        a.as_os_str(),
+        "61 61".as_ref(),
+        "--limit".as_ref(),
+        "1".as_ref(),
+    ]);
+    assert_eq!(found.status.code(), Some(0));
+    let json: serde_json::Value = serde_json::from_slice(&found.stdout).unwrap();
+    assert_eq!(json["positions"][0], "0");
+    assert_eq!(json["next_offset"], "1");
+    let next = run(&[
+        "binary-search".as_ref(),
+        a.as_os_str(),
+        "aa".as_ref(),
+        "--mode".as_ref(),
+        "utf8".as_ref(),
+        "--offset".as_ref(),
+        "0x2".as_ref(),
+    ]);
+    assert_eq!(next.status.code(), Some(0));
+    let json: serde_json::Value = serde_json::from_slice(&next.stdout).unwrap();
+    assert_eq!(json["positions"][0], "2");
+    assert!(json["next_offset"].is_null());
+    let absent = run(&["binary-search".as_ref(), a.as_os_str(), "FF".as_ref()]);
+    assert_eq!(absent.status.code(), Some(1));
+    let invalid = run(&["binary-search".as_ref(), a.as_os_str(), "F".as_ref()]);
+    assert_eq!(invalid.status.code(), Some(2));
+    let page = run(&["hex".as_ref(), a.as_os_str(), b.as_os_str()]);
+    assert_eq!(page.status.code(), Some(0));
+    let json: serde_json::Value = serde_json::from_slice(&page.stdout).unwrap();
+    assert_eq!(json["lines"][0]["left_changed"], serde_json::json!([2]));
+}

@@ -452,7 +452,9 @@ fn App() -> impl IntoView {
         };
         busy.set(true);
         error.set(String::new());
-        binary.set(None);
+        if binary_id.get_untracked() != id {
+            binary.set(None);
+        }
         binary_id.set(id.clone());
         spawn_local(async move {
             match invoke::<BinaryPage>(
@@ -1135,7 +1137,7 @@ fn App() -> impl IntoView {
             {panels::text::panel(english,diff,move |d|{merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);})}
             {panels::picture::panel(english,busy,panels::picture::Signals{picture,picture_id,picture_tolerance,picture_ignore_alpha},open_picture)}
             {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_document, table_left_mode,table_right_mode,table_left_index,table_right_index, table_headers, table_key, table_tolerance, table_offset}, compare_table_document, paginate_table,table_catalog,close_table)}
-            {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id}, open_binary)}
+            {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id, comparison, error}, open_binary)}
             {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, saved_text, error},load_merge)}
             {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, saved_text, text_history, merge_tokens, error, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore,change_draft)}
             {panels::history::panel(english,busy,history,recovery,preview_recovery,apply_recovery)}

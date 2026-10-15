@@ -1,5 +1,6 @@
 //! Serializable desktop/WASM/CLI contracts. No filesystem or runtime dependencies.
 use serde::{Deserialize, Serialize};
+pub mod binary_query;
 pub mod edit_history;
 pub mod merge_edit;
 pub mod text_view;
@@ -228,6 +229,10 @@ pub struct MergeResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinaryLine {
+    #[serde(default)]
+    pub left_changed: Vec<usize>,
+    #[serde(default)]
+    pub right_changed: Vec<usize>,
     pub offset: String,
     pub left_hex: String,
     pub right_hex: String,
@@ -237,6 +242,12 @@ pub struct BinaryLine {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinaryPage {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub left_available: bool,
+    #[serde(default)]
+    pub right_available: bool,
     pub path: String,
     pub offset: String,
     pub left_size: String,
@@ -625,4 +636,31 @@ pub struct TableDocumentInfo {
     pub right_html: bool,
     pub left_available: bool,
     pub right_available: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BinarySearchMode {
+    Hex,
+    Utf8,
+    Utf16Le,
+    Utf16Be,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinarySearchOptions {
+    pub query: String,
+    pub mode: BinarySearchMode,
+    pub offset: String,
+    pub limit: usize,
+    pub side: Side,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinarySearchResult {
+    pub path: String,
+    pub offset: String,
+    pub searched_until: String,
+    pub next_offset: Option<String>,
+    pub size: String,
+    pub positions: Vec<String>,
+    pub pattern_bytes: usize,
 }

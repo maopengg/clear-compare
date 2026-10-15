@@ -887,9 +887,28 @@ async fn binary_page(
     offset: String,
     state: State<'_, Backend>,
 ) -> Result<BinaryPage, String> {
+    let _guard = state.begin()?;
     let snapshot = state.snapshot(&session)?;
     tauri::async_runtime::spawn_blocking(move || {
         clear_core::binary::page(&snapshot, &row_id, &offset)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn binary_search(
+    session: String,
+    row_id: String,
+    options: BinarySearchOptions,
+    state: State<'_, Backend>,
+) -> Result<BinarySearchResult, String> {
+    let _guard = state.begin()?;
+    let snapshot = state.snapshot(&session)?;
+    let cancel = state.cancel.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        clear_core::binary::search(&snapshot, &row_id, &options, &cancel)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1216,6 +1235,7 @@ fn main() {
             merge_buffers,
             stage_merge_result,
             binary_page,
+            binary_search,
             table_compare,
             open_table_document,
             table_catalog,

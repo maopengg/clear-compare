@@ -25,8 +25,44 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum ByteMode {
+    Hex,
+    Utf8,
+    Utf16Le,
+    Utf16Be,
+}
+impl From<ByteMode> for clear_contracts::BinarySearchMode {
+    fn from(mode: ByteMode) -> Self {
+        match mode {
+            ByteMode::Hex => Self::Hex,
+            ByteMode::Utf8 => Self::Utf8,
+            ByteMode::Utf16Le => Self::Utf16Le,
+            ByteMode::Utf16Be => Self::Utf16Be,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
+    /// Read a paired 4096-byte page; success does not establish whole-file equality.
+    Hex {
+        left: PathBuf,
+        right: PathBuf,
+        #[arg(long, default_value = "0")]
+        offset: String,
+    },
+    /// Search at most 64 MiB of candidate offsets; follow next_offset to continue.
+    BinarySearch {
+        file: PathBuf,
+        query: String,
+        #[arg(long, value_enum, default_value = "hex")]
+        mode: ByteMode,
+        #[arg(long, default_value = "0")]
+        offset: String,
+        #[arg(long, default_value_t = 256)]
+        limit: usize,
+    },
     Report {
         left: String,
         right: String,
@@ -172,6 +208,33 @@ enum Command {
 fn run(cli: Cli) -> clear_core::Result<i32> {
     let cancel = AtomicBool::new(false);
     match cli.command {
+        Command::Hex {
+            left,
+            right,
+            offset,
+        } => {
+            let result = clear_core::binary::page_files(&left, &right, &offset)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(0)
+        }
+        Command::BinarySearch {
+            file,
+            query,
+            mode,
+            offset,
+            limit,
+        } => {
+            let options = clear_contracts::BinarySearchOptions {
+                query,
+                mode: mode.into(),
+                offset,
+                limit,
+                side: clear_contracts::Side::Left,
+            };
+            let result = clear_core::binary::search_file(&file, &options, &cancel)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(i32::from(result.positions.is_empty()))
+        }
         Command::Report {
             left,
             right,

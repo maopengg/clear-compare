@@ -172,3 +172,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Resource checks cover decoded bytes, DOM nodes/depth/time, table count, expanded rows/columns/cells/text, with cancellation checks. Ambiguous overlap and invalid span values are errors. UI adds column windows and explicit long-cell clipping.
 - Tests cover entities, whitespace/NBSP, inert/hidden/foreign-script content, nested tables, row-group ordering, zero/positive row spans, column spans, overlaps, limits, missing sides, UTF-16, HTML/CSV/TSV format selection, immutable input reuse and CLI catalogs/exit codes. Dependency declarations and third-party notices were refreshed.
 - Comparison-report changes passed three-platform CI run 38677696889. New local automated checks/builds are recorded with this commit; client GUI/installation acceptance stays deferred.
+
+## Byte-level binary navigation and streaming search
+
+- Paired 4 KiB pages expose exact differing byte indices, explicit side availability and a fresh rendering identity. Desktop decimal/hex navigation and selected-match highlights retain 64-bit precision through string offsets.
+- Hex, UTF-8 and explicit UTF-16 LE/BE byte patterns support overlapping matches and KMP streaming across read/page boundaries. Each call covers at most 64 MiB candidate starts and 256 matches; explicit continuation preserves overlapping matches and scan-boundary lookahead.
+- Native reads reject nonregular/link inputs and observed metadata changes; these are bounded live reads, not immutable content snapshots. UI range labels and CLI next_offset distinguish an empty batch from a completed search. CLI hex exit 0 means a successful page read, not whole-file equality.
+- Tests cover exhaustive small binary inputs against a naive matcher with multiple scan windows/result limits, read-block boundaries, premature EOF, cancellation, large offsets, byte differences, stale metadata, missing sides, links, encodings and process-level CLI semantics.
+- Previous static HTML table changes passed three-platform core/WASM CI run 38681551239. Packaged-client interaction and installation acceptance remains deferred.
