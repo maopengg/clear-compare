@@ -25,7 +25,14 @@ fn zip_error(e: impl std::fmt::Display) -> Error {
     Error::Invalid(format!("ZIP: {e}"))
 }
 fn preflight(file: &mut File, cancel: &AtomicBool) -> Result<usize> {
-    let len = file.metadata()?.len();
+    preflight_limit(file, cancel, MAX_ENTRIES)
+}
+pub(crate) fn preflight_limit(
+    file: &mut (impl Read + Seek),
+    cancel: &AtomicBool,
+    max_entries: usize,
+) -> Result<usize> {
+    let len = file.seek(SeekFrom::End(0))?;
     if len > MAX_ARCHIVE {
         return Err(Error::Invalid("ZIP input exceeds 256 MiB".into()));
     }
@@ -54,7 +61,7 @@ fn preflight(file: &mut File, cancel: &AtomicBool) -> Result<usize> {
     if u16_at(4) != 0
         || u16_at(6) != 0
         || usize::from(u16_at(8)) != count
-        || count > MAX_ENTRIES
+        || count > max_entries.min(MAX_ENTRIES)
         || u32_at(12) > 16 * 1024 * 1024
         || u32_at(16) == u32::MAX
     {

@@ -19,6 +19,8 @@ fn preflight(bytes: &[u8], cancel: &AtomicBool) -> Result<()> {
     if bytes.len() > crate::editing::MAX_DOCUMENT_BYTES {
         return Err(invalid("source exceeds 4 MiB"));
     }
+    // Bound central-directory allocation hints before either ZIP implementation is constructed.
+    crate::archive::preflight_limit(&mut Cursor::new(bytes), cancel, 512)?;
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(invalid)?;
     if zip.len() > 512 {
         return Err(invalid("package exceeds 512 parts"));

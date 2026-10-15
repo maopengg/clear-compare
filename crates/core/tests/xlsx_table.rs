@@ -213,3 +213,17 @@ fn worksheet_relationships_cannot_bypass_xml_preflight_through_binary_part_names
         .to_string();
     assert!(error.contains("internal XML parts"));
 }
+
+#[test]
+fn central_directory_counts_are_checked_before_library_construction() {
+    let mut bytes = workbook(DATA, STRINGS);
+    let end = bytes.len() - 22;
+    assert_eq!(&bytes[end..end + 4], b"PK\x05\x06");
+    bytes[end + 8..end + 10].copy_from_slice(&513u16.to_le_bytes());
+    bytes[end + 10..end + 12].copy_from_slice(&513u16.to_le_bytes());
+    let error = xlsx::Document::parse(&bytes, &cancel())
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(error.contains("directory limits"));
+}

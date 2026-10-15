@@ -272,3 +272,5 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Native documents freeze bytes with folder digest pins. Worksheet catalogs expose names, zero-based selection and hidden status; row/column alignment, keys, tolerance and paging reuse the table engine.
 - Added desktop selectors/catalogs, CLI --left-sheet/--right-sheet, bilingual help and documented value/date/formula-cache policies. Missing caches, cell errors and malformed/oversized inputs reject comparison. Formula evaluation, display formatting, legacy formats and editing remain planned.
 - Tests cover strings, boolean/sparse grids, shared formula caches, 1900/1904 dates, cross-format keys/tolerance, source freezing/digest expiry, CLI and resource/error boundaries. Runtime/install acceptance remains deferred.
+
+- Follow-up OOXML hardening reuses the classic ZIP central-directory guard with a 512-entry cap before constructing either ZIP library, so malicious count hints cannot allocate ahead of package inspection. Archive compatibility and worksheet attack tests cover the shared guard.
