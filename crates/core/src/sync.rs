@@ -17,8 +17,10 @@ use std::{
 use tempfile::NamedTempFile;
 
 mod delete;
+pub(crate) mod rename;
 pub use delete::plan_delete;
 pub(crate) use delete::{permissions, set_permissions};
+pub use rename::plan_rename;
 const MAX_PREVIEW_JOURNAL: usize = 32 * 1024 * 1024;
 fn initial_result(plan: &SyncPlan) -> SyncResult {
     SyncResult {
@@ -39,7 +41,7 @@ fn initial_result(plan: &SyncPlan) -> SyncResult {
     }
 }
 pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
-    if !matches!(plan.version, 1 | 2)
+    if !matches!(plan.version, 1..=3)
         || plan.actions.is_empty()
         || plan.actions.len() > crate::compare::MAX_ENTRIES
     {
@@ -62,12 +64,25 @@ pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
         match (&plan.policy, action.operation) {
             (FilePlanPolicy::SelectedCopy, FileOperation::Copy)
                 if action.source_digest.as_deref().is_some_and(digest)
-                    && action.target_permissions.is_none() => {}
+                    && action.target_permissions.is_none()
+                    && action.rename_to.is_none() => {}
             (FilePlanPolicy::DeleteSelected { .. }, FileOperation::Delete)
                 if plan.version == 2
                     && action.source_digest.is_none()
                     && action.target_existed
-                    && action.target_permissions.is_some() => {}
+                    && action.target_permissions.is_some()
+                    && action.rename_to.is_none() => {}
+            (FilePlanPolicy::RenameSelected { .. }, FileOperation::Rename)
+                if plan.version == 3
+                    && plan.actions.len() == 1
+                    && action.target_existed
+                    && action.source_digest == action.target_digest
+                    && action.source_digest.as_deref().is_some_and(digest)
+                    && action.target_permissions.is_some()
+                    && action.rename_to.is_some() =>
+            {
+                rename::validated_paths(plan, action)?;
+            }
             _ => {
                 return Err(Error::Invalid(
                     "File action does not match its reviewed policy".into(),
@@ -114,7 +129,8 @@ fn target_root<'a>(snapshot: &'a Snapshot, plan: &SyncPlan) -> &'a Path {
                 &snapshot.left
             }
         }
-        FilePlanPolicy::DeleteSelected { target_side } => {
+        FilePlanPolicy::DeleteSelected { target_side }
+        | FilePlanPolicy::RenameSelected { target_side } => {
             if *target_side == Side::Left {
                 &snapshot.left
             } else {
@@ -250,6 +266,7 @@ pub fn plan_direction(
             ));
         }
         actions.push(FileAction {
+            rename_to: None,
             operation: FileOperation::Copy,
             target_permissions: None,
             row_id: row_id.clone(),
@@ -503,6 +520,7 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
         let applied = match action.operation {
             FileOperation::Copy => copy_one(snapshot, plan, action, cancel),
             FileOperation::Delete => delete::delete_one(snapshot, plan, action, cancel),
+            FileOperation::Rename => rename::rename_one(snapshot, plan, action, cancel),
         };
         match applied {
             Ok(()) => result.actions[i].state = "completed".into(),
@@ -517,4 +535,42 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
         }
     }
     Ok(result)
+}
+
+pub fn affected_paths(snapshot: &Snapshot, plan: &SyncPlan) -> Result<Vec<PathBuf>> {
+    let root = target_root(snapshot, plan);
+    let mut paths = Vec::new();
+    for action in &plan.actions {
+        let relative = snapshot
+            .paths
+            .get(&action.row_id)
+            .ok_or_else(|| Error::Invalid("Unknown file-plan entry".into()))?;
+        paths.push(root.join(relative));
+        if action.operation == FileOperation::Rename {
+            let (_, new, temp) = rename::validated_paths(plan, action)?;
+            paths.push(root.join(new));
+            paths.push(root.join(temp));
+        }
+    }
+    Ok(paths)
+}
+pub fn relocations(
+    snapshot: &Snapshot,
+    result: &SyncResult,
+) -> Result<Vec<crate::editing::Relocation>> {
+    let mut changes = Vec::new();
+    let root = target_root(snapshot, &result.plan);
+    for (action, state) in result.plan.actions.iter().zip(&result.actions) {
+        if action.operation == FileOperation::Rename && state.state == "completed" {
+            let (old, new, temp) = rename::validated_paths(&result.plan, action)?;
+            for from in [old, temp] {
+                changes.push(crate::editing::Relocation {
+                    root: root.to_owned(),
+                    from,
+                    to: new.clone(),
+                });
+            }
+        }
+    }
+    Ok(changes)
 }

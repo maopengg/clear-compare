@@ -1,5 +1,7 @@
 //! Physical tracked/optional-untracked working-tree reads. No Git filters or writes.
 use super::{GitEntry, MAX_ENTRIES, MAX_LIST, path_from_bytes, strict_command};
+#[cfg(any(windows, test))]
+use crate::native_path::windows_file_name as windows_component;
 use crate::{
     Error, Result,
     compare::{check_cancel, checked_path},
@@ -15,35 +17,6 @@ use std::{
     sync::atomic::AtomicBool,
     time::{SystemTime, UNIX_EPOCH},
 };
-#[cfg(any(windows, test))]
-fn windows_component(name: &str) -> bool {
-    if name.is_empty()
-        || name.ends_with([' ', '.'])
-        || name
-            .chars()
-            .any(|c| c < ' ' || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
-    {
-        return false;
-    }
-    let base = name
-        .split('.')
-        .next()
-        .unwrap_or_default()
-        .trim_end_matches(' ')
-        .to_ascii_uppercase();
-    if matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL") {
-        return false;
-    }
-    let device = base
-        .strip_prefix("COM")
-        .or_else(|| base.strip_prefix("LPT"));
-    !device.is_some_and(|n| {
-        matches!(
-            n,
-            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "\u{b9}" | "\u{b2}" | "\u{b3}"
-        )
-    })
-}
 fn working_path(bytes: &[u8]) -> Result<PathBuf> {
     let path = path_from_bytes(bytes)?;
     if path

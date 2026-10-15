@@ -1026,7 +1026,115 @@ async fn preview_delete(
 }
 
 #[tauri::command]
-async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<SyncResult, String> {
+async fn preview_rename(
+    session: String,
+    row_id: String,
+    target_side: Side,
+    new_name: String,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<SyncPlan, String> {
+    let _guard = state.begin()?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    let snapshot = state.snapshot(&session)?;
+    let cancel = state.cancel.clone();
+    let base = data_dir(&app)?.join("backups");
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::sync::plan_rename(
+            &snapshot,
+            &row_id,
+            &base,
+            &cancel,
+            target_side,
+            std::ffi::OsStr::new(&new_name),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = Some(plan.clone());
+    Ok(plan)
+}
+async fn refresh_editor_locations(
+    state: &Backend,
+    moves: Vec<clear_core::editing::Relocation>,
+    affected: Vec<PathBuf>,
+) -> Result<(Vec<DocumentLocation>, Vec<String>, Vec<String>), String> {
+    let documents = state
+        .documents
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+    let changes = tauri::async_runtime::spawn_blocking(move || {
+        let mut changes = Vec::new();
+        for original in documents {
+            let id = original.view.id.clone();
+            if let Some(change) = moves
+                .iter()
+                .find(|r| original.has_path(&r.root.join(&r.from)))
+            {
+                match original.relocated(change) {
+                    Ok(updated) => changes.push((original, Some(updated), false, None)),
+                    Err(e) => changes.push((
+                        original,
+                        None,
+                        true,
+                        Some(format!(
+                            "Editor location update failed; buffer is retained: {e}"
+                        )),
+                    )),
+                }
+            } else if affected.iter().any(|path| original.has_path(path))
+                && !original.location_valid()
+            {
+                changes.push((
+                    original,
+                    None,
+                    true,
+                    Some(format!(
+                        "Editor {id} source changed; its unsaved buffer is retained."
+                    )),
+                ));
+            }
+        }
+        changes
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let mut cache = state.documents.lock().map_err(|_| "State unavailable")?;
+    let mut locations = Vec::new();
+    let mut stale = Vec::new();
+    let mut warnings = Vec::new();
+    for (old, updated, invalid, warning) in changes {
+        if cache
+            .get(&old.view.id)
+            .is_none_or(|now| !Arc::ptr_eq(now, &old))
+        {
+            continue;
+        }
+        if let Some(next) = updated {
+            locations.push(DocumentLocation {
+                id: next.view.id.clone(),
+                path: next.view.path.clone(),
+                absolute_path: next.view.absolute_path.clone(),
+            });
+            cache.insert(next.view.id.clone(), Arc::new(next));
+        }
+        if invalid {
+            stale.push(old.view.id.clone());
+        }
+        if let Some(warning) = warning {
+            warnings.push(warning);
+        }
+    }
+    Ok((locations, stale, warnings))
+}
+
+#[tauri::command]
+async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<FileApplyReply, String> {
     let _operation_guard = state.begin()?;
     let plan = state
         .plan
@@ -1039,12 +1147,30 @@ async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<SyncRe
     }
     let snapshot = state.snapshot(&plan.session)?;
     let cancel = state.cancel.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        clear_core::sync::execute(&snapshot, &plan, &cancel)
+    let (result, moves, affected) =
+        tauri::async_runtime::spawn_blocking(move || -> Result<_, clear_core::Error> {
+            let affected = clear_core::sync::affected_paths(&snapshot, &plan)?;
+            let result = clear_core::sync::execute(&snapshot, &plan, &cancel)?;
+            let moves = clear_core::sync::relocations(&snapshot, &result)?;
+            Ok((result, moves, affected))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    let (locations, stale_documents, warnings) =
+        refresh_editor_locations(&state, moves, affected)
+            .await
+            .unwrap_or_else(|error| {
+                (Vec::new(), Vec::new(), vec![format!(
+                    "File operation finished, but editor locations could not be refreshed; retained buffers must be reviewed before saving: {error}"
+                )])
+            });
+    Ok(FileApplyReply {
+        result,
+        locations,
+        stale_documents,
+        warnings,
     })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1132,7 +1258,7 @@ async fn preview_sync_recovery(
 async fn apply_sync_recovery(
     plan_id: String,
     state: State<'_, Backend>,
-) -> Result<RecoveryResult, String> {
+) -> Result<RecoveryApplyReply, String> {
     let _operation_guard = state.begin()?;
     let plan = state
         .recovery
@@ -1145,10 +1271,30 @@ async fn apply_sync_recovery(
     }
     let cancel = state.cancel.clone();
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
-    tauri::async_runtime::spawn_blocking(move || clear_core::recovery::execute(&plan, &cancel))
+    let (result, moves, affected) =
+        tauri::async_runtime::spawn_blocking(move || -> Result<_, clear_core::Error> {
+            let affected = plan.affected_paths();
+            let result = clear_core::recovery::execute(&plan, &cancel)?;
+            let moves = plan.relocations(&result);
+            Ok((result, moves, affected))
+        })
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let (locations, stale_documents, warnings) =
+        refresh_editor_locations(&state, moves, affected)
+            .await
+            .unwrap_or_else(|error| {
+                (Vec::new(), Vec::new(), vec![format!(
+                    "Recovery finished, but editor locations could not be refreshed; retained buffers must be reviewed before saving: {error}"
+                )])
+            });
+    Ok(RecoveryApplyReply {
+        result,
+        locations,
+        stale_documents,
+        warnings,
+    })
 }
 
 #[tauri::command]
@@ -1270,6 +1416,7 @@ fn main() {
             table_page,
             preview_sync,
             preview_delete,
+            preview_rename,
             apply_sync,
             pick_directory,
             load_session,

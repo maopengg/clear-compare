@@ -18,7 +18,12 @@ use std::{
 };
 use tempfile::NamedTempFile;
 const MAX_JOURNAL: u64 = 64 * 1024 * 1024;
-struct Action {
+mod rename;
+enum Action {
+    File(FileUndo),
+    Rename(rename::Undo),
+}
+struct FileUndo {
     relative: PathBuf,
     current_digest: Option<String>,
     original_permissions: Option<clear_contracts::FilePermissions>,
@@ -124,6 +129,23 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
             return Err(Error::Invalid("Duplicate journal target".into()));
         }
         let label = crate::tree::display_path(&relative);
+        if copied.operation == clear_contracts::FileOperation::Rename {
+            if let Some(undo) = rename::preview(
+                &target,
+                old_root,
+                &report.plan,
+                copied,
+                &state.state,
+                cancel,
+            )? {
+                labels.push(RecoveryAction {
+                    path: undo.label(),
+                    operation: "rename_back".into(),
+                });
+                actions.push(Action::Rename(undo));
+            }
+            continue;
+        }
         let path = checked_path(&target, &relative, true)?;
         let digest = current(&path, cancel)?;
         if digest == copied.target_digest && state.state != "completed" {
@@ -132,6 +154,9 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         let expected_current = match copied.operation {
             clear_contracts::FileOperation::Copy => copied.source_digest.clone(),
             clear_contracts::FileOperation::Delete => None,
+            clear_contracts::FileOperation::Rename => {
+                return Err(Error::Invalid("Rename recovery was not dispatched".into()));
+            }
         };
         if digest != expected_current {
             return Err(Error::Invalid(format!(
@@ -167,13 +192,13 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
             }
             .into(),
         });
-        actions.push(Action {
+        actions.push(Action::File(FileUndo {
             relative,
             current_digest: expected_current,
             original_permissions: copied.target_permissions.clone(),
             original_digest: copied.target_digest.clone(),
             original_backup,
-        });
+        }));
     }
     if actions.is_empty() {
         return Err(Error::Invalid(
@@ -210,7 +235,17 @@ fn copy_to(source: &Path, destination: &mut File, cancel: &AtomicBool) -> Result
 }
 fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
     root_valid(&plan.target)?;
-    let action = &plan.actions[index];
+    let action = match &plan.actions[index] {
+        Action::File(action) => action,
+        Action::Rename(action) => {
+            return action.execute(
+                &plan.target,
+                &plan.original_root,
+                Path::new(&plan.view.backup_root),
+                cancel,
+            );
+        }
+    };
     let target = checked_path(&plan.target, &action.relative, true)?;
     if current(&target, cancel)? != action.current_digest {
         return Err(Error::Invalid(
@@ -366,4 +401,26 @@ pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
         }
     }
     Ok(result)
+}
+
+impl Plan {
+    pub fn affected_paths(&self) -> Vec<PathBuf> {
+        self.actions
+            .iter()
+            .flat_map(|action| match action {
+                Action::File(a) => vec![self.target.join(&a.relative)],
+                Action::Rename(a) => a.affected(&self.target),
+            })
+            .collect()
+    }
+    pub fn relocations(&self, result: &RecoveryResult) -> Vec<crate::editing::Relocation> {
+        self.actions
+            .iter()
+            .zip(&result.actions)
+            .flat_map(|(action, state)| match action {
+                Action::Rename(a) if state.state == "completed" => a.relocations(&self.target),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
 }

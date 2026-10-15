@@ -7,6 +7,7 @@ pub mod folder_merge;
 pub mod git;
 pub mod merge;
 pub mod native_path;
+mod no_replace;
 pub mod picture;
 pub mod recovery;
 pub mod report;

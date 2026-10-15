@@ -186,6 +186,7 @@ pub enum FileOperation {
     #[default]
     Copy,
     Delete,
+    Rename,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
@@ -193,6 +194,9 @@ pub enum FilePlanPolicy {
     #[default]
     SelectedCopy,
     DeleteSelected {
+        target_side: Side,
+    },
+    RenameSelected {
         target_side: Side,
     },
 }
@@ -204,7 +208,16 @@ pub enum FilePermissions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenamePaths {
+    pub destination: String,
+    pub destination_native: NativePath,
+    pub temporary_native: NativePath,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileAction {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_to: Option<RenamePaths>,
     #[serde(default)]
     pub operation: FileOperation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -742,4 +755,25 @@ pub struct BinarySearchResult {
     pub size: String,
     pub positions: Vec<String>,
     pub pattern_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentLocation {
+    pub id: String,
+    pub path: String,
+    pub absolute_path: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileApplyReply {
+    pub result: SyncResult,
+    pub locations: Vec<DocumentLocation>,
+    pub stale_documents: Vec<String>,
+    pub warnings: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecoveryApplyReply {
+    pub result: RecoveryResult,
+    pub locations: Vec<DocumentLocation>,
+    pub stale_documents: Vec<String>,
+    pub warnings: Vec<String>,
 }

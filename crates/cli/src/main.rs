@@ -59,6 +59,23 @@ impl From<FileSide> for clear_contracts::Side {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Preview a same-directory file rename with no overwrite; --apply executes a fresh plan.
+    Rename {
+        left: String,
+        right: String,
+        #[arg(long, value_enum)]
+        side: FileSide,
+        #[arg(long)]
+        path: PathBuf,
+        #[arg(long)]
+        new_name: std::ffi::OsString,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long)]
+        backup_dir: PathBuf,
+        #[arg(long)]
+        apply: bool,
+    },
     /// Preview explicit regular-file deletions; apply creates verified backups and a recovery journal.
     Delete {
         left: String,
@@ -266,6 +283,65 @@ enum Command {
 fn run(cli: Cli) -> clear_core::Result<i32> {
     let cancel = AtomicBool::new(false);
     match cli.command {
+        Command::Rename {
+            left,
+            right,
+            side,
+            path,
+            new_name,
+            exclude,
+            backup_dir,
+            apply,
+        } => {
+            let snapshot = clear_core::compare::compare(
+                &CompareRequest {
+                    left,
+                    right,
+                    exclusions: exclude,
+                    content: true,
+                },
+                &cancel,
+            )?;
+            let mut relative = PathBuf::new();
+            for part in path.components() {
+                match part {
+                    std::path::Component::Normal(p) => relative.push(p),
+                    std::path::Component::CurDir => {}
+                    _ => {
+                        return Err(clear_core::Error::Invalid(
+                            "Rename path must be relative without traversal".into(),
+                        ));
+                    }
+                }
+            }
+            let id = snapshot
+                .paths
+                .iter()
+                .find_map(|(id, p)| (p == &relative).then_some(id))
+                .ok_or_else(|| {
+                    clear_core::Error::Invalid("Rename source is absent or excluded".into())
+                })?;
+            let plan = clear_core::sync::plan_rename(
+                &snapshot,
+                id,
+                &backup_dir,
+                &cancel,
+                side.into(),
+                &new_name,
+            )?;
+            if apply {
+                let result = clear_core::sync::execute(&snapshot, &plan, &cancel)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(if result.actions.iter().all(|a| a.state == "completed") {
+                    0
+                } else {
+                    2
+                })
+            } else {
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+                Ok(0)
+            }
+        }
         Command::Delete {
             left,
             right,

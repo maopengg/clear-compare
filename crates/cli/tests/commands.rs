@@ -965,3 +965,84 @@ fn deletion_cli_previews_explicit_paths_and_recovers_without_touching_other_file
     ]);
     assert_eq!(required.status.code(), Some(2));
 }
+
+#[test]
+fn rename_cli_previews_single_names_applies_and_recovers_without_overwriting() {
+    let t = tempfile::tempdir().unwrap();
+    for d in ["l", "r", "b", "recover"] {
+        fs::create_dir(t.path().join(d)).unwrap();
+    }
+    let l = t.path().join("l");
+    let r = t.path().join("r");
+    let b = t.path().join("b");
+    fs::write(r.join("a"), "original").unwrap();
+    let args = [
+        "rename".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--side".as_ref(),
+        "right".as_ref(),
+        "--path".as_ref(),
+        "./a".as_ref(),
+        "--new-name".as_ref(),
+        "renamed".as_ref(),
+        "--backup-dir".as_ref(),
+        b.as_os_str(),
+    ];
+    let preview = run(&args);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let p: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+    assert_eq!(p["version"], 3);
+    assert_eq!(p["policy"]["mode"], "rename_selected");
+    assert_eq!(p["actions"][0]["rename_to"]["destination"], "renamed");
+    assert!(r.join("a").exists());
+    assert!(!Path::new(p["backup_root"].as_str().unwrap()).exists());
+    let mut apply = args.to_vec();
+    apply.push("--apply".as_ref());
+    let out = run(&apply);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(!r.join("a").exists());
+    assert_eq!(fs::read(r.join("renamed")).unwrap(), b"original");
+    let restored = run(&[
+        "recover-sync".as_ref(),
+        out["journal"].as_str().unwrap().as_ref(),
+        "--backup-dir".as_ref(),
+        t.path().join("recover").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        restored.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restored.stderr)
+    );
+    assert_eq!(fs::read(r.join("a")).unwrap(), b"original");
+    fs::write(r.join("renamed"), "foreign").unwrap();
+    let collision = run(&apply);
+    assert_eq!(collision.status.code(), Some(2));
+    assert_eq!(fs::read(r.join("renamed")).unwrap(), b"foreign");
+    assert_eq!(fs::read(r.join("a")).unwrap(), b"original");
+    let invalid = run(&[
+        "rename".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--side".as_ref(),
+        "right".as_ref(),
+        "--path".as_ref(),
+        "a".as_ref(),
+        "--new-name".as_ref(),
+        "../escape".as_ref(),
+        "--backup-dir".as_ref(),
+        b.as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert_eq!(invalid.status.code(), Some(2));
+}

@@ -445,6 +445,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | typeid | 1.0.3 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typeid/1.0.3) |
 | typenum | 1.20.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typenum/1.20.1) |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | [crate](https://crates.io/crates/unicode-ident/1.0.27) |
+| unicode-normalization | 0.1.25 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/unicode-normalization/0.1.25) |
 | unicode-segmentation | 1.13.3 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/unicode-segmentation/1.13.3) |
 | unicode-xid | 0.2.6 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/unicode-xid/0.2.6) |
 | url | 2.5.8 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/url/2.5.8) |

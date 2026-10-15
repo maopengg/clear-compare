@@ -23,6 +23,49 @@ pub struct OpenDocument {
     pub view: TextDocument,
     root: PathBuf,
     relative: PathBuf,
+    restore_alias: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+pub struct Relocation {
+    pub root: PathBuf,
+    pub from: PathBuf,
+    pub to: PathBuf,
+}
+impl OpenDocument {
+    pub fn has_path(&self, path: &Path) -> bool {
+        self.root.join(&self.relative) == path
+    }
+    pub fn relocated(&self, change: &Relocation) -> Result<Self> {
+        if !self.has_path(&change.root.join(&change.from)) {
+            return Err(Error::Invalid(
+                "Editor relocation does not match its native path".into(),
+            ));
+        }
+        let path = checked_path(&change.root, &change.to, false)?;
+        let cancel = AtomicBool::new(false);
+        if !crate::native_path::exact_leaf(&change.root, &change.to, &cancel)?
+            || hash_file(&path, &cancel)? != self.view.digest
+        {
+            return Err(Error::Invalid("Renamed editor source changed".into()));
+        }
+        let mut updated = self.clone();
+        if updated.restore_alias.is_none() {
+            updated.restore_alias = Some(self.root.join(&self.relative));
+        }
+        updated.root = change.root.clone();
+        updated.relative = change.to.clone();
+        updated.view.path = crate::tree::display_path(&change.to);
+        updated.view.absolute_path = path.to_string_lossy().into();
+        Ok(updated)
+    }
+    pub fn location_valid(&self) -> bool {
+        let cancel = AtomicBool::new(false);
+        crate::native_path::exact_leaf(&self.root, &self.relative, &cancel).unwrap_or(false)
+            && checked_path(&self.root, &self.relative, false)
+                .and_then(|p| hash_file(&p, &cancel))
+                .is_ok_and(|d| d == self.view.digest)
+    }
 }
 
 pub fn decode(bytes: &[u8]) -> Result<(String, Encoding, bool)> {
@@ -177,6 +220,7 @@ pub fn open(snapshot: &Snapshot, row_id: &str, side: Side) -> Result<OpenDocumen
         digest,
     };
     Ok(OpenDocument {
+        restore_alias: None,
         view,
         root: root.clone(),
         relative,
@@ -227,6 +271,7 @@ pub fn open_file(path: &Path) -> Result<OpenDocument> {
         digest,
     };
     Ok(OpenDocument {
+        restore_alias: None,
         view,
         root,
         relative,
@@ -307,6 +352,11 @@ fn save_bytes(
     reject_overlap(&base, &original.root)?;
     let path = checked_path(&original.root, &original.relative, false)?;
     let cancel = AtomicBool::new(false);
+    if !crate::native_path::exact_leaf(&original.root, &original.relative, &cancel)? {
+        return Err(Error::Invalid(
+            "Editor filename changed; reopen or relocate it before saving".into(),
+        ));
+    }
     if hash_file(&path, &cancel)? != original.view.digest {
         return Err(Error::Invalid(
             "File changed outside the editor. Reopen it before saving.".into(),
@@ -366,6 +416,9 @@ fn save_bytes(
         Ok(())
     };
     write_manifest("prepared")?;
+    if !crate::native_path::exact_leaf(&original.root, &original.relative, &cancel)? {
+        return Err(Error::Invalid("Editor filename changed during save".into()));
+    }
     temporary.persist(&path).map_err(|e| {
         std::io::Error::new(
             e.error.kind(),
@@ -394,6 +447,7 @@ fn save_bytes(
     };
     Ok((
         OpenDocument {
+            restore_alias: None,
             view,
             root: original.root.clone(),
             relative: original.relative.clone(),
@@ -427,7 +481,13 @@ pub fn preview_restore(original: &OpenDocument, backup: &Path) -> Result<Restore
     let metadata: serde_json::Value = serde_json::from_slice(&data)?;
     if metadata["version"] != 1
         || metadata["state"] != "completed"
-        || metadata["target"] != original.view.absolute_path
+        || (metadata["target"] != original.view.absolute_path
+            && !metadata["target"].as_str().is_some_and(|p| {
+                original
+                    .restore_alias
+                    .as_ref()
+                    .is_some_and(|a| a == Path::new(p))
+            }))
         || metadata["saved_digest"] != original.view.digest
     {
         return Err(Error::Invalid(

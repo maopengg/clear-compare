@@ -35,6 +35,7 @@ fn main() {
             "table_page",
             "preview_sync",
             "preview_delete",
+            "preview_rename",
             "apply_sync",
             "pick_directory",
             "load_session",

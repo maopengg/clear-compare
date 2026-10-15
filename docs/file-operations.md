@@ -1,16 +1,16 @@
-# Reviewed file copy, deletion and recovery
+# Reviewed file copy, deletion, rename and recovery
 
-The local folder workspace supports directional regular-file copy and explicit selected-file deletion on either side. These operations use native cached paths, a reviewed plan, content checks, verified backups and a state journal. Directory removal, recursive deletion, move/rename, mirror and baseline-aware bidirectional policies remain planned.
+The local folder workspace supports directional regular-file copy and explicit selected-file deletion or single-file same-directory rename on either side. These operations use native cached paths, a reviewed plan, content checks, verified backups and a state journal. Directory removal, recursive deletion, cross-directory move, bulk/directory rename, mirror and baseline-aware bidirectional policies remain planned.
 
 ## Desktop workflow
 
-1. Compare independent directories. Choose Copy, Delete left files or Delete right files in the operation selector. Changing the operation clears selection and any visible plan. The reverse-direction checkbox applies only to copying.
-2. Select readable regular files on the relevant side. Deletion can select unchanged or target-only files as well as changed files; turn off Differences only to see unchanged files. Directories and links cannot be selected for deletion.
+1. Compare independent directories. Choose Copy, Delete left/right files or Rename left/right file in the operation selector. Changing the operation clears selection and any visible plan. The reverse-direction checkbox applies only to copying.
+2. Select readable regular files on the relevant side. Deletion can select unchanged or target-only files as well as changed files; turn off Differences only to see unchanged files. Directories and links cannot be selected for deletion or rename. Rename requires exactly one file and one new leaf name.
 3. Preview the plan. It identifies the actual target directory, side, each relative name/size, action type and backup location. The viewer initially renders 500 actions and can show more. Selection alone does not write or remove anything.
 4. Execute that exact native plan ID. Source/target checks run again; errors/cancellation stop later actions. Earlier completed actions remain completed. Compare again after applying or encountering a partial failure.
 5. Open operation history to preview rollback. Review its actual target and action list before applying. Deletion rollback restores absent files without overwriting anything that has since appeared at those paths.
 
-Plans are consumed once. Native preview failure invalidates an older cached plan. Successful/partially completed application clears the local comparison and returns the operation selector to Copy. Destructive mode is not saved in named sessions. Open editor buffers are retained; operations can make their original file state stale, so review/reopen them before saving. Normal editor digest checks still apply.
+Plans are consumed once. Native preview failure invalidates an older cached plan. Successful/partially completed application clears the local comparison and returns the operation selector to Copy. Destructive mode is not saved in named sessions. Open editors follow successful renames and their rollback without changing IDs, saved text, drafts or undo history. Last-save restoration remains bound after an app-controlled rename. Other file changes invalidate affected editor locations: clean affected editors close, dirty buffers remain with a warning and require review/reopen before saving. Native digest and filename checks still prevent saving over external edits or silently reversing an external case-only rename.
 
 ## Deletion ordering
 
@@ -25,14 +25,26 @@ The journal is written before an action enters `running`, then updated after com
 
 Basic permissions mean Unix mode bits or the read-only flag on other systems. Owner/group, ACLs, extended attributes, filesystem flags, original timestamps and hard-link relationships are not preserved as a complete metadata snapshot. Windows read-only/locked files can fail removal; the app does not silently clear those attributes. OS trash/recycle-bin integration is not implemented. These are application backups, not trash entries.
 
+## Rename ordering and interruption
+
+Rename supports one readable regular file within its existing directory, on either side. The counterpart remains untouched. The new name cannot traverse directories, match an exclusion or occupy an existing name, including a hard link to the source. Windows reserved names are rejected. Lossless native names are retained; the CLI also accepts native non-Unicode names where the filesystem supports them.
+
+Planning pins bytes/basic permissions, the new name and a same-directory `.clear-compare-rename-<plan-id>` temporary name. Execution verifies the original backup just as deletion does, then performs two native no-replace renames: original to temporary, then temporary to new. This allows case-only changes on case-insensitive filesystems while refusing a name created by another process. There is no copying/unlinking or overwriting fallback if the filesystem cannot perform the native operation. Ordinary native rename retains the file itself, including its timestamps; the separate application backup still has only the documented basic metadata guarantees.
+
+Cancellation or failure between the two steps may leave the file at the recorded temporary name. History recovery verifies that staged or destination file and the original backup, then previews a rename back. It backs up the current live file before moving it, refuses recreated original names and preserves unrelated destination files when restoring a staged source. A completed rollback can preserve the original file's identity/timestamps. Changed/missing live files, occupied temporary names or modified backups block recovery; this is not automatic resume or backup-based reconstruction of a vanished live file.
+
+Exact-name checks remain case-sensitive even on an insensitive filesystem. Canonically equivalent Unicode spellings are accepted only when filesystem lookup resolves both to the same regular file; this does not conflate distinct files on a normalization-sensitive filesystem. Full platform/filesystem runtime acceptance remains deferred.
+
 ## Journals and compatibility
 
-`SyncResult` contains the immutable `plan`, per-action states and journal path. New plans use `plan.version = 2`:
+`SyncResult` contains the immutable `plan`, per-action states and journal path. Copy/deletion plans use `plan.version = 2`:
 
 - `policy.mode = selected_copy`, with `source_side`, or `delete_selected`, with an explicit `target_side`. `source_side` is ignored for deletion.
 - Each `FileAction.operation` is `copy` or `delete`; a plan cannot mix action kinds under these policies.
 - `target_existed` records prior target presence. Copy has a source digest and optional prior-target digest; deletion has no source digest and requires a prior-target digest/basic permissions.
 - `target_native` and `relative_native` carry lossless native paths. `target` and `path` are display labels, never filesystem inputs.
+
+Rename plans use version 3 and `policy.mode = rename_selected` with explicit `target_side`, exactly one `operation = rename`, equal original source/target digests, basic permissions, and `rename_to` native destination/temporary paths. These paths must be distinct leaf names under the original parent; the temporary name must match the plan identity. Display labels remain nonauthoritative. Copy/deletion actions have no rename paths.
 
 Version-one copy journals remain readable: absent version/policy/operation default to the earlier copy semantics, and `overwrite` is accepted as the old alias of target_existed. Journals lacking native paths retain the existing explicit manual-recovery limitation. Unsupported versions, inconsistent policies/digests/permissions, duplicate targets and mismatched backup placement are rejected. A new pending journal must fit 32 MiB before execution starts; persisted recovery input remains limited to 64 MiB. Error text is clipped after 64 KiB plus an indicator, leaving room for state changes. This preflight also applies to new copy plans.
 
@@ -53,6 +65,9 @@ Files and journals are explicitly flushed; on Unix directory entries are also fl
 clear-compare delete ./left ./right --side right --path sub/file.txt --path old.bin --backup-dir ./backups
 # Apply re-scans and generates a fresh plan; it does not execute previously exported JSON.
 clear-compare delete ./left ./right --side right --path sub/file.txt --backup-dir ./backups --apply
+# Preview/apply one same-directory native rename; new-name is a leaf, not a path.
+clear-compare rename ./left ./right --side left --path sub/old.txt --new-name New.txt --backup-dir ./backups
+clear-compare rename ./left ./right --side left --path sub/old.txt --new-name New.txt --backup-dir ./backups --apply
 # Reopen the resulting journal to preview/apply rollback.
 clear-compare recover-sync ./backups/PLAN/journal.json --backup-dir ./recovery-backups
 clear-compare recover-sync ./backups/PLAN/journal.json --backup-dir ./recovery-backups --apply

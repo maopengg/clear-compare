@@ -118,6 +118,7 @@ pub fn plan_delete(
             ));
         }
         actions.push(FileAction {
+            rename_to: None,
             operation: FileOperation::Delete,
             target_permissions: Some(permissions(&meta)),
             row_id: row_id.clone(),
@@ -144,12 +145,12 @@ pub fn plan_delete(
     validate_plan(&plan)?;
     Ok(plan)
 }
-pub(super) fn delete_one(
+pub(super) fn backup_before_change(
     snapshot: &Snapshot,
     plan: &SyncPlan,
     action: &FileAction,
     cancel: &AtomicBool,
-) -> Result<()> {
+) -> Result<PathBuf> {
     check_cancel(cancel)?;
     let root = target_root(snapshot, plan);
     if fs::canonicalize(root)? != root {
@@ -236,6 +237,15 @@ pub(super) fn delete_one(
             "Deletion target changed before removal".into(),
         ));
     }
+    Ok(path)
+}
+pub(super) fn delete_one(
+    snapshot: &Snapshot,
+    plan: &SyncPlan,
+    action: &FileAction,
+    cancel: &AtomicBool,
+) -> Result<()> {
+    let path = backup_before_change(snapshot, plan, action, cancel)?;
     fs::remove_file(&path)?;
     flush_directory(
         path.parent()
