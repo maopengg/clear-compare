@@ -45,8 +45,8 @@ const TOPICS: &[Topic] = &[
     Topic {
         zh: "表格比较",
         en: "Table comparison",
-        body_zh: "支持 CSV、TSV 和静态 HTML 表格，可分别选择两侧格式和 HTML 表格序号。HTML 只读取静态文本，不运行脚本、CSS 或网络请求；合并单元格按网格重复值。表头为第一逻辑行，可按列序号指定唯一行键及绝对数值容差。\n打开后使用冻结的原文调整规则，外部修改不会混入同一次表格会话。结果按行分页，每次显示 25 列。Excel、列名映射、表格编辑尚未实现。",
-        body_en: "Supports CSV, TSV and static HTML tables with independent formats/table indices. HTML reads static text without scripts, CSS evaluation or network requests; spanned values repeat in covered grid cells. The first logical row can be headers; choose a column index for unique row keys and an absolute numeric tolerance.\nRule changes use frozen source text after opening, so external edits do not mix into that table session. Rows are paged and columns shown in windows of 25. Excel, column-name mapping and table editing are not implemented.",
+        body_zh: "支持 CSV、TSV 和静态 HTML 表格，可分别选择两侧格式和 HTML 表格序号。HTML 只读取静态文本，不运行脚本、CSS 或网络请求；合并单元格按网格重复值。表头为第一逻辑行；可按精确唯一列名对齐不同列顺序，此时主键序号按左列再右侧独有列的映射填写。支持唯一行键与绝对数值容差。\n打开后使用冻结的原文调整规则，外部修改不会混入同一次表格会话。结果按行分页，每次显示 25 列。缺列、缺单元格与空值分别显示。Excel、任意重命名列映射和表格编辑尚未实现。",
+        body_en: "Supports CSV, TSV and static HTML tables with independent formats/table indices. HTML reads static text without scripts, CSS evaluation or network requests; spanned values repeat in covered grid cells. The first logical row can be headers. Exact unique header-name alignment handles reordered columns; key indices then use the left-then-right-only logical union. Unique row keys and absolute numeric tolerance are supported.\nRule changes use frozen source text after opening, so external edits do not mix into that table session. Rows are paged and columns shown in windows of 25. Missing columns/cells remain distinct from empty strings. Excel, arbitrary renamed-column mapping and table editing are not implemented.",
     },
     Topic {
         zh: "二进制比较",

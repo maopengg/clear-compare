@@ -171,6 +171,9 @@ enum Command {
         right_html: Option<usize>,
         #[arg(long)]
         no_headers: bool,
+        /// Match exact header names; key_column uses the left-then-right-only logical order.
+        #[arg(long, conflicts_with = "no_headers")]
+        align_columns_by_name: bool,
         #[arg(long)]
         key_column: Option<usize>,
         #[arg(long)]
@@ -609,6 +612,7 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             left_html,
             right_html,
             no_headers,
+            align_columns_by_name,
             key_column,
             numeric_tolerance,
         } => {
@@ -650,6 +654,7 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
                     right_source: source(right_html),
                     delimiter: if tsv { "\t" } else { "," }.into(),
                     headers: !no_headers,
+                    align_columns_by_name,
                     key_column,
                     numeric_tolerance,
                 },
@@ -657,7 +662,7 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             )?;
             let changed =
                 result.summary.changed + result.summary.left_only + result.summary.right_only > 0
-                    || result.left_headers != result.right_headers;
+                    || result.headers_changed;
             println!("{}", serde_json::to_string_pretty(&result)?);
             Ok(i32::from(changed))
         }

@@ -848,6 +848,8 @@ async fn table_compare(
     let id = clear_core::unique_id();
     let total = report.rows.len();
     let view = TableComparison {
+        column_map: report.column_map.clone(),
+        headers_changed: report.headers_changed,
         columns: report.columns,
         options: report.options.clone(),
         left_tables: report.left_tables.clone(),

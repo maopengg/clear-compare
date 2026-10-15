@@ -257,13 +257,16 @@ pub struct BinaryPage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableOptions {
+    /// Exact unique header names; logical columns follow left then right-only order.
+    #[serde(default)]
+    pub align_columns_by_name: bool,
     #[serde(default)]
     pub left_source: TableSource,
     #[serde(default)]
     pub right_source: TableSource,
     pub delimiter: String,
     pub headers: bool,
-    /// Zero-based key column. Duplicate keys are rejected.
+    /// Zero-based key column (logical union index in name mode). Duplicate keys are rejected.
     pub key_column: Option<usize>,
     /// Absolute numeric tolerance; enabled explicitly, finite and nonnegative.
     pub numeric_tolerance: Option<String>,
@@ -279,6 +282,10 @@ pub struct TableRow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableComparison {
     #[serde(default)]
+    pub column_map: Vec<TableColumn>,
+    #[serde(default)]
+    pub headers_changed: bool,
+    #[serde(default)]
     pub columns: usize,
     #[serde(default)]
     pub options: Option<TableOptions>,
@@ -292,6 +299,24 @@ pub struct TableComparison {
     pub right_headers: Vec<String>,
     pub rows: Vec<TableRow>,
     pub summary: Summary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableColumn {
+    pub name: String,
+    pub left: Option<usize>,
+    pub right: Option<usize>,
+}
+impl TableComparison {
+    pub fn source_column(&self, logical: usize, left: bool) -> Option<usize> {
+        if self.column_map.is_empty() {
+            Some(logical)
+        } else {
+            self.column_map
+                .get(logical)
+                .and_then(|c| if left { c.left } else { c.right })
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -606,6 +631,7 @@ pub enum TableSource {
 impl Default for TableOptions {
     fn default() -> Self {
         Self {
+            align_columns_by_name: false,
             left_source: TableSource::Auto,
             right_source: TableSource::Auto,
             delimiter: ",".into(),

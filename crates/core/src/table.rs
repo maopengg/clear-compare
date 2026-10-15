@@ -165,6 +165,69 @@ pub fn compare_optional(
         cancel,
     )
 }
+fn named_columns(
+    left: &[String],
+    right: &[String],
+    rows: [&[Vec<String>]; 2],
+) -> Result<Vec<clear_contracts::TableColumn>> {
+    let index = |headers: &[String], values: &[Vec<String>]| -> Result<BTreeMap<String, usize>> {
+        let mut map = BTreeMap::new();
+        for (i, name) in headers.iter().enumerate() {
+            if name.trim().is_empty() || map.insert(name.clone(), i).is_some() {
+                return Err(Error::Invalid(
+                    "Name alignment requires unique, nonblank header names on each side".into(),
+                ));
+            }
+        }
+        if values.iter().any(|r| r.len() > headers.len()) {
+            return Err(Error::Invalid(
+                "A data row has more columns than its header; name alignment would omit data"
+                    .into(),
+            ));
+        }
+        Ok(map)
+    };
+    let a = index(left, rows[0])?;
+    let b = index(right, rows[1])?;
+    let mut columns = Vec::new();
+    for name in left
+        .iter()
+        .chain(right.iter().filter(|n| !a.contains_key(*n)))
+    {
+        columns.push(clear_contracts::TableColumn {
+            name: name.clone(),
+            left: a.get(name).copied(),
+            right: b.get(name).copied(),
+        });
+    }
+    if columns.len() > MAX_COLUMNS {
+        return Err(Error::Invalid(
+            "Aligned table exceeds 1024 logical columns".into(),
+        ));
+    }
+    Ok(columns)
+}
+fn mapped_key(
+    key: Option<usize>,
+    columns: &[clear_contracts::TableColumn],
+    left: bool,
+    has_rows: bool,
+) -> Result<Option<usize>> {
+    let Some(key) = key else {
+        return Ok(None);
+    };
+    let column = columns
+        .get(key)
+        .ok_or_else(|| Error::Invalid("Logical key column is outside the aligned schema".into()))?;
+    let index = if left { column.left } else { column.right };
+    if index.is_none() && has_rows {
+        return Err(Error::Invalid(
+            "The selected logical key column is absent on a nonempty side".into(),
+        ));
+    }
+    Ok(index)
+}
+
 fn compare_rows(
     mut l: Vec<Vec<String>>,
     mut r: Vec<Vec<String>>,
@@ -188,8 +251,35 @@ fn compare_rows(
     } else {
         Vec::new()
     };
-    let a = keyed(l, options.key_column)?;
-    let mut b = keyed(r, options.key_column)?;
+    let column_map = if options.align_columns_by_name {
+        if !options.headers {
+            return Err(Error::Invalid(
+                "Name alignment requires a header row".into(),
+            ));
+        }
+        named_columns(&lh, &rh, [&l, &r])?
+    } else {
+        Vec::new()
+    };
+    let headers_changed = if options.align_columns_by_name {
+        column_map
+            .iter()
+            .any(|c| c.left.is_none() || c.right.is_none())
+    } else {
+        lh != rh
+    };
+    let left_key = if options.align_columns_by_name {
+        mapped_key(options.key_column, &column_map, true, !l.is_empty())?
+    } else {
+        options.key_column
+    };
+    let right_key = if options.align_columns_by_name {
+        mapped_key(options.key_column, &column_map, false, !r.is_empty())?
+    } else {
+        options.key_column
+    };
+    let a = keyed(l, left_key)?;
+    let mut b = keyed(r, right_key)?;
     let mut rows = Vec::new();
     let mut summary = Summary::default();
     for (key, left) in a {
@@ -202,9 +292,19 @@ fn compare_rows(
                 Status::LeftOnly
             }
             Some(right) => {
-                for column in 0..left.len().max(right.len()) {
-                    if !equal(left.get(column), right.get(column), tolerance) {
-                        changed_columns.push(column);
+                if options.align_columns_by_name {
+                    for (column, mapping) in column_map.iter().enumerate() {
+                        let a = mapping.left.and_then(|i| left.get(i));
+                        let b = mapping.right.and_then(|i| right.get(i));
+                        if !equal(a, b, tolerance) {
+                            changed_columns.push(column);
+                        }
+                    }
+                } else {
+                    for column in 0..left.len().max(right.len()) {
+                        if !equal(left.get(column), right.get(column), tolerance) {
+                            changed_columns.push(column);
+                        }
                     }
                 }
                 if changed_columns.is_empty() {
@@ -235,20 +335,25 @@ fn compare_rows(
         });
     }
     rows.sort_by(|a, b| a.key.cmp(&b.key));
-    let columns = rows
-        .iter()
-        .map(|r| {
-            r.left
-                .as_ref()
-                .map(Vec::len)
-                .unwrap_or_default()
-                .max(r.right.as_ref().map(Vec::len).unwrap_or_default())
-        })
-        .max()
-        .unwrap_or_default()
-        .max(lh.len())
-        .max(rh.len());
+    let columns = if options.align_columns_by_name {
+        column_map.len()
+    } else {
+        rows.iter()
+            .map(|r| {
+                r.left
+                    .as_ref()
+                    .map(Vec::len)
+                    .unwrap_or_default()
+                    .max(r.right.as_ref().map(Vec::len).unwrap_or_default())
+            })
+            .max()
+            .unwrap_or_default()
+            .max(lh.len())
+            .max(rh.len())
+    };
     Ok(TableComparison {
+        column_map,
+        headers_changed,
         columns,
         options: Some(options.clone()),
         left_tables,

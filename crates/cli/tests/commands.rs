@@ -624,3 +624,45 @@ fn binary_commands_expose_bounds_continuation_and_exit_codes() {
     let json: serde_json::Value = serde_json::from_slice(&page.stdout).unwrap();
     assert_eq!(json["lines"][0]["left_changed"], serde_json::json!([2]));
 }
+
+#[test]
+fn named_table_columns_make_reordering_equal_and_schema_changes_visible() {
+    let t = tempfile::tempdir().unwrap();
+    let left = t.path().join("l.csv");
+    let right = t.path().join("r.csv");
+    fs::write(&left, "id,value\na,1\n").unwrap();
+    fs::write(&right, "value,id\n1,a\n").unwrap();
+    let result = run(&[
+        "table".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--align-columns-by-name".as_ref(),
+        "--key-column".as_ref(),
+        "0".as_ref(),
+    ]);
+    assert_eq!(
+        result.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(json["column_map"][0]["right"], 1);
+    assert_eq!(json["headers_changed"], false);
+    fs::write(&right, "value,id,extra\n1,a,\n").unwrap();
+    let result = run(&[
+        "table".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--align-columns-by-name".as_ref(),
+    ]);
+    assert_eq!(result.status.code(), Some(1));
+    let invalid = run(&[
+        "table".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--align-columns-by-name".as_ref(),
+        "--no-headers".as_ref(),
+    ]);
+    assert_eq!(invalid.status.code(), Some(2));
+}

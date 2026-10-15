@@ -242,3 +242,23 @@ fn csv_tsv_extension_detection_and_explicit_formats_work_independently() {
 fn node_allocation_budget_rejects_dense_markup_before_table_comparison() {
     assert!(Document::parse(&"<br>".repeat(100001), &cancel()).is_err());
 }
+
+#[test]
+fn html_and_delimited_sources_share_exact_name_alignment() {
+    let result = table::compare(
+        "<table><tr><th>value<th>id<tr><td>1<td>a</table>",
+        "id,value\na,1\n",
+        &TableOptions {
+            left_source: TableSource::Html { table: 0 },
+            right_source: TableSource::Csv,
+            align_columns_by_name: true,
+            key_column: Some(1),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(result.summary.same, 1);
+    assert!(!result.headers_changed);
+    assert_eq!(result.column_map[0].name, "value");
+    assert_eq!(result.column_map[0].right, Some(1));
+}

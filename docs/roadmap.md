@@ -188,3 +188,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Top-bar actions wrap instead of assuming one fixed-height row. Native semantic details/summary controls keep help topics keyboard-operable without a modal focus trap. Primary hover styling now uses semantic colors in both themes.
 - Calculated dark-theme foreground/background contrast exceeds 4.5:1 for normal/muted text, selected rows, primary buttons and green/amber/red status labels. This calculation is not a formal accessibility or WebView runtime acceptance claim; packaged-client visual/interaction acceptance stays deferred.
 - Preceding binary changes passed three-platform core/WASM CI run 38682764125.
+
+## Named table-column alignment
+
+- Added optional exact header-name alignment across CSV/TSV/static HTML inputs, preserving original row/header arrays and exposing a logical-to-source map. Logical order follows left headers then right-only names, bounded to 1024 columns.
+- Row keys map independently to each source column. Ambiguous/blank headers, rows wider than their headers, invalid logical keys and absent keys on nonempty sides reject the comparison. Existing positional behavior stays the default.
+- Reordered identical name sets compare equal under this option; schema additions/removals remain differences, including header-only tables. Missing columns, short-row missing cells and explicit empty strings remain distinct. UI rows/headers share mapped ordering and column paging; CLI exposes the option and schema flag.
+- Focused cases cover reordered/keyed numeric rows, exact-name sensitivity, missing/empty distinctions, malformed schemas, logical limits, mixed HTML/CSV and CLI exit codes. Core/contracts/CLI tests pass locally; UI and native validation are tracked separately from postponed runtime/install acceptance.
+- Previous themes/offline-help changes passed three-platform core/WASM CI run 38683146761.

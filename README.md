@@ -46,7 +46,7 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 HTML 可按 0 起始序号选择每侧表格；“列出 HTML 表格”展示标题、元素 ID 和 DOM 行数。解析不运行脚本、不加载资源，支持实体、可省略的行/单元格结束标签及 rowspan/colspan 展开。仅比较静态文本值；详细规则和限制见 [表格格式说明](docs/table-formats.md)。
 
-预览按行分页，并每次展示最多 25 列。单元格超过 8192 个 Unicode 字符会显示截断标签，原始比较数据仍保留；CLI JSON 返回完整值。列名映射、Excel、表格编辑和更丰富容差仍在计划中。
+预览按行分页，并每次展示最多 25 列。单元格超过 8192 个 Unicode 字符会显示截断标签，原始比较数据仍保留；CLI JSON 返回完整值。可开启“按列名对齐”，按精确且唯一的表头匹配不同列顺序；映射顺序为左侧列，再追加右侧独有列。此时主键列填写映射序号，缺列与空单元格分别标识。Excel、任意重命名列映射、表格编辑和更丰富容差仍在计划中。
 
 ### 比较报告
 
@@ -174,6 +174,7 @@ cargo build -p clear-cli --release --locked
 
 # HTML catalog / independent table selection / mixed HTML and CSV comparison.
 ./target/release/clear-compare table ./left.html ./right.csv --list-tables
+./target/release/clear-compare table ./left.csv ./right.csv --align-columns-by-name --key-column 0
 ./target/release/clear-compare table ./left.html ./right.csv --left-html 1 --key-column 0 --numeric-tolerance 0.01
 # Force delimited text even if a filename ends in .html.
 ./target/release/clear-compare table ./left.html ./right.csv --delimited

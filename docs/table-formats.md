@@ -32,7 +32,15 @@ A budget failure is an error, not equality. The native single-document/result ca
 
 ## Matching and CLI
 
-Matching remains positional or by one zero-based key column. Duplicate/missing key columns are errors, including repeated keys introduced by rowspans. Numeric tolerance is optional finite, nonnegative absolute f64 tolerance; all other cells are exact strings. Header differences are reported separately and produce a CLI difference exit code. Multi-column keys, column-name mapping, Excel and table editing remain planned. Formula expressions are not evaluated.
+Rows match by position or one zero-based key column. Duplicate/missing key columns are errors, including repeated keys introduced by rowspans. Numeric tolerance is optional finite, nonnegative absolute f64 tolerance; all other cells are exact strings. Multi-column keys, arbitrary renamed-column mappings, Excel and table editing remain planned. Formula expressions are not evaluated.
+
+Columns match positionally by default. Enable **Align by header name** / `--align-columns-by-name` to match exact header strings independently of physical order. This requires headers, unique nonblank names on each side, and no data row wider than its header. Names are case-sensitive, without trimming or Unicode normalization; whitespace-only names are rejected. HTML uses the already-extracted static header text. The aligned union follows left header order, then right-only names in right order, with a maximum of 1024 logical columns.
+
+In name mode, `key_column` refers to that zero-based logical union, not the right file's physical column number. The native matcher maps it to the corresponding source index on each side. A key absent on a side with data rows is an error; an empty/missing side may have no key. Duplicate row keys are still rejected after mapping.
+
+JSON retains original per-side row vectors and headers. `column_map` gives each logical name and optional original left/right indices; `changed_columns` uses logical indices. `columns` is the logical union length. Positional mode has an empty column_map, and indices retain positional meaning. `headers_changed` describes schema differences under the chosen mode: reordering the same unique names is equal in name mode; added/removed names remain different even with no data rows. Header differences in positional mode still compare the original arrays. CLI exit codes use this flag as well as row differences.
+
+The UI displays both sides in logical order with numbered headers and source-column tooltips. Missing columns, missing cells in short rows and explicit empty strings remain distinct; missing values are not padded into empty strings. Cell/header display clipping does not change native matching.
 
 `clear-compare table LEFT RIGHT` applies extension hints. Options include:
 
@@ -40,6 +48,7 @@ Matching remains positional or by one zero-based key column. Duplicate/missing k
 - `--html`: select table zero on both sides; `--left-html N` / `--right-html N` override a side.
 - `--delimited`: disable HTML/extension inference for delimited sources; it can be combined with a side-specific HTML choice for mixed input.
 - `--tsv`: use the legacy tab delimiter for delimited sources; use `--delimited --tsv` to force tab parsing of a file named `.html`.
-- `--key-column`, `--numeric-tolerance`, `--no-headers`: existing row/cell policies.
+- `--align-columns-by-name`: exact named-column alignment; conflicts with `--no-headers`.
+- `--key-column`, `--numeric-tolerance`, `--no-headers`: row/cell policies; name mode uses the logical key index.
 
 Column totals are computed over the entire result before row paging. The result records effective TableOptions, including resolved CSV/TSV/HTML formats and selected HTML indices. Comparison exit codes remain 0 equal, 1 different (including headers), 2 invalid/unreadable/unsupported input. A regular empty HTML file has no selectable table and cannot be silently treated as equal to another empty HTML input. A missing side in a folder snapshot is explicitly an empty side, not an empty existing HTML file.

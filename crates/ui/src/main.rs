@@ -123,6 +123,7 @@ fn App() -> impl IntoView {
     let table_left_index = RwSignal::new("0".to_string());
     let table_right_index = RwSignal::new("0".to_string());
     let table_headers = RwSignal::new(true);
+    let table_align_names = RwSignal::new(false);
     let table_key = RwSignal::new(String::new());
     let table_tolerance = RwSignal::new(String::new());
     let table_offset = RwSignal::new(0usize);
@@ -279,6 +280,7 @@ fn App() -> impl IntoView {
             right_source,
             delimiter: ",".into(),
             headers: table_headers.get_untracked(),
+            align_columns_by_name: table_align_names.get_untracked(),
             key_column,
             numeric_tolerance: if tolerance.is_empty() {
                 None
@@ -1142,7 +1144,7 @@ fn App() -> impl IntoView {
             </Show>
             {panels::text::panel(english,diff,move |d|{merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);})}
             {panels::picture::panel(english,busy,panels::picture::Signals{picture,picture_id,picture_tolerance,picture_ignore_alpha},open_picture)}
-            {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_document, table_left_mode,table_right_mode,table_left_index,table_right_index, table_headers, table_key, table_tolerance, table_offset}, compare_table_document, paginate_table,table_catalog,close_table)}
+            {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_document, table_left_mode,table_right_mode,table_left_index,table_right_index, table_headers, table_align_names, table_key, table_tolerance, table_offset}, compare_table_document, paginate_table,table_catalog,close_table)}
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id, comparison, error}, open_binary)}
             {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, saved_text, error},load_merge)}
             {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, saved_text, text_history, merge_tokens, error, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore,change_draft)}
