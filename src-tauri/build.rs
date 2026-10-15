@@ -34,6 +34,7 @@ fn main() {
             "close_table_document",
             "table_page",
             "preview_sync",
+            "preview_delete",
             "apply_sync",
             "pick_directory",
             "load_session",

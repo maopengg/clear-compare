@@ -1,9 +1,12 @@
-//! Reviewed rollback of journaled copies, with current-content backups and optimistic checks.
+//! Reviewed rollback of journaled file copy/deletion, with backups and optimistic checks.
 use crate::{
     Error, Result,
     compare::{check_cancel, checked_path, hash_file, reject_overlap},
     native_path,
-    sync::atomic_json,
+    sync::{
+        atomic_json, failure_message, flush_ancestors, flush_directory, permissions,
+        set_permissions, validate_plan_metadata,
+    },
     unique_id,
 };
 use clear_contracts::{ActionResult, RecoveryAction, RecoveryPreview, RecoveryResult, SyncResult};
@@ -17,7 +20,8 @@ use tempfile::NamedTempFile;
 const MAX_JOURNAL: u64 = 64 * 1024 * 1024;
 struct Action {
     relative: PathBuf,
-    current_digest: String,
+    current_digest: Option<String>,
+    original_permissions: Option<clear_contracts::FilePermissions>,
     original_digest: Option<String>,
     original_backup: Option<PathBuf>,
 }
@@ -38,7 +42,7 @@ fn current(path: &Path, cancel: &AtomicBool) -> Result<Option<String>> {
     }
 }
 fn root_valid(root: &Path) -> Result<()> {
-    if fs::canonicalize(root)? != root {
+    if !fs::symlink_metadata(root)?.is_dir() || fs::canonicalize(root)? != root {
         return Err(Error::Invalid("Recovery target root changed".into()));
     }
     Ok(())
@@ -59,6 +63,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         return Err(Error::Invalid("Journal exceeds 64 MiB".into()));
     }
     let report: SyncResult = serde_json::from_slice(&bytes)?;
+    validate_plan_metadata(&report.plan)?;
     if report.actions.len() != report.plan.actions.len() {
         return Err(Error::Invalid("Journal action counts differ".into()));
     }
@@ -89,8 +94,10 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
     let mut seen = std::collections::BTreeSet::new();
     for (copied, state) in report.plan.actions.iter().zip(&report.actions) {
         check_cancel(cancel)?;
-        if copied.overwrite != copied.target_digest.is_some() {
-            return Err(Error::Invalid("Journal overwrite metadata differs".into()));
+        if copied.target_existed != copied.target_digest.is_some() {
+            return Err(Error::Invalid(
+                "Journal target-presence metadata differs".into(),
+            ));
         }
         if copied.path != state.path {
             return Err(Error::Invalid("Journal action labels differ".into()));
@@ -104,18 +111,32 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
                 .as_ref()
                 .ok_or_else(|| Error::Invalid("Missing durable entry path".into()))?,
         )?;
+        if relative.as_os_str().is_empty()
+            || relative
+                .components()
+                .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            return Err(Error::Invalid(
+                "Recovery requires a nonempty relative file path".into(),
+            ));
+        }
         if !seen.insert(relative.clone()) {
             return Err(Error::Invalid("Duplicate journal target".into()));
         }
+        let label = crate::tree::display_path(&relative);
         let path = checked_path(&target, &relative, true)?;
         let digest = current(&path, cancel)?;
         if digest == copied.target_digest && state.state != "completed" {
             continue;
         }
-        if digest.as_ref() != Some(&copied.source_digest) {
+        let expected_current = match copied.operation {
+            clear_contracts::FileOperation::Copy => copied.source_digest.clone(),
+            clear_contracts::FileOperation::Delete => None,
+        };
+        if digest != expected_current {
             return Err(Error::Invalid(format!(
                 "Recovery target changed: {}",
-                copied.path
+                label
             )));
         }
         let original_backup = if let Some(expected) = &copied.target_digest {
@@ -123,16 +144,23 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
             if hash_file(&backup, cancel)? != *expected {
                 return Err(Error::Invalid(format!(
                     "Original backup changed: {}",
-                    copied.path
+                    label
                 )));
+            }
+            if let Some(expected) = &copied.target_permissions
+                && permissions(&fs::symlink_metadata(&backup)?) != *expected
+            {
+                return Err(Error::Invalid("Original backup permissions changed".into()));
             }
             Some(backup)
         } else {
             None
         };
         labels.push(RecoveryAction {
-            path: copied.path.clone(),
-            operation: if original_backup.is_some() {
+            path: label,
+            operation: if expected_current.is_none() {
+                "restore_deleted"
+            } else if original_backup.is_some() {
                 "restore"
             } else {
                 "remove_created"
@@ -141,13 +169,16 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         });
         actions.push(Action {
             relative,
-            current_digest: copied.source_digest.clone(),
+            current_digest: expected_current,
+            original_permissions: copied.target_permissions.clone(),
             original_digest: copied.target_digest.clone(),
             original_backup,
         });
     }
     if actions.is_empty() {
-        return Err(Error::Invalid("No applied copies to recover".into()));
+        return Err(Error::Invalid(
+            "No applied file operations to recover".into(),
+        ));
     }
     let id = unique_id();
     Ok(Plan {
@@ -180,28 +211,35 @@ fn copy_to(source: &Path, destination: &mut File, cancel: &AtomicBool) -> Result
 fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
     root_valid(&plan.target)?;
     let action = &plan.actions[index];
-    let target = checked_path(&plan.target, &action.relative, false)?;
-    if hash_file(&target, cancel)? != action.current_digest {
+    let target = checked_path(&plan.target, &action.relative, true)?;
+    if current(&target, cancel)? != action.current_digest {
         return Err(Error::Invalid(
             "Recovery target changed after preview".into(),
         ));
     }
-    let backup_root = Path::new(&plan.view.backup_root);
-    let backup = checked_path(
-        backup_root,
-        &PathBuf::from("files").join(&action.relative),
-        true,
-    )?;
-    fs::create_dir_all(
-        backup
-            .parent()
-            .ok_or_else(|| Error::Invalid("Invalid recovery backup".into()))?,
-    )?;
-    let mut writer = File::create_new(&backup)?;
-    copy_to(&target, &mut writer, cancel)?;
-    drop(writer);
-    if hash_file(&backup, cancel)? != action.current_digest {
-        return Err(Error::Invalid("Recovery backup verification failed".into()));
+    if let Some(expected) = &action.current_digest {
+        let backup = checked_path(
+            Path::new(&plan.view.backup_root),
+            &PathBuf::from("files").join(&action.relative),
+            true,
+        )?;
+        fs::create_dir_all(
+            backup
+                .parent()
+                .ok_or_else(|| Error::Invalid("Invalid recovery backup".into()))?,
+        )?;
+        let mut writer = File::create_new(&backup)?;
+        copy_to(&target, &mut writer, cancel)?;
+        drop(writer);
+        if hash_file(&backup, cancel)? != *expected {
+            return Err(Error::Invalid("Recovery backup verification failed".into()));
+        }
+        flush_ancestors(
+            backup
+                .parent()
+                .ok_or_else(|| Error::Invalid("Invalid recovery backup parent".into()))?,
+            Path::new(&plan.view.backup_root),
+        )?;
     }
     let replacement = if let Some(original) = &action.original_backup {
         root_valid(&plan.original_root)?;
@@ -210,14 +248,29 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
             &PathBuf::from("files").join(&action.relative),
             false,
         )?;
-        let mut temp = NamedTempFile::new_in(
-            target
-                .parent()
-                .ok_or_else(|| Error::Invalid("Invalid target parent".into()))?,
-        )?;
+        if Some(hash_file(original, cancel)?) != action.original_digest {
+            return Err(Error::Invalid(
+                "Original backup changed after recovery preview".into(),
+            ));
+        }
+        if let Some(expected) = &action.original_permissions
+            && permissions(&fs::symlink_metadata(original)?) != *expected
+        {
+            return Err(Error::Invalid("Original backup permissions changed".into()));
+        }
+        let parent = target
+            .parent()
+            .ok_or_else(|| Error::Invalid("Invalid recovery parent".into()))?;
+        fs::create_dir_all(parent)?;
+        checked_path(&plan.target, &action.relative, true)?;
+        let mut temp = NamedTempFile::new_in(parent)?;
         copy_to(original, temp.as_file_mut(), cancel)?;
-        temp.as_file()
-            .set_permissions(fs::metadata(&target)?.permissions())?;
+        if let Some(saved) = &action.original_permissions {
+            set_permissions(temp.as_file(), saved)?;
+        } else {
+            temp.as_file()
+                .set_permissions(fs::metadata(&target)?.permissions())?;
+        }
         temp.as_file().sync_all()?;
         if Some(hash_file(temp.path(), cancel)?) != action.original_digest {
             return Err(Error::Invalid(
@@ -230,17 +283,27 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
     };
     check_cancel(cancel)?;
     root_valid(&plan.target)?;
-    checked_path(&plan.target, &action.relative, false)?;
-    if hash_file(&target, cancel)? != action.current_digest {
+    checked_path(&plan.target, &action.relative, true)?;
+    if current(&target, cancel)? != action.current_digest {
         return Err(Error::Invalid(
             "Recovery target changed during backup".into(),
         ));
     }
     if let Some(temp) = replacement {
-        temp.persist(&target).map_err(|e| e.error)?;
+        if action.current_digest.is_some() {
+            temp.persist(&target).map_err(|e| e.error)?;
+        } else {
+            temp.persist_noclobber(&target).map_err(|e| e.error)?;
+        }
     } else {
         fs::remove_file(&target)?;
     }
+    flush_ancestors(
+        target
+            .parent()
+            .ok_or_else(|| Error::Invalid("Invalid recovery parent".into()))?,
+        &plan.target,
+    )?;
     if current(&target, &AtomicBool::new(false))? != action.original_digest {
         return Err(Error::Invalid(
             "Recovered target failed verification".into(),
@@ -264,6 +327,7 @@ pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
     }
+    flush_directory(base)?;
     let journal = root.join("recovery.json");
     let mut result = RecoveryResult {
         plan: plan.view.clone(),
@@ -283,7 +347,7 @@ pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
     for index in 0..plan.actions.len() {
         if let Err(e) = check_cancel(cancel) {
             result.actions[index].state = "cancelled".into();
-            result.actions[index].error = Some(e.to_string());
+            result.actions[index].error = Some(failure_message(&e));
             atomic_json(&journal, &result)?;
             break;
         }
@@ -293,7 +357,7 @@ pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
             Ok(()) => result.actions[index].state = "completed".into(),
             Err(e) => {
                 result.actions[index].state = "failed".into();
-                result.actions[index].error = Some(e.to_string());
+                result.actions[index].error = Some(failure_message(&e));
             }
         }
         atomic_json(&journal, &result)?;

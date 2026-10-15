@@ -986,12 +986,37 @@ async fn preview_sync(
     state: State<'_, Backend>,
 ) -> Result<SyncPlan, String> {
     let _operation_guard = state.begin()?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
     let snapshot = state.snapshot(&session)?;
     let cancel = state.cancel.clone();
     let backup = data_dir(&app)?.join("backups");
     std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
     let plan = tauri::async_runtime::spawn_blocking(move || {
         clear_core::sync::plan_direction(&snapshot, &row_ids, &backup, &cancel, source_side)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = Some(plan.clone());
+    Ok(plan)
+}
+
+#[tauri::command]
+async fn preview_delete(
+    session: String,
+    row_ids: Vec<String>,
+    target_side: Side,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<SyncPlan, String> {
+    let _guard = state.begin()?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    let snapshot = state.snapshot(&session)?;
+    let cancel = state.cancel.clone();
+    let base = data_dir(&app)?.join("backups");
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::sync::plan_delete(&snapshot, &row_ids, &base, &cancel, target_side)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1244,6 +1269,7 @@ fn main() {
             close_table_document,
             table_page,
             preview_sync,
+            preview_delete,
             apply_sync,
             pick_directory,
             load_session,

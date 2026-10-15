@@ -16,21 +16,22 @@ The core does not depend on Tauri or Leptos. Original native paths stay in the b
 
 Validate canonical roots → reject overlapping roots → parse exclusions → walk without following links → collect metadata → optionally hash contents → classify files → retain native snapshot → return summary and first page.
 
-Only verified matching file digests are reported as content-equal. A matching directory row means the directory exists on both sides; it is not a recursive subtree equality assertion. Metadata mode deliberately labels matching metadata as unverified. I/O failures are errors, never matches.
+Only verified matching file digests are reported as content-equal. Directory status aggregates included descendants; errors and unverified contents prevent a content-equal directory status. Excluded/unscanned contents are outside that assertion. Metadata mode deliberately labels matching metadata as unverified. I/O failures are errors, never matches.
 
 ## Write lifecycle
 
-Select eligible left-side regular files → create immutable backend plan → review plan in UI → consume plan ID once → revalidate roots and hashes → write temporary sibling → verify copied digest → verify old-file backup → recheck target → replace → verify result → update journal.
+Select eligible source-side regular files → create immutable backend plan → review plan in UI → consume plan ID once → revalidate roots and hashes → write temporary sibling → verify copied digest → verify old-file backup → recheck target → replace → verify result → update journal.
 
-Preview creates no destination file. Execution may create destination parent directories. Destination-only files and excluded files are preserved. A failed action stops subsequent actions; the journal shows completed, failed and pending items. A cancellation cannot undo actions already completed.
+Preview creates no destination file. Execution may create destination parent directories. Copy policies preserve destination-only files; explicit selected-deletion policies remove only reviewed regular files after verified backups. Exclusions still apply. A failed action stops subsequent actions; the journal shows completed, failed and pending items. A cancellation cannot undo actions already completed.
 
 ## Resource limits
 
 - A maximum of 200,000 scanned entries per root in the preview release.
 - At most 500 directory entries in an IPC page.
-- File hashes and copy operations use 64 KiB buffers.
-- Text preview accepts UTF-8 up to 2 MiB and 30,000 lines per file; unsupported files return an explicit error.
-- The UI initially renders 500 text diff lines and can show more on request.
+- File hashes, copy, deletion backups and recovery use 64 KiB buffers.
+- New pending file-operation journals must fit 32 MiB; imported recovery journals are limited to 64 MiB.
+- Text workflows support UTF-8 and BOM-marked UTF-16 with 4 MiB encoded/8 MiB decoded text and 30,000 lines per side.
+- Text comparison uses 500 aligned rows per page; file-plan review initially renders 500 actions and can show more.
 - Only one scan/plan/write task runs at a time. Native work is dispatched off the UI thread.
 
 ## Persistence
@@ -39,7 +40,7 @@ The current comparison settings are kept under Tauri's application data director
 
 ## Remaining work
 
-Restore automation, metadata preservation, durable directory fsync, large-scale indexed scanning, session libraries, broader encodings, advanced merging, remote adapters and converters remain on the roadmap. The initial architecture leaves these separate from the UI and desktop runtime.
+Automatic resume/redo, full metadata preservation, large-scale performance baselines, workspace restoration, broader encodings, further merge/viewer capabilities, remote adapters and converters remain on the roadmap. The initial architecture leaves these separate from the UI and desktop runtime.
 
 ## Specialized workspace panels
 
@@ -47,11 +48,11 @@ Leptos editing, merge, table and binary panels are separate modules in `crates/u
 
 Directional synchronization resolves source/target roots from the immutable plan's `source_side`. It does not copy or reverse the entire directory snapshot. Changing direction clears the UI selection and requires a new preview. Backups always belong to the destination being replaced.
 
-## Copy recovery
+## File-operation plans and recovery
 
 Sync journals include the destination root and relative entry paths in native byte/wide-unit encoding. UI display labels never reconstruct filesystem inputs. Recovery rejects paths from a different operating system, symlink traversals, mismatched journal placement, modified current files and invalid original backups.
 
-Recovery previews own a native plan with pinned expected digests. Tauri resolves history IDs under its private backup directory and consumes exact cached preview tokens. CLI preview is read-only; `--apply` generates a fresh plan. Recovery streams contents to verified current-file backups before replacement or removal and persists action states in a separate journal. The original copy journal and backups remain intact.
+Recovery previews own a native plan with pinned expected digests. Tauri resolves history IDs under its private backup directory and consumes exact cached preview tokens. CLI preview is read-only; `--apply` generates a fresh plan. Recovery streams contents to verified current-file backups before replacement or removal and persists action states in a separate journal. The original operation journal and backups remain intact. Deletion recovery pins absence, verifies original bytes/basic permissions and persists without overwriting a recreated path. Native relative paths generate recovery display labels rather than trusting imported labels. New version-two plans tag copy/deletion policies and action kinds; version-one copy journals retain read compatibility. See [file operations](file-operations.md) for limits and reconciliation. Journals/backups/mutations add Unix directory flushes; platform/storage limitations still preclude a universal power-loss guarantee.
 
 ## Directory scope queries
 

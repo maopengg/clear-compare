@@ -7,8 +7,8 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F01 Workspace | One window, versioned named session library, revision-aware updates/archive, restored path/rule/view settings | Tabs, comparison-result/workspace restore, archived-session browser |
 | F02 Folder comparison | Recursive bounded scan, metadata or SHA-256, subtree status/size aggregation, native directory navigation, scope-wide search/sort and paged file list | Live refresh, broader criteria, explicit expansion tree and performance baselines |
 | F03 Rules | Root-relative and any-level exclusions, semicolon/newline import | Inclusion priority, attributes, content filters |
-| F04 Operations | Verified regular-file copy with overwrite backups | Move, delete, rename, attribute/time preservation |
-| F05 Synchronization | Reviewed left-to-right or right-to-left copy, stop-on-error, journal, cancellation, persisted copy history and reviewed rollback | Mirror, baseline-aware bidirectional policies, pause, crash resume and recovery redo |
+| F04 Operations | Verified regular-file copy and explicit selected-file deletion with verified backups/basic-permission recovery | Move, rename, directory removal, OS trash and full attribute/time preservation |
+| F05 Synchronization | Reviewed left-to-right or right-to-left copy, stop-on-error, journal, cancellation, persisted copy/deletion history and reviewed rollback | Mirror, baseline-aware bidirectional policies, pause, crash resume and recovery redo |
 | F06 Text compare | UTF-8/UTF-16 line diff, rule-aware Unicode-scalar intraline hints with explicit fallbacks, original-text ordinal row alignment, shared scrolling, fixed paging, difference navigation and literal row search | Semantic/manual alignment, syntax highlighting and broader large-file/performance validation |
 | F07 Editing | Side-specific editor, encoding/BOM/newline retention or explicit conversion, digest-checked atomic save, verified backup, reviewed last-save restore and bounded UTF-8 splice undo/redo | Persistent backup browser, richer editing/selection and block-copy workflow |
 | F08 Text rules | Case, within-line whitespace and line-ending normalization | Syntax filters, regex rules and manual alignment |
@@ -22,7 +22,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F16 Archives/snapshots | Read-only classic ZIP Stored/Deflate browsing, ZIP/directory comparison, exclusions, member SHA-256, paged search and bounded text preview; content-free versioned tree export and historical metadata comparisons | Archive updates and nested/other formats |
 | F17 Remote filesystems | Planned | FTP/FTPS/SFTP/network adapters |
 | F18 Cloud storage | Planned | WebDAV/S3/Dropbox/OneDrive |
-| F19 Automation | JSON compare and copy-preview/apply CLI; self-contained HTML/versioned JSON reports for directory, ZIP, snapshot and Git comparisons | Scripts, specialized-viewer/operation reports and scheduled workflows |
+| F19 Automation | JSON compare, copy/deletion preview/apply and recovery CLI; self-contained HTML/versioned JSON reports for directory, ZIP, snapshot and Git comparisons | Scripts, specialized-viewer/operation reports and scheduled workflows |
 | F20 Version control | Read-only local Git commit/index/raw-working-tree comparison, explicit nonignored untracked inclusion, streaming blob identities and digest-checked working previews, pinned revisions/index object IDs, unmerged-stage errors, split/sparse and linked-worktree indexes, executable-mode differences, paged search, bounded blob text previews and JSON CLI | Git diff/merge-tool integration, SVN and traditional interfaces |
 | F21 System integration | Native folder dialog | Drag/drop, file associations, context menus |
 | F22 Platform specifics | Local filesystem only | ACL, registry, device and metadata adapters |

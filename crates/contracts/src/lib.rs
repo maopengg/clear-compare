@@ -177,27 +177,64 @@ pub struct SaveResult {
     pub backup: String,
 }
 
+fn legacy_file_plan_version() -> u32 {
+    1
+}
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FileOperation {
+    #[default]
+    Copy,
+    Delete,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum FilePlanPolicy {
+    #[default]
+    SelectedCopy,
+    DeleteSelected {
+        target_side: Side,
+    },
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "platform", rename_all = "snake_case")]
+pub enum FilePermissions {
+    Unix { mode: u32 },
+    ReadOnly { value: bool },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopyAction {
+pub struct FileAction {
+    #[serde(default)]
+    pub operation: FileOperation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_permissions: Option<FilePermissions>,
     pub row_id: String,
     #[serde(default)]
     pub relative_native: Option<NativePath>,
     pub path: String,
-    pub overwrite: bool,
+    #[serde(alias = "overwrite")]
+    pub target_existed: bool,
     pub bytes: String,
-    pub source_digest: String,
+    pub source_digest: Option<String>,
     pub target_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncPlan {
+    #[serde(default)]
+    pub target: String,
+    #[serde(default = "legacy_file_plan_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub policy: FilePlanPolicy,
     pub id: String,
     #[serde(default)]
     pub target_native: Option<NativePath>,
     #[serde(default)]
     pub source_side: Side,
     pub session: String,
-    pub actions: Vec<CopyAction>,
+    pub actions: Vec<FileAction>,
     pub backup_root: String,
 }
 

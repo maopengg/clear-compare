@@ -860,3 +860,108 @@ fn git_working_sources_cli_keep_raw_scope_and_report_contracts() {
     assert_eq!(invalid.status.code(), Some(2));
     assert_eq!(fs::read(repo.path().join(".git/index")).unwrap(), before);
 }
+
+#[test]
+fn deletion_cli_previews_explicit_paths_and_recovers_without_touching_other_files() {
+    let t = tempfile::tempdir().unwrap();
+    for d in ["l", "r", "b", "recover"] {
+        fs::create_dir(t.path().join(d)).unwrap();
+    }
+    let left = t.path().join("l");
+    let right = t.path().join("r");
+    let base = t.path().join("b");
+    fs::write(left.join("a"), "left").unwrap();
+    fs::write(right.join("a"), "right").unwrap();
+    fs::write(right.join("keep.txt"), "keep").unwrap();
+    fs::create_dir(right.join("dir")).unwrap();
+    let args = [
+        "delete".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--side".as_ref(),
+        "right".as_ref(),
+        "--path".as_ref(),
+        "./a".as_ref(),
+        "--backup-dir".as_ref(),
+        base.as_os_str(),
+    ];
+    let preview = run(&args);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+    assert_eq!(plan["version"], 2);
+    assert_eq!(plan["policy"]["mode"], "delete_selected");
+    assert_eq!(plan["actions"][0]["operation"], "delete");
+    assert!(plan["actions"][0]["source_digest"].is_null());
+    assert!(!Path::new(plan["backup_root"].as_str().unwrap()).exists());
+    assert_eq!(fs::read(right.join("a")).unwrap(), b"right");
+    let mut apply = args.to_vec();
+    apply.push("--apply".as_ref());
+    let result = run(&apply);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(json["actions"][0]["state"], "completed");
+    assert!(!right.join("a").exists());
+    assert_eq!(fs::read(left.join("a")).unwrap(), b"left");
+    assert_eq!(fs::read(right.join("keep.txt")).unwrap(), b"keep");
+    let restored = run(&[
+        "recover-sync".as_ref(),
+        json["journal"].as_str().unwrap().as_ref(),
+        "--backup-dir".as_ref(),
+        t.path().join("recover").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        restored.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restored.stderr)
+    );
+    assert_eq!(fs::read(right.join("a")).unwrap(), b"right");
+    for path in ["../a", "dir", "missing"] {
+        let invalid = run(&[
+            "delete".as_ref(),
+            left.as_os_str(),
+            right.as_os_str(),
+            "--side".as_ref(),
+            "right".as_ref(),
+            "--path".as_ref(),
+            path.as_ref(),
+            "--backup-dir".as_ref(),
+            base.as_os_str(),
+            "--apply".as_ref(),
+        ]);
+        assert_eq!(invalid.status.code(), Some(2));
+    }
+    let excluded = run(&[
+        "delete".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--side".as_ref(),
+        "right".as_ref(),
+        "--path".as_ref(),
+        "keep.txt".as_ref(),
+        "--exclude".as_ref(),
+        "keep.txt".as_ref(),
+        "--backup-dir".as_ref(),
+        base.as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert_eq!(excluded.status.code(), Some(2));
+    assert!(right.join("keep.txt").exists());
+    let required = run(&[
+        "delete".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--backup-dir".as_ref(),
+        base.as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert_eq!(required.status.code(), Some(2));
+}

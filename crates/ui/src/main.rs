@@ -97,6 +97,7 @@ fn App() -> impl IntoView {
     let descending = RwSignal::new(false);
     let visible_total = RwSignal::new(0usize);
     let reverse_sync = RwSignal::new(false);
+    let file_operation = RwSignal::new("copy".to_string());
     let selected = RwSignal::new(BTreeSet::<String>::new());
     let diff = RwSignal::new(None::<TextDiff>);
     let ignore_case = RwSignal::new(false);
@@ -525,6 +526,7 @@ fn App() -> impl IntoView {
         load_folder(0);
     };
     let reset = move || {
+        file_operation.set("copy".into());
         comparison.set(None);
         rows.set(Vec::new());
         parent_id.set(None);
@@ -617,14 +619,25 @@ fn App() -> impl IntoView {
         };
         busy.set(true);
         error.set(String::new());
+        plan.set(None);
         let ids = selected.get_untracked().into_iter().collect::<Vec<_>>();
         spawn_local(async move {
-            match invoke::<SyncPlan>(
-                "preview_sync",
-                serde_json::json!({"session":c.session,"rowIds":ids,"sourceSide":if reverse_sync.get_untracked(){Side::Right}else{Side::Left}}),
-            )
-            .await
-            {
+            let operation = file_operation.get_untracked();
+            let (command, args) = match operation.as_str() {
+                "delete_left" => (
+                    "preview_delete",
+                    serde_json::json!({"session":c.session,"rowIds":ids,"targetSide":Side::Left}),
+                ),
+                "delete_right" => (
+                    "preview_delete",
+                    serde_json::json!({"session":c.session,"rowIds":ids,"targetSide":Side::Right}),
+                ),
+                _ => (
+                    "preview_sync",
+                    serde_json::json!({"session":c.session,"rowIds":ids,"sourceSide":if reverse_sync.get_untracked(){Side::Right}else{Side::Left}}),
+                ),
+            };
+            match invoke::<SyncPlan>(command, args).await {
                 Ok(p) => plan.set(Some(p)),
                 Err(e) => error.set(e),
             }
@@ -660,6 +673,7 @@ fn App() -> impl IntoView {
                     }
                     comparison.set(None);
                     rows.set(Vec::new());
+                    file_operation.set("copy".into());
                     selected.set(BTreeSet::new());
                     diff.set(None);
                 }
@@ -1117,7 +1131,7 @@ fn App() -> impl IntoView {
                 <section class="empty"><div class="empty-symbol" aria-hidden="true">"⇄"</div><h1>{move || tr(english.get(),"看清差异，再同步","See the difference. Then sync.")}</h1><p>{move || tr(english.get(),"选择两个独立的文件夹，比较内容，检查计划，然后复制你选择的文件。","Choose two separate directories, compare their contents, review a plan, then copy selected files.")}</p><div class="empty-notes"><span>{move || tr(english.get(),"目标独有文件保留","Destination-only files retained")}</span><span>{move || tr(english.get(),"覆盖前验证备份","Backups verified before overwrite")}</span></div></section>
             }>
                 <div class="summary-bar"><span class="stat">{move ||tr(english.get(),"全部比较统计","Entire comparison summary")}</span>{move || comparison.get().map(|c| { let s=c.summary; view! {<span class="stat changed">{format!("{} {}",tr(english.get(),"修改","Changed"),s.changed)}</span><span class="stat left">{format!("{} {}",tr(english.get(),"仅左","Left only"),s.left_only)}</span><span class="stat right">{format!("{} {}",tr(english.get(),"仅右","Right only"),s.right_only)}</span><span class="stat same">{format!("{} {}",tr(english.get(),"一致","Same"),s.same)}</span><span class="stat">{format!("{} {} · {} {}",tr(english.get(),"未验证","Unverified"),s.unverified,tr(english.get(),"错误","Errors"),s.errors)}</span>} })}</div>
-                <div class="text-options"><button class="quiet" on:click=move |_|merge_visible.set(!merge_visible.get_untracked())>{move || tr(english.get(),"三方文本合并","Three-way text merge")}</button><span>{move || tr(english.get(),"文本比较规则（打开文件时应用）","Text rules (applied when opening a file)")}</span><label><input type="checkbox" prop:checked=move || ignore_case.get() on:change=move |ev|ignore_case.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略大小写","Ignore case")}</label><label><input type="checkbox" prop:checked=move || ignore_space.get() on:change=move |ev|ignore_space.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略空白","Ignore whitespace")}</label><label><input type="checkbox" prop:checked=move || ignore_endings.get() on:change=move |ev|ignore_endings.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略换行风格","Ignore line ending style")}</label></div><div class="filterbar"><input aria-label="Search comparison paths" disabled=move ||busy.get() placeholder=move || tr(english.get(),"搜索当前范围的全部路径…","Search all paths in this scope…") prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev)) on:keydown=move |ev|{if ev.key()=="Enter"{load_folder(0);}}/><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_folder(0)>{move ||tr(english.get(),"搜索","Search")}</button><label class="check-label"><input type="checkbox" prop:checked=move || differences.get() disabled=move ||busy.get() on:change=move |ev|{differences.set(event_target_checked(&ev));load_folder(0);}/>{move || tr(english.get(),"只看差异","Differences only")}</label><label class="check-label"><input type="checkbox" prop:checked=move ||reverse_sync.get() disabled=move ||busy.get() on:change=move |ev|{reverse_sync.set(event_target_checked(&ev));selected.set(BTreeSet::new());plan.set(None);}/>{move ||tr(english.get(),"右 → 左","Right → left")}</label><span class="selection-count">{move || format!("{} {}",selected.get().len(),tr(english.get(),"个文件已选","files selected"))}</span><button class="primary" disabled=move || selected.get().is_empty() || busy.get() on:click=move |_| preview()>{move || tr(english.get(),"预览同步 →","Preview sync →")}</button></div>
+                <div class="text-options"><button class="quiet" on:click=move |_|merge_visible.set(!merge_visible.get_untracked())>{move || tr(english.get(),"三方文本合并","Three-way text merge")}</button><span>{move || tr(english.get(),"文本比较规则（打开文件时应用）","Text rules (applied when opening a file)")}</span><label><input type="checkbox" prop:checked=move || ignore_case.get() on:change=move |ev|ignore_case.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略大小写","Ignore case")}</label><label><input type="checkbox" prop:checked=move || ignore_space.get() on:change=move |ev|ignore_space.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略空白","Ignore whitespace")}</label><label><input type="checkbox" prop:checked=move || ignore_endings.get() on:change=move |ev|ignore_endings.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略换行风格","Ignore line ending style")}</label></div><div class="filterbar"><input aria-label="Search comparison paths" disabled=move ||busy.get() placeholder=move || tr(english.get(),"搜索当前范围的全部路径…","Search all paths in this scope…") prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev)) on:keydown=move |ev|{if ev.key()=="Enter"{load_folder(0);}}/><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_folder(0)>{move ||tr(english.get(),"搜索","Search")}</button><label class="check-label"><input type="checkbox" prop:checked=move || differences.get() disabled=move ||busy.get() on:change=move |ev|{differences.set(event_target_checked(&ev));load_folder(0);}/>{move || tr(english.get(),"只看差异","Differences only")}</label><label class="check-label"><input type="checkbox" prop:checked=move ||reverse_sync.get() disabled=move ||busy.get() ||file_operation.get()!="copy" on:change=move |ev|{reverse_sync.set(event_target_checked(&ev));selected.set(BTreeSet::new());plan.set(None);}/>{move ||tr(english.get(),"右 → 左","Right → left")}</label><label class="check-label">{move ||tr(english.get(),"操作","Operation")}<select aria-label="File operation" disabled=move ||busy.get() prop:value=move ||file_operation.get() on:change=move |e|{file_operation.set(event_target_value(&e));selected.set(BTreeSet::new());plan.set(None);}><option value="copy">{move ||tr(english.get(),"复制","Copy")}</option><option value="delete_left">{move ||tr(english.get(),"删除左侧文件","Delete left files")}</option><option value="delete_right">{move ||tr(english.get(),"删除右侧文件","Delete right files")}</option></select></label><span class="selection-count">{move || format!("{} {}",selected.get().len(),tr(english.get(),"个文件已选","files selected"))}</span><button class="primary" disabled=move || selected.get().is_empty() || busy.get() on:click=move |_| preview()>{move || tr(english.get(),if file_operation.get()=="copy" {"预览复制 →"}else{"预览删除…"},if file_operation.get()=="copy" {"Preview copy →"}else{"Preview deletion…"})}</button></div>
                 {panels::folders::controls(english,busy,panels::folders::Signals{parent_id,breadcrumbs,recursive,sort:folder_sort,descending},browse_folder,load_folder)}
                 {panels::reports::controls(english,busy,error,move ||comparison.with(|c|c.as_ref().map(|c|(ReportSource::Local,c.session.clone()))))}
                 <section class="file-list" aria-label="Comparison results"><div class="file-header"><span></span><span>{move || tr(english.get(),"相对路径","Relative path")}</span><span>{move || tr(english.get(),"左侧大小","Left size")}</span><span>{move || tr(english.get(),"右侧大小","Right size")}</span><span>{move || tr(english.get(),"状态","Status")}</span><span>{move || tr(english.get(),"编辑","Edit")}</span></div>
@@ -1131,7 +1145,7 @@ fn App() -> impl IntoView {
                         let left_size=size(row.left.as_ref()); let right_size=size(row.right.as_ref()); let state=row.status.clone(); let css=status_class(&state); let path=row.path.clone();
                         let folder_detail=row.directory_summary.as_ref().map(|d|format!("{} · {} changed · {} left-only · {} right-only · {} unverified · {} errors",path,d.changed,d.left_only,d.right_only,d.unverified,d.errors));
                         let detail=row.left.as_ref().and_then(|e| e.error.clone()).or_else(|| row.right.as_ref().and_then(|e| e.error.clone())).or(folder_detail).unwrap_or_else(|| path.clone());
-                        view! {<div class="file-row" title=detail><input type="checkbox" aria-label=format!("Select {}",path) disabled=move || !(if reverse_sync.get(){eligible_right}else{eligible_left}) || busy.get() prop:checked=move || selected.get().contains(&check_id) on:change=move |ev| { let checked=event_target_checked(&ev);selected.update(|s| {if checked {s.insert(select_id.clone());} else {s.remove(&select_id);}});plan.set(None); }/>
+                        view! {<div class="file-row" title=detail><input type="checkbox" aria-label=format!("Select {}",path) disabled=move || !(match file_operation.get().as_str(){"delete_left"=>can_left,"delete_right"=>can_right,_=>if reverse_sync.get(){eligible_right}else{eligible_left}}) || busy.get() prop:checked=move || selected.get().contains(&check_id) on:change=move |ev| { let checked=event_target_checked(&ev);selected.update(|s| {if checked {s.insert(select_id.clone());} else {s.remove(&select_id);}});plan.set(None); }/>
                             <button class="file-name" disabled=move || busy.get() on:click=move |_| {
                                 if can_directory{browse_folder(Some(open_id.clone()));return;}
                                 let Some(c)=comparison.get_untracked() else {return;}; let id=open_id.clone();busy.set(true);error.set(String::new());diff.set(None);
@@ -1150,7 +1164,7 @@ fn App() -> impl IntoView {
             {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, saved_text, text_history, merge_tokens, error, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore,change_draft)}
             {panels::history::panel(english,busy,history,recovery,preview_recovery,apply_recovery)}
             <Show when=move ||restore_preview.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-title"><h2 id="restore-title">{move ||tr(english.get(),"检查恢复计划","Review restore plan")}</h2><p>{move ||tr(english.get(),"恢复上次保存前的原始字节。恢复前的当前内容也会备份；文件若发生外部修改，恢复将被阻止。","Restore the original bytes from before the last save. Current contents are backed up first; external changes block restoration.")}</p><p class="backup-path">{move ||restore_preview.get().map(|p|format!("{} ← {} · {} bytes",p.target,p.backup,p.bytes))}</p><footer><button class="quiet" disabled=move ||busy.get() on:click=move |_|restore_preview.set(None)>{move ||tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move ||busy.get() on:click=move |_|apply_restore()>{move ||tr(english.get(),"执行已预览的恢复","Execute reviewed restore")}</button></footer></section></div></Show>
-            <Show when=move || plan.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="sync-title"><h2 id="sync-title">{move || tr(english.get(),"检查同步计划","Review synchronization plan")}</h2><p>{move || tr(english.get(),if plan.get().is_some_and(|p|p.source_side==Side::Right){"从右侧复制到左侧。不会删除目标独有文件。所有覆盖文件将先备份。"}else{"从左侧复制到右侧。不会删除目标独有文件。所有覆盖文件将先备份。"},if plan.get().is_some_and(|p|p.source_side==Side::Right){"Copy right to left. Destination-only files are retained. Overwritten files are backed up first."}else{"Copy left to right. Destination-only files are retained. Overwritten files are backed up first."})}</p><div class="plan-actions"><For each=move || plan.get().map(|p|p.actions).unwrap_or_default() key=|a|a.row_id.clone() children=move |a| view! {<div><span>{a.path}</span><strong>{move || if a.overwrite {tr(english.get(),"覆盖并备份","Overwrite + backup")} else {tr(english.get(),"新增","Create")}}</strong></div>}/></div><p class="backup-path">{move || plan.get().map(|p|format!("{}: {}",tr(english.get(),"备份位置","Backup location"),p.backup_root))}</p><footer><button class="quiet" disabled=move || busy.get() on:click=move |_| plan.set(None)>{move || tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move || busy.get() on:click=move |_| apply()>{move || tr(english.get(),"执行已预览的同步","Execute reviewed plan")}</button></footer></section></div></Show>
+            {panels::file_plan::panel(english,busy,plan,apply)}
             <footer class="statusbar"><span>{move || tr(english.get(),"UTF-8 / UTF-16 预览 · 不跟随符号链接 · 不自动删除","UTF-8 / UTF-16 preview · Links not followed · No automatic deletion")}</span><span>"Clear Compare · MIT"</span></footer>
         </main>
     }

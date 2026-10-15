@@ -27,8 +27,8 @@ const TOPICS: &[Topic] = &[
     Topic {
         zh: "复制、备份和恢复",
         en: "Copy, backups and recovery",
-        body_zh: "选择可读普通文件并明确复制方向，先预览再执行。来源和目标会重新校验，覆盖前创建并验证备份，执行状态写入日志。目标独有文件保留；当前没有镜像删除或双向同步策略。\n取消或错误会停止后续文件，先前操作可能已完成。操作历史可在重启后打开，预览回退再执行；外部修改会阻止不安全恢复。备份目录和日志需一起保留，当前不支持自动续传、恢复重做或跨系统移动日志。",
-        body_en: "Select readable regular files and an explicit direction, then review the copy plan before applying. Sources and targets are revalidated, overwrite backups are verified, and action states are journaled. Destination-only files remain; mirror deletion and bidirectional policies are not implemented.\nCancellation/errors stop later actions; earlier actions may have completed. Reopen operation history after restart, preview rollback, then apply. External changes block unsafe recovery. Keep journals with their backup directories; automatic resume, redo and cross-OS journal migration are not implemented.",
+        body_zh: "选择可读普通文件并明确复制方向，先预览再执行。操作菜单也可明确删除左侧或右侧所选普通文件，先验证备份再移除；目录不删除。来源和目标会重新校验，覆盖前创建并验证备份，执行状态写入日志。目标独有文件保留；当前没有镜像删除或双向同步策略。\n取消或错误会停止后续文件，先前操作可能已完成。操作历史可在重启后打开，预览回退再执行；删除文件可恢复到仍为空的原路径，已重新创建的路径不覆盖。外部修改会阻止不安全恢复。备份目录和日志需一起保留，当前不支持自动续传、恢复重做或跨系统移动日志。",
+        body_en: "Select readable regular files and an explicit direction, then review the copy plan before applying. The operation menu can also explicitly delete selected regular files on either side after verified backups; directories remain. Sources and targets are revalidated, overwrite backups are verified, and action states are journaled. Destination-only files remain; mirror deletion and bidirectional policies are not implemented.\nCancellation/errors stop later actions; earlier actions may have completed. Reopen operation history after restart, preview rollback, then apply. Deleted files restore only to absent paths without overwriting recreated files. External changes block unsafe recovery. Keep journals with their backup directories; automatic resume, redo and cross-OS journal migration are not implemented.",
     },
     Topic {
         zh: "文本比较和编辑",

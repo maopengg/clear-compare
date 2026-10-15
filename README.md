@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview with byte differences, offset navigation and bounded overlapping byte search, pixel picture comparison with overlay/difference views, CSV/TSV/static-HTML table comparison with independent source formats and frozen native inputs, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit/index/raw-working-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview with byte differences, offset navigation and bounded overlapping byte search, pixel picture comparison with overlay/difference views, CSV/TSV/static-HTML table comparison with independent source formats and frozen native inputs, file selection, reviewed directional copy and selected regular-file deletion with recovery, verified backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit/index/raw-working-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
 
 Planned: advanced merge workflows, Excel table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -38,7 +38,13 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 勾选“右 → 左”可切换同步方向；切换后需重新选择文件并预览。
 
-目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录状态会聚合按当前规则扫描到的子项；目录大小是已列出的常规文件大小之和，不是实际磁盘占用。子项有差异、错误或未验证内容时，目录不会标为内容一致。
+复制模式保留目标独有文件；只有明确选择删除模式并执行预览计划时才移除所选文件。符号链接不跟随或复制。取消任务不会撤销已完成动作。目录状态会聚合按当前规则扫描到的子项；目录大小是已列出的常规文件大小之和，不是实际磁盘占用。子项有差异、错误或未验证内容时，目录不会标为内容一致。
+
+### 文件删除与恢复
+
+在操作下拉框选择“删除左侧文件”或“删除右侧文件”，选择可读普通文件后预览。计划显示目标目录、文件名、大小及备份位置；执行时先创建并验证备份，再重新校验并移除。可从操作历史预览恢复，原路径若已被重新创建则拒绝覆盖。目录、链接及未选择文件不会移除；需要查看相同文件时先关闭“仅差异”。操作切换会清空选择，删除模式不随会话保存。
+
+删除恢复保留原始字节和基本权限，不是完整 ACL/时间戳备份；也不使用系统废纸篓。递归目录删除、移动/重命名和镜像策略仍在计划中。详细格式、兼容性与中断恢复规则见 [文件操作说明](docs/file-operations.md)。
 
 ### HTML / CSV / TSV 表格
 
@@ -143,6 +149,9 @@ cargo build -p clear-cli --release --locked
 ./target/release/clear-compare hex ./old.bin ./new.bin --offset 0x1000
 ./target/release/clear-compare binary-search ./file.bin 'DE AD BE EF' --mode hex --limit 256
 
+# Explicit regular-file deletion: preview by default; add --apply to execute a fresh plan.
+./target/release/clear-compare delete ./source ./target --side right --path old.txt --backup-dir ./backups
+
 # Text diff: JSON output, optional normalization.
 ./target/release/clear-compare diff ./old.txt ./new.txt --ignore-line-endings
 
@@ -230,7 +239,7 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 - Scan: at most200,000 entries per root and500 rows per page. Search, difference filtering and sorting operate across the entire selected directory scope before pagination. Folder navigation uses opaque native IDs and breadcrumbs; optional recursion includes descendants. Directories remain before files in both ascending and descending sorts.
 - Desktop backups: app data directory, `backups/<plan-id>/files/`, with `journal.json`. CLI uses the selected backup base.
 - Recovery-journal resume/redo, editor-backup browsing, automatic crash resume, timestamp/ACL/xattr preservation and full encoding support are not implemented yet.
-- Copy history is available from the desktop “Operation history” button after restart. Reviewed rollback restores overwritten files and removes only hash-matching created files, backing up their current contents first. `running`/`failed` journal entries are reconciled against actual contents; conflicting changes block recovery.
+- Copy/deletion history is available from the desktop “Operation history” button after restart. Reviewed rollback restores overwritten/deleted files and removes only hash-matching created files, backing up current files before replacement/removal. Deleted paths must still be absent; restored files use no-clobber persistence. `running`/`failed` journal entries are reconciled against actual contents; conflicting changes block recovery.
 - Durable native paths are recorded for new sync journals. Older journals without these fields cannot be automatically recovered. Journals must stay with their original backup directory and on the originating operating system. Recovery journals are currently evidence/backups, not resumable redo plans.
 - Recovery reads at most 64 MiB of source journal JSON. Desktop history lists at most 2,000 backup-directory entries. Unicode backup-directory paths are required; supported native entry names are stored losslessly.
 - A multi-file copy or recovery is not a transaction. Failure stops later actions and reports partial completion.

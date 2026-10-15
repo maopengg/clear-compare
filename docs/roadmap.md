@@ -212,3 +212,12 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Physical missing paths remain absent under sparse checkout; executable modes honor core.filemode with indexed fallback where native bits are unavailable. Links/ancestors are not followed; actual parent types, read errors, unsupported kinds and embedded repositories are explicit.
 - Tests exercise tracked/untracked/ignored scope, deletions, raw CRLF/filter behavior, modified previews, both object formats, large streamed files, type obstructions, links/FIFOs, sparse and linked worktrees, report containment and CLI/source-flag contracts. New sha1 dependency is pinned with packaged notices refreshed.
 - Prior captured-index changes passed three-platform core/WASM CI run 38684273075. Current packaged-client interaction and installation acceptance remains deferred.
+
+## Reviewed regular-file deletion and journal compatibility
+
+- Added explicit side-specific selected-file deletion, verified byte/basic-permission backups before unlink, cancellation, stop-on-error and operation history/recovery. Recreated paths are never overwritten by deletion rollback; absent subdirectories can be recreated.
+- Version-two file plans tag policies/action kinds, retain lossless paths, show actual targets and validate consistency/32 MiB pending-journal bounds before execution. Version-one copy journals retain the old overwrite-field alias and digest semantics; recovery displays derive from native paths.
+- Shared copy/deletion plan review is a separate Leptos panel with bounded initial action rendering. Operation switches clear selection, deletion mode is not session-persisted, and failed native previews invalidate old cached plans. CLI deletion requires an explicit side and literal paths; preview is read-only.
+- Journal/backup/mutation paths add Unix directory flushes. Permission/byte checks, no-clobber restoration and interrupted-state reconciliation remain explicit; full metadata, directory deletion, mirror policies, automatic resume and OS trash remain planned.
+- Tests cover either side, unchanged/target-only/empty files, exclusions, stale inputs, cancellation/partial completion, re-created paths, tampered backups/permissions, interrupted states, legacy copy journals, label projection, native names, policy/budget failures and CLI preview/apply/recovery. Packaged-client runtime/install acceptance stays deferred.
+- Previous raw Git working-tree changes passed three-platform core/WASM CI run 38685653307.

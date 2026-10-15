@@ -43,8 +43,37 @@ impl From<ByteMode> for clear_contracts::BinarySearchMode {
     }
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum FileSide {
+    Left,
+    Right,
+}
+impl From<FileSide> for clear_contracts::Side {
+    fn from(side: FileSide) -> Self {
+        match side {
+            FileSide::Left => Self::Left,
+            FileSide::Right => Self::Right,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
+    /// Preview explicit regular-file deletions; apply creates verified backups and a recovery journal.
+    Delete {
+        left: String,
+        right: String,
+        #[arg(long, value_enum)]
+        side: FileSide,
+        #[arg(long = "path", required = true)]
+        paths: Vec<PathBuf>,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long)]
+        backup_dir: PathBuf,
+        #[arg(long)]
+        apply: bool,
+    },
     /// Read a paired 4096-byte page; success does not establish whole-file equality.
     Hex {
         left: PathBuf,
@@ -237,6 +266,70 @@ enum Command {
 fn run(cli: Cli) -> clear_core::Result<i32> {
     let cancel = AtomicBool::new(false);
     match cli.command {
+        Command::Delete {
+            left,
+            right,
+            side,
+            paths,
+            exclude,
+            backup_dir,
+            apply,
+        } => {
+            let snapshot = clear_core::compare::compare(
+                &CompareRequest {
+                    left,
+                    right,
+                    exclusions: exclude,
+                    content: true,
+                },
+                &cancel,
+            )?;
+            let mut ids = Vec::new();
+            for path in paths {
+                let mut relative = PathBuf::new();
+                for component in path.components() {
+                    match component {
+                        std::path::Component::Normal(part) => relative.push(part),
+                        std::path::Component::CurDir => {}
+                        _ => {
+                            return Err(clear_core::Error::Invalid(
+                                "Deletion paths must be literal relative paths without traversal"
+                                    .into(),
+                            ));
+                        }
+                    }
+                }
+                if relative.as_os_str().is_empty() {
+                    return Err(clear_core::Error::Invalid(
+                        "Select an explicit relative file path".into(),
+                    ));
+                }
+                let id = snapshot
+                    .paths
+                    .iter()
+                    .find_map(|(id, p)| (p == &relative).then(|| id.clone()))
+                    .ok_or_else(|| {
+                        clear_core::Error::Invalid(
+                            "Requested deletion path is absent or excluded".into(),
+                        )
+                    })?;
+                ids.push(id);
+            }
+            let plan =
+                clear_core::sync::plan_delete(&snapshot, &ids, &backup_dir, &cancel, side.into())?;
+            if apply {
+                let result = clear_core::sync::execute(&snapshot, &plan, &cancel)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(if result.actions.iter().all(|a| a.state == "completed") {
+                    0
+                } else {
+                    2
+                })
+            } else {
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+                Ok(0)
+            }
+        }
         Command::Hex {
             left,
             right,

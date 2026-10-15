@@ -15,3 +15,5 @@ pub mod text;
 pub mod reports;
 
 pub mod help;
+
+pub mod file_plan;

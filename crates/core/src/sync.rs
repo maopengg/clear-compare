@@ -3,15 +3,138 @@ use crate::{
     compare::{Snapshot, check_cancel, checked_path, hash_file, reject_overlap},
     unique_id,
 };
-use clear_contracts::{ActionResult, CopyAction, Kind, Side, Status, SyncPlan, SyncResult};
+use clear_contracts::{
+    ActionResult, FileAction, FileOperation, FilePermissions, FilePlanPolicy, Kind, Side, Status,
+    SyncPlan, SyncResult,
+};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
     sync::atomic::AtomicBool,
 };
 use tempfile::NamedTempFile;
+
+mod delete;
+pub use delete::plan_delete;
+pub(crate) use delete::{permissions, set_permissions};
+const MAX_PREVIEW_JOURNAL: usize = 32 * 1024 * 1024;
+fn initial_result(plan: &SyncPlan) -> SyncResult {
+    SyncResult {
+        plan: plan.clone(),
+        actions: plan
+            .actions
+            .iter()
+            .map(|a| ActionResult {
+                path: a.path.clone(),
+                state: "pending".into(),
+                error: None,
+            })
+            .collect(),
+        journal: Path::new(&plan.backup_root)
+            .join("journal.json")
+            .to_string_lossy()
+            .into(),
+    }
+}
+pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
+    if !matches!(plan.version, 1 | 2)
+        || plan.actions.is_empty()
+        || plan.actions.len() > crate::compare::MAX_ENTRIES
+    {
+        return Err(Error::Invalid(
+            "Unsupported or empty file-operation plan".into(),
+        ));
+    }
+    let digest = |s: &str| s.len() == 64 && s.bytes().all(|c| c.is_ascii_hexdigit());
+    let mut seen = BTreeSet::new();
+    for action in &plan.actions {
+        if !seen.insert(&action.row_id)
+            || action.target_existed != action.target_digest.is_some()
+            || action.bytes.parse::<u64>().is_err()
+            || action.target_digest.as_deref().is_some_and(|s| !digest(s))
+        {
+            return Err(Error::Invalid(
+                "Invalid file-action metadata or duplicate entry".into(),
+            ));
+        }
+        match (&plan.policy, action.operation) {
+            (FilePlanPolicy::SelectedCopy, FileOperation::Copy)
+                if action.source_digest.as_deref().is_some_and(digest)
+                    && action.target_permissions.is_none() => {}
+            (FilePlanPolicy::DeleteSelected { .. }, FileOperation::Delete)
+                if plan.version == 2
+                    && action.source_digest.is_none()
+                    && action.target_existed
+                    && action.target_permissions.is_some() => {}
+            _ => {
+                return Err(Error::Invalid(
+                    "File action does not match its reviewed policy".into(),
+                ));
+            }
+        }
+        if action
+            .target_permissions
+            .as_ref()
+            .is_some_and(|p| matches!(p,FilePermissions::Unix{mode} if *mode>0o7777))
+        {
+            return Err(Error::Invalid("Invalid recorded permission bits".into()));
+        }
+    }
+    Ok(())
+}
+pub(crate) fn validate_plan(plan: &SyncPlan) -> Result<()> {
+    validate_plan_metadata(plan)?;
+    struct Bound(usize);
+    impl Write for Bound {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes.len() > MAX_PREVIEW_JOURNAL.saturating_sub(self.0) {
+                return Err(std::io::Error::other(
+                    "File-operation preview journal exceeds 32 MiB",
+                ));
+            }
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    serde_json::to_writer_pretty(Bound(0), &initial_result(plan))
+        .map_err(|_| Error::Invalid("File-operation preview journal exceeds 32 MiB".into()))?;
+    Ok(())
+}
+fn target_root<'a>(snapshot: &'a Snapshot, plan: &SyncPlan) -> &'a Path {
+    match &plan.policy {
+        FilePlanPolicy::SelectedCopy => {
+            if plan.source_side == Side::Left {
+                &snapshot.right
+            } else {
+                &snapshot.left
+            }
+        }
+        FilePlanPolicy::DeleteSelected { target_side } => {
+            if *target_side == Side::Left {
+                &snapshot.left
+            } else {
+                &snapshot.right
+            }
+        }
+    }
+}
+pub(crate) fn failure_message(error: &Error) -> String {
+    let mut value = error.to_string();
+    if value.len() > 65536 {
+        let mut end = 65536;
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        value.truncate(end);
+        value.push_str(" [truncated]");
+    }
+    value
+}
 
 fn regular_digest(path: &Path, cancel: &AtomicBool) -> Result<Option<String>> {
     match fs::symlink_metadata(path) {
@@ -64,6 +187,12 @@ pub fn plan_direction(
     let id = unique_id();
     let mut actions = Vec::new();
     let mut seen = BTreeSet::new();
+    let rows = snapshot
+        .report
+        .rows
+        .iter()
+        .map(|r| (r.id.as_str(), r))
+        .collect::<BTreeMap<_, _>>();
     for row_id in row_ids {
         check_cancel(cancel)?;
         if !seen.insert(row_id) {
@@ -73,11 +202,9 @@ pub fn plan_direction(
             .paths
             .get(row_id)
             .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
-        let row = snapshot
-            .report
-            .rows
-            .iter()
-            .find(|r| &r.id == row_id)
+        let row = rows
+            .get(row_id.as_str())
+            .copied()
             .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
         let (source_entry, target_entry) = if source_side == Side::Left {
             (&row.left, &row.right)
@@ -122,24 +249,59 @@ pub fn plan_direction(
                 "Files changed since comparison. Compare again.".into(),
             ));
         }
-        actions.push(CopyAction {
+        actions.push(FileAction {
+            operation: FileOperation::Copy,
+            target_permissions: None,
             row_id: row_id.clone(),
             relative_native: Some(crate::native_path::encode(relative)),
             path: row.path.clone(),
-            overwrite: target_digest.is_some(),
+            target_existed: target_digest.is_some(),
             bytes: fs::metadata(source)?.len().to_string(),
-            source_digest,
+            source_digest: Some(source_digest),
             target_digest,
         });
     }
-    Ok(SyncPlan {
+    let plan = SyncPlan {
+        target: target_root.to_string_lossy().into(),
+        version: 2,
+        policy: FilePlanPolicy::SelectedCopy,
         id: id.clone(),
         target_native: Some(crate::native_path::encode(target_root)),
         source_side,
         session: snapshot.report.session.clone(),
         actions,
         backup_root: base.join(id).to_string_lossy().into_owned(),
-    })
+    };
+    validate_plan(&plan)?;
+    Ok(plan)
+}
+
+pub(crate) fn flush_directory(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        File::open(path)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+pub(crate) fn flush_ancestors(path: &Path, root: &Path) -> Result<()> {
+    if !path.starts_with(root) {
+        return Err(Error::Invalid("Directory flush escaped its root".into()));
+    }
+    let mut at = path;
+    loop {
+        flush_directory(at)?;
+        if at == root {
+            break;
+        }
+        at = at
+            .parent()
+            .ok_or_else(|| Error::Invalid("Invalid directory flush path".into()))?;
+    }
+    Ok(())
 }
 
 pub(crate) fn atomic_json<T: serde::Serialize>(path: &Path, data: &T) -> Result<()> {
@@ -150,6 +312,7 @@ pub(crate) fn atomic_json<T: serde::Serialize>(path: &Path, data: &T) -> Result<
     temp.write_all(&serde_json::to_vec_pretty(data)?)?;
     temp.as_file().sync_all()?;
     temp.persist(path).map_err(|e| e.error)?;
+    flush_directory(parent)?;
     Ok(())
 }
 
@@ -167,10 +330,14 @@ fn roots_unchanged(snapshot: &Snapshot) -> Result<()> {
 fn copy_one(
     snapshot: &Snapshot,
     plan: &SyncPlan,
-    action: &CopyAction,
+    action: &FileAction,
     cancel: &AtomicBool,
 ) -> Result<()> {
     check_cancel(cancel)?;
+    let source_digest = action
+        .source_digest
+        .as_deref()
+        .ok_or_else(|| Error::Invalid("Copy source digest missing".into()))?;
     roots_unchanged(snapshot)?;
     let (source_root, target_root) = if plan.source_side == Side::Left {
         (&snapshot.left, &snapshot.right)
@@ -191,7 +358,7 @@ fn copy_one(
     }
     let source = checked_path(source_root, relative, false)?;
     let destination = checked_path(target_root, relative, true)?;
-    if hash_file(&source, cancel)? != action.source_digest
+    if hash_file(&source, cancel)? != source_digest
         || regular_digest(&destination, cancel)? != action.target_digest
     {
         return Err(Error::Invalid(
@@ -220,7 +387,7 @@ fn copy_one(
         .as_file()
         .set_permissions(fs::metadata(&source)?.permissions())?;
     temporary.as_file().sync_all()?;
-    if hash_file(temporary.path(), cancel)? != action.source_digest {
+    if hash_file(temporary.path(), cancel)? != source_digest {
         return Err(Error::Invalid("Source changed during copy".into()));
     }
     if let Some(expected) = &action.target_digest {
@@ -248,6 +415,12 @@ fn copy_one(
         if hash_file(&backup, cancel)? != *expected {
             return Err(Error::Invalid("Backup verification failed".into()));
         }
+        flush_ancestors(
+            backup
+                .parent()
+                .ok_or_else(|| Error::Invalid("Invalid backup parent".into()))?,
+            backup_root,
+        )?;
     }
     check_cancel(cancel)?;
     roots_unchanged(snapshot)?;
@@ -255,31 +428,39 @@ fn copy_one(
     if regular_digest(&destination, cancel)? != action.target_digest {
         return Err(Error::Invalid("Destination changed during copy".into()));
     }
-    if action.overwrite {
+    if action.target_existed {
         temporary.persist(&destination).map_err(|e| e.error)?;
     } else {
         temporary
             .persist_noclobber(&destination)
             .map_err(|e| e.error)?;
     }
+    flush_ancestors(parent, target_root)?;
     // Verification is mandatory even after a successful filesystem replacement.
     // Cancellation after replacement must not misreport a completed write.
-    if hash_file(&destination, &AtomicBool::new(false))? != action.source_digest {
+    if hash_file(&destination, &AtomicBool::new(false))? != source_digest {
         return Err(Error::Invalid("Copied file failed verification".into()));
     }
     Ok(())
 }
 
 pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Result<SyncResult> {
+    validate_plan(plan)?;
     if plan.session != snapshot.report.session {
         return Err(Error::Invalid("Plan belongs to another comparison".into()));
     }
-    roots_unchanged(snapshot)?;
-    let target = if plan.source_side == Side::Left {
-        &snapshot.right
-    } else {
-        &snapshot.left
-    };
+    if plan.policy == FilePlanPolicy::SelectedCopy {
+        roots_unchanged(snapshot)?;
+    }
+    let target = target_root(snapshot, plan);
+    if plan.version >= 2 && plan.target != target.to_string_lossy() {
+        return Err(Error::Invalid(
+            "Plan target label differs from its snapshot".into(),
+        ));
+    }
+    if fs::canonicalize(target)? != target {
+        return Err(Error::Invalid("File-operation target root changed".into()));
+    }
     if plan.target_native.as_ref() != Some(&crate::native_path::encode(target)) {
         return Err(Error::Invalid(
             "Plan destination metadata differs from its snapshot".into(),
@@ -306,35 +487,28 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(backup, fs::Permissions::from_mode(0o700))?;
     }
+    flush_directory(base)?;
     let journal = backup.join("journal.json");
-    let mut result = SyncResult {
-        plan: plan.clone(),
-        actions: plan
-            .actions
-            .iter()
-            .map(|a| ActionResult {
-                path: a.path.clone(),
-                state: "pending".into(),
-                error: None,
-            })
-            .collect(),
-        journal: journal.to_string_lossy().into_owned(),
-    };
+    let mut result = initial_result(plan);
     atomic_json(&journal, &result)?;
     for (i, action) in plan.actions.iter().enumerate() {
         if let Err(e) = check_cancel(cancel) {
             result.actions[i].state = "cancelled".into();
-            result.actions[i].error = Some(e.to_string());
+            result.actions[i].error = Some(failure_message(&e));
             atomic_json(&journal, &result)?;
             break;
         }
         result.actions[i].state = "running".into();
         atomic_json(&journal, &result)?;
-        match copy_one(snapshot, plan, action, cancel) {
+        let applied = match action.operation {
+            FileOperation::Copy => copy_one(snapshot, plan, action, cancel),
+            FileOperation::Delete => delete::delete_one(snapshot, plan, action, cancel),
+        };
+        match applied {
             Ok(()) => result.actions[i].state = "completed".into(),
             Err(e) => {
                 result.actions[i].state = "failed".into();
-                result.actions[i].error = Some(e.to_string());
+                result.actions[i].error = Some(failure_message(&e));
             }
         }
         atomic_json(&journal, &result)?;
