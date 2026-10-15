@@ -497,3 +497,89 @@ fn git_report_cli_uses_pinned_committed_objects() {
         "uncommitted"
     );
 }
+
+#[test]
+fn html_table_cli_selects_each_side_and_lists_static_catalogs() {
+    let t = tempfile::tempdir().unwrap();
+    let html = t.path().join("a.html");
+    let csv = t.path().join("b.csv");
+    fs::write(&html,"<table><caption>wrong</caption><tr><th>x<tr><td>no</table><table id='data'><caption>Data</caption><tr><th>id<th>value<tr><td>b<td>2<tr><td>a<td>1.005</table>").unwrap();
+    fs::write(&csv, "id,value\na,1.000\nb,2\n").unwrap();
+    let result = run(&[
+        "table".as_ref(),
+        html.as_os_str(),
+        csv.as_os_str(),
+        "--left-html".as_ref(),
+        "1".as_ref(),
+        "--key-column".as_ref(),
+        "0".as_ref(),
+        "--numeric-tolerance".as_ref(),
+        "0.01".as_ref(),
+    ]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["summary"]["same"], 2);
+    assert_eq!(report["left_tables"][1]["element_id"], "data");
+    assert_eq!(report["options"]["left_source"]["table"], 1);
+    let catalog = run(&[
+        "table".as_ref(),
+        html.as_os_str(),
+        csv.as_os_str(),
+        "--list-tables".as_ref(),
+    ]);
+    assert!(catalog.status.success());
+    let info: serde_json::Value = serde_json::from_slice(&catalog.stdout).unwrap();
+    assert_eq!(info["left_tables"].as_array().unwrap().len(), 2);
+    assert_eq!(info["left_tables"][1]["caption"], "Data");
+    assert!(info["right_tables"].as_array().unwrap().is_empty());
+    let missing = run(&[
+        "table".as_ref(),
+        html.as_os_str(),
+        csv.as_os_str(),
+        "--left-html".as_ref(),
+        "99".as_ref(),
+    ]);
+    assert_eq!(missing.status.code(), Some(2));
+    let direct = run(&["table".as_ref(), html.as_os_str(), html.as_os_str()]);
+    assert!(direct.status.success());
+}
+#[test]
+fn utf16_html_and_literal_delimited_overrides_are_explicit() {
+    let t = tempfile::tempdir().unwrap();
+    let l = t.path().join("left.html");
+    let r = t.path().join("right.csv");
+    let text = "<table><tr><th>id<th>value<tr><td>a<td>1</table>";
+    let bytes = [
+        vec![255, 254],
+        text.encode_utf16().flat_map(u16::to_le_bytes).collect(),
+    ]
+    .concat();
+    fs::write(&l, bytes).unwrap();
+    fs::write(&r, "id,value\na,1\n").unwrap();
+    let result = run(&[
+        "table".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--key-column".as_ref(),
+        "0".as_ref(),
+    ]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    fs::write(&l, "id,value\na,1\n").unwrap();
+    let literal = run(&[
+        "table".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--delimited".as_ref(),
+    ]);
+    assert!(literal.status.success());
+    let auto = run(&["table".as_ref(), l.as_os_str(), r.as_os_str()]);
+    assert_eq!(auto.status.code(), Some(2));
+}

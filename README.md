@@ -8,9 +8,9 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV/static-HTML table comparison with independent source formats and frozen native inputs, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
 
-Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
+Planned: advanced merge workflows, Excel table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
 ## Download
 
@@ -39,6 +39,14 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 勾选“右 → 左”可切换同步方向；切换后需重新选择文件并预览。
 
 目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录状态会聚合按当前规则扫描到的子项；目录大小是已列出的常规文件大小之和，不是实际磁盘占用。子项有差异、错误或未验证内容时，目录不会标为内容一致。
+
+### HTML / CSV / TSV 表格
+
+点击文件行中的“表”按钮，默认按扩展名识别 HTML / HTM、TSV，其余使用 CSV。两侧格式可独立指定，支持 HTML 与分隔文本对照。原始文本只在原生端读取一次，之后改主键列、容差或表序号都复用同一份内容；重新点击文件列表中的表按钮可刷新。开启目录内容校验时，文件已变更会要求先重新比较目录。
+
+HTML 可按 0 起始序号选择每侧表格；“列出 HTML 表格”展示标题、元素 ID 和 DOM 行数。解析不运行脚本、不加载资源，支持实体、可省略的行/单元格结束标签及 rowspan/colspan 展开。仅比较静态文本值；详细规则和限制见 [表格格式说明](docs/table-formats.md)。
+
+预览按行分页，并每次展示最多 25 列。单元格超过 8192 个 Unicode 字符会显示截断标签，原始比较数据仍保留；CLI JSON 返回完整值。列名映射、Excel、表格编辑和更丰富容差仍在计划中。
 
 ### 比较报告
 
@@ -153,6 +161,12 @@ cargo build -p clear-cli --release --locked
 
 # Picture statistics (PNG/JPEG/BMP/WebP), optional channel tolerance.
 ./target/release/clear-compare picture ./left.png ./right.png --tolerance 2
+
+# HTML catalog / independent table selection / mixed HTML and CSV comparison.
+./target/release/clear-compare table ./left.html ./right.csv --list-tables
+./target/release/clear-compare table ./left.html ./right.csv --left-html 1 --key-column 0 --numeric-tolerance 0.01
+# Force delimited text even if a filename ends in .html.
+./target/release/clear-compare table ./left.html ./right.csv --delimited
 
 # CSV comparison: zero-based key column, optional absolute numeric tolerance.
 ./target/release/clear-compare table ./old.csv ./new.csv --key-column 0 --numeric-tolerance 0.01

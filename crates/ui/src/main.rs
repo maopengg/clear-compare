@@ -112,8 +112,11 @@ fn App() -> impl IntoView {
     let restore_preview = RwSignal::new(None::<RestorePreview>);
     let table_visible = RwSignal::new(false);
     let table = RwSignal::new(None::<OpenedTable>);
-    let table_id = RwSignal::new(String::new());
-    let table_tsv = RwSignal::new(false);
+    let table_document = RwSignal::new(None::<TableDocumentInfo>);
+    let table_left_mode = RwSignal::new("auto".to_string());
+    let table_right_mode = RwSignal::new("auto".to_string());
+    let table_left_index = RwSignal::new("0".to_string());
+    let table_right_index = RwSignal::new("0".to_string());
     let table_headers = RwSignal::new(true);
     let table_key = RwSignal::new(String::new());
     let table_tolerance = RwSignal::new(String::new());
@@ -210,8 +213,8 @@ fn App() -> impl IntoView {
         }
     });
 
-    let open_table = move |id: String| {
-        let Some(c) = comparison.get_untracked() else {
+    let compare_table_document = move || {
+        let Some(doc) = table_document.get_untracked() else {
             return;
         };
         let key = table_key.get_untracked();
@@ -234,8 +237,42 @@ fn App() -> impl IntoView {
             }
         };
         let tolerance = table_tolerance.get_untracked();
+        let source = |mode: String, index: String| -> Result<TableSource, String> {
+            match mode.as_str() {
+                "html" => index
+                    .parse::<usize>()
+                    .map(|table| TableSource::Html { table })
+                    .map_err(|_| "HTML table index must be a nonnegative integer".into()),
+                "delimited" => Ok(TableSource::Delimited),
+                "csv" => Ok(TableSource::Csv),
+                "tsv" => Ok(TableSource::Tsv),
+                _ => Ok(TableSource::Auto),
+            }
+        };
+        let left_source = match source(
+            table_left_mode.get_untracked(),
+            table_left_index.get_untracked(),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                error.set(e);
+                return;
+            }
+        };
+        let right_source = match source(
+            table_right_mode.get_untracked(),
+            table_right_index.get_untracked(),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                error.set(e);
+                return;
+            }
+        };
         let options = TableOptions {
-            delimiter: if table_tsv.get_untracked() { "\t" } else { "," }.into(),
+            left_source,
+            right_source,
+            delimiter: ",".into(),
             headers: table_headers.get_untracked(),
             key_column,
             numeric_tolerance: if tolerance.is_empty() {
@@ -244,18 +281,32 @@ fn App() -> impl IntoView {
                 Some(tolerance)
             },
         };
+
         busy.set(true);
         error.set(String::new());
-        table_visible.set(true);
-        table_id.set(id.clone());
+        table.set(None);
         spawn_local(async move {
             match invoke::<OpenedTable>(
                 "table_compare",
-                serde_json::json!({"session":c.session,"rowId":id,"options":options}),
+                serde_json::json!({"documentId":doc.id,"options":options}),
             )
             .await
             {
                 Ok(value) => {
+                    table_document.update(|info| {
+                        if let Some(info) = info
+                            && info.id == doc.id
+                        {
+                            if !value.report.left_tables.is_empty() {
+                                info.left_tables = value.report.left_tables.clone();
+                                info.left_error = None;
+                            }
+                            if !value.report.right_tables.is_empty() {
+                                info.right_tables = value.report.right_tables.clone();
+                                info.right_error = None;
+                            }
+                        }
+                    });
                     table.set(Some(value));
                     table_offset.set(0);
                 }
@@ -263,6 +314,68 @@ fn App() -> impl IntoView {
             }
             busy.set(false);
         });
+    };
+    let open_table = move |id: String| {
+        let Some(c) = comparison.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        table_visible.set(true);
+        table.set(None);
+        table_document.set(None);
+        table_left_mode.set("auto".into());
+        table_right_mode.set("auto".into());
+        table_left_index.set("0".into());
+        table_right_index.set("0".into());
+        spawn_local(async move {
+            match invoke::<TableDocumentInfo>(
+                "open_table_document",
+                serde_json::json!({"session":c.session,"rowId":id}),
+            )
+            .await
+            {
+                Ok(info) => {
+                    table_document.set(Some(info));
+                    busy.set(false);
+                    compare_table_document();
+                }
+                Err(e) => {
+                    error.set(e);
+                    busy.set(false);
+                }
+            }
+        });
+    };
+    let table_catalog = move || {
+        let Some(doc) = table_document.get_untracked() else {
+            return;
+        };
+        let left_html = table_left_mode.get_untracked() == "html"
+            || (table_left_mode.get_untracked() == "auto" && doc.left_html);
+        let right_html = table_right_mode.get_untracked() == "html"
+            || (table_right_mode.get_untracked() == "auto" && doc.right_html);
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<TableDocumentInfo>("table_catalog",serde_json::json!({"documentId":doc.id,"leftHtml":left_html,"rightHtml":right_html})).await{Ok(info)=>table_document.set(Some(info)),Err(e)=>error.set(e)}
+            busy.set(false);
+        });
+    };
+    let close_table = move || {
+        let doc = table_document.get_untracked();
+        table_document.set(None);
+        table.set(None);
+        table_visible.set(false);
+        if let Some(doc) = doc {
+            spawn_local(async move {
+                let _ = invoke::<()>(
+                    "close_table_document",
+                    serde_json::json!({"documentId":doc.id}),
+                )
+                .await;
+            });
+        }
     };
     let paginate_table = move |forward: bool| {
         let Some(t) = table.get_untracked() else {
@@ -414,6 +527,7 @@ fn App() -> impl IntoView {
         picture.set(None);
         table.set(None);
         table_visible.set(false);
+        table_document.set(None);
         plan.set(None);
         folder_merge_preview.set(None);
         message.set(String::new());
@@ -1012,7 +1126,7 @@ fn App() -> impl IntoView {
                                 if can_directory{browse_folder(Some(open_id.clone()));return;}
                                 let Some(c)=comparison.get_untracked() else {return;}; let id=open_id.clone();busy.set(true);error.set(String::new());diff.set(None);
                                 spawn_local(async move {match invoke::<TextDiff>("text_diff",serde_json::json!({"session":c.session,"rowId":id,"options":{"ignore_case":ignore_case.get_untracked(),"ignore_whitespace":ignore_space.get_untracked(),"ignore_line_endings":ignore_endings.get_untracked()}})).await {Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)} busy.set(false);});
-                            }>{if can_directory{format!("▸ {path}")}else{path}}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move ||busy.get() || !(can_left ||can_right) on:click=move |_|open_picture(picture_row_id.clone())>{move ||tr(english.get(),"图","Pic")}</button><button class="quiet" disabled=move ||busy.get() || !(can_left || can_right) on:click=move |_|open_table(table_row_id.clone())>{move ||tr(english.get(),"表","CSV")}</button><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
+                            }>{if can_directory{format!("▸ {path}")}else{path}}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move ||busy.get() || !(can_left ||can_right) on:click=move |_|open_picture(picture_row_id.clone())>{move ||tr(english.get(),"图","Pic")}</button><button class="quiet" disabled=move ||busy.get() || !(can_left || can_right) on:click=move |_|open_table(table_row_id.clone())>{move ||tr(english.get(),"表","Tbl")}</button><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
                     }/></div>
                 </section>
                 <div class="pagination"><span>{move || format!("{}–{} / {}",offset.get()+usize::from(visible_total.get()>0),(offset.get()+500).min(visible_total.get()),visible_total.get())}</span><button class="quiet" disabled=move || offset.get()==0 || busy.get() on:click=move |_| paginate(false)>{move || tr(english.get(),"上一页","Previous")}</button><button class="quiet" disabled=move || busy.get() || (offset.get()+500>=visible_total.get()) on:click=move |_| paginate(true)>{move || tr(english.get(),"下一页","Next")}</button></div>
@@ -1020,7 +1134,7 @@ fn App() -> impl IntoView {
             </Show>
             {panels::text::panel(english,diff,move |d|{merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);})}
             {panels::picture::panel(english,busy,panels::picture::Signals{picture,picture_id,picture_tolerance,picture_ignore_alpha},open_picture)}
-            {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_id, table_tsv, table_headers, table_key, table_tolerance, table_offset}, open_table, paginate_table)}
+            {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_document, table_left_mode,table_right_mode,table_left_index,table_right_index, table_headers, table_key, table_tolerance, table_offset}, compare_table_document, paginate_table,table_catalog,close_table)}
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id}, open_binary)}
             {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, saved_text, error},load_merge)}
             {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, saved_text, text_history, merge_tokens, error, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore,change_draft)}

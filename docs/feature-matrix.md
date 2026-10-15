@@ -14,7 +14,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F08 Text rules | Case, within-line whitespace and line-ending normalization | Syntax filters, regex rules and manual alignment |
 | F09 Text merge | Three-way merge buffers, tagged conflict provenance, native normal-save gate, conflict navigation/original-version choices, bounded undo/redo, editor loading and JSON CLI | Working-copy export and richer merge editing |
 | F10 Folder merge | Two/three-way independent output, baseline/content classification, deletion/modify and probable rename/modify conflicts, auto text merge, paged version choices, source/output validation, durable journals and CLI | Advanced rename analysis, existing-output/in-place policies, resume/cleanup and richer per-file merge editing |
-| F11 Table compare | CSV/TSV strict parser, positional/key row alignment, numeric tolerance, paged paired cells and CLI | Excel/HTML, column-name mapping, table editing and richer tolerances |
+| F11 Table compare | CSV/TSV and bounded static HTML5 tables, independent source formats/table indices, merged-cell grids, frozen native documents, positional/key row alignment, numeric tolerance, row/column paging and CLI | Excel, column-name mapping, table editing and richer tolerances |
 | F12 Binary compare | Streaming hash comparison and bounded 4 KiB hex/ASCII paired pages | Hex editing, byte alignment and search |
 | F13 Picture compare | PNG/JPEG/BMP/WebP RGBA8 pixel diff, EXIF orientation, tolerance, bounds, aligned previews, overlay/heatmap and CLI statistics | Additional formats/animation, ICC/perceptual comparison, alignment controls, pixel inspector and export |
 | F14 Conversion | Planned | Document converters and format policies |

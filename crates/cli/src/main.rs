@@ -124,6 +124,16 @@ enum Command {
         #[arg(long)]
         tsv: bool,
         #[arg(long)]
+        html: bool,
+        #[arg(long, conflicts_with = "html")]
+        delimited: bool,
+        #[arg(long)]
+        list_tables: bool,
+        #[arg(long)]
+        left_html: Option<usize>,
+        #[arg(long)]
+        right_html: Option<usize>,
+        #[arg(long)]
         no_headers: bool,
         #[arg(long)]
         key_column: Option<usize>,
@@ -530,19 +540,57 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             left,
             right,
             tsv,
+            html,
+            delimited,
+            list_tables,
+            left_html,
+            right_html,
             no_headers,
             key_column,
             numeric_tolerance,
         } => {
-            let result = clear_core::table::compare(
-                &clear_core::text::read_text(&left)?,
-                &clear_core::text::read_text(&right)?,
+            let cancel = std::sync::atomic::AtomicBool::new(false);
+            let document =
+                clear_core::table::document::Document::from_paths(&left, &right, &cancel)?;
+            let source = |selected: Option<usize>| {
+                selected
+                    .or(if html { Some(0) } else { None })
+                    .map(|table| clear_contracts::TableSource::Html { table })
+                    .unwrap_or(if delimited {
+                        clear_contracts::TableSource::Delimited
+                    } else {
+                        clear_contracts::TableSource::Auto
+                    })
+            };
+            if list_tables {
+                let info = document.inspect(
+                    matches!(source(left_html), clear_contracts::TableSource::Html { .. })
+                        || (matches!(source(left_html), clear_contracts::TableSource::Auto)
+                            && document.info.left_html),
+                    matches!(
+                        source(right_html),
+                        clear_contracts::TableSource::Html { .. }
+                    ) || (matches!(source(right_html), clear_contracts::TableSource::Auto)
+                        && document.info.right_html),
+                    &cancel,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&info)?);
+                return Ok(if info.left_error.is_some() || info.right_error.is_some() {
+                    2
+                } else {
+                    0
+                });
+            }
+            let result = document.compare(
                 &clear_contracts::TableOptions {
+                    left_source: source(left_html),
+                    right_source: source(right_html),
                     delimiter: if tsv { "\t" } else { "," }.into(),
                     headers: !no_headers,
                     key_column,
                     numeric_tolerance,
                 },
+                &cancel,
             )?;
             let changed =
                 result.summary.changed + result.summary.left_only + result.summary.right_only > 0

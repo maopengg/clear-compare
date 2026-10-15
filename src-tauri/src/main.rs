@@ -20,6 +20,7 @@ struct Backend {
     git: Mutex<Option<Arc<clear_core::git::Snapshot>>>,
     tree_snapshot: Mutex<Option<Arc<clear_core::tree_snapshot::Snapshot>>>,
     table: Mutex<Option<(String, Arc<TableComparison>)>>,
+    table_document: Mutex<Option<Arc<clear_core::table::document::Document>>>,
     plan: Mutex<Option<SyncPlan>>,
     editor_backups: Mutex<BTreeMap<String, PathBuf>>,
     restore: Mutex<Option<(String, clear_core::editing::RestorePlan)>>,
@@ -72,6 +73,11 @@ async fn compare(
     state: State<'_, Backend>,
 ) -> Result<OpenedComparison, String> {
     let _operation_guard = state.begin()?;
+    *state
+        .table_document
+        .lock()
+        .map_err(|_| "State unavailable")? = None;
+    *state.table.lock().map_err(|_| "State unavailable")? = None;
     // Invalidate the old plan before a new scan, even when that scan fails.
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
     let cancel = state.cancel.clone();
@@ -754,24 +760,99 @@ async fn text_diff(
 }
 
 #[tauri::command]
-async fn table_compare(
+async fn open_table_document(
     session: String,
     row_id: String,
-    options: TableOptions,
     state: State<'_, Backend>,
-) -> Result<OpenedTable, String> {
-    let _operation_guard = state.begin()?;
+) -> Result<TableDocumentInfo, String> {
+    let _guard = state.begin()?;
+    *state
+        .table_document
+        .lock()
+        .map_err(|_| "State unavailable")? = None;
+    *state.table.lock().map_err(|_| "State unavailable")? = None;
     let snapshot = state.snapshot(&session)?;
-    let (path, report) = tauri::async_runtime::spawn_blocking(move || {
-        let (path, left, right) = clear_core::text::load_pair(&snapshot, &row_id)?;
-        Ok::<_, clear_core::Error>((path, clear_core::table::compare(&left, &right, &options)?))
+    let cancel = state.cancel.clone();
+    let doc = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::table::document::Document::open(&snapshot, &row_id, &cancel)
     })
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
+    let info = doc.info.clone();
+    *state
+        .table_document
+        .lock()
+        .map_err(|_| "State unavailable")? = Some(Arc::new(doc));
+    Ok(info)
+}
+fn table_document(
+    state: &Backend,
+    id: &str,
+) -> Result<Arc<clear_core::table::document::Document>, String> {
+    let doc = state
+        .table_document
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .clone()
+        .ok_or("Open a table document first")?;
+    if doc.info.id != id {
+        return Err("Table document expired. Reopen it from the file list.".into());
+    }
+    Ok(doc)
+}
+#[tauri::command]
+async fn table_catalog(
+    document_id: String,
+    left_html: bool,
+    right_html: bool,
+    state: State<'_, Backend>,
+) -> Result<TableDocumentInfo, String> {
+    let _guard = state.begin()?;
+    let doc = table_document(&state, &document_id)?;
+    let cancel = state.cancel.clone();
+    tauri::async_runtime::spawn_blocking(move || doc.inspect(left_html, right_html, &cancel))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn close_table_document(document_id: String, state: State<'_, Backend>) -> Result<(), String> {
+    let _guard = state.begin()?;
+    let mut doc = state
+        .table_document
+        .lock()
+        .map_err(|_| "State unavailable")?;
+    if doc.as_ref().is_some_and(|d| d.info.id == document_id) {
+        *doc = None;
+        *state.table.lock().map_err(|_| "State unavailable")? = None;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn table_compare(
+    document_id: String,
+    options: TableOptions,
+    state: State<'_, Backend>,
+) -> Result<OpenedTable, String> {
+    let _operation_guard = state.begin()?;
+    let document = table_document(&state, &document_id)?;
+    *state.table.lock().map_err(|_| "State unavailable")? = None;
+    let path = document.info.path.clone();
+    let cancel = state.cancel.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || document.compare(&options, &cancel))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
     let id = clear_core::unique_id();
     let total = report.rows.len();
     let view = TableComparison {
+        columns: report.columns,
+        options: report.options.clone(),
+        left_tables: report.left_tables.clone(),
+        right_tables: report.right_tables.clone(),
+        warnings: report.warnings.clone(),
         left_headers: report.left_headers.clone(),
         right_headers: report.right_headers.clone(),
         summary: report.summary.clone(),
@@ -1136,6 +1217,9 @@ fn main() {
             stage_merge_result,
             binary_page,
             table_compare,
+            open_table_document,
+            table_catalog,
+            close_table_document,
             table_page,
             preview_sync,
             apply_sync,

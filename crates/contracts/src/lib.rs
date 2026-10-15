@@ -246,6 +246,10 @@ pub struct BinaryPage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableOptions {
+    #[serde(default)]
+    pub left_source: TableSource,
+    #[serde(default)]
+    pub right_source: TableSource,
     pub delimiter: String,
     pub headers: bool,
     /// Zero-based key column. Duplicate keys are rejected.
@@ -263,6 +267,16 @@ pub struct TableRow {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableComparison {
+    #[serde(default)]
+    pub columns: usize,
+    #[serde(default)]
+    pub options: Option<TableOptions>,
+    #[serde(default)]
+    pub left_tables: Vec<HtmlTableInfo>,
+    #[serde(default)]
+    pub right_tables: Vec<HtmlTableInfo>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
     pub left_headers: Vec<String>,
     pub right_headers: Vec<String>,
     pub rows: Vec<TableRow>,
@@ -564,4 +578,51 @@ pub enum VerificationBasis {
 pub struct ComparisonPolicy {
     pub exclusions: String,
     pub verification: VerificationBasis,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(tag = "format", rename_all = "snake_case")]
+pub enum TableSource {
+    #[default]
+    Auto,
+    Delimited,
+    Csv,
+    Tsv,
+    Html {
+        table: usize,
+    },
+}
+impl Default for TableOptions {
+    fn default() -> Self {
+        Self {
+            left_source: TableSource::Auto,
+            right_source: TableSource::Auto,
+            delimiter: ",".into(),
+            headers: true,
+            key_column: None,
+            numeric_tolerance: None,
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HtmlTableInfo {
+    pub index: usize,
+    pub caption: String,
+    pub element_id: String,
+    pub rows: usize,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableDocumentInfo {
+    pub left_tsv: bool,
+    pub right_tsv: bool,
+    pub left_tables: Vec<HtmlTableInfo>,
+    pub right_tables: Vec<HtmlTableInfo>,
+    pub left_error: Option<String>,
+    pub right_error: Option<String>,
+    pub id: String,
+    pub path: String,
+    pub left_html: bool,
+    pub right_html: bool,
+    pub left_available: bool,
+    pub right_available: bool,
 }

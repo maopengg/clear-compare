@@ -164,3 +164,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Export is bounded, cancellable and no-clobber, with temporary-file cleanup and source/repository path protection. Git roots include linked-worktree common storage and actual top-level roots discovered from subdirectories.
 - Tests cover HTML injection payloads, JSON policy/schema/summary, rows beyond 500, changed source files after comparison, uncertainty/error filtering, overwrite/source containment, symlink aliases, stale sessions, cancellation and byte budgets. CLI tests verify saved results and exit codes, including committed Git snapshots with dirty working copies.
 - Text-navigation changes passed three-platform CI run 38675843060. New local tests/lints/builds are recorded with this commit; GUI/installer verification remains deferred.
+
+## Static HTML table support and native table documents
+
+- HTML/HTM tables can be listed and independently selected on both sides, including comparisons with CSV/TSV. Extension hints and explicit format overrides are separate; HTML5 repair handles common omitted endings/entities, with defined static text/merged-cell policies.
+- Native table documents capture regular-file text once, reject changed verified inputs and support repeatable rule/format changes without rereading sources. Data is not sent to the UI as raw HTML. Document/result IDs expire on replacement/close/new folder comparison.
+- Resource checks cover decoded bytes, DOM nodes/depth/time, table count, expanded rows/columns/cells/text, with cancellation checks. Ambiguous overlap and invalid span values are errors. UI adds column windows and explicit long-cell clipping.
+- Tests cover entities, whitespace/NBSP, inert/hidden/foreign-script content, nested tables, row-group ordering, zero/positive row spans, column spans, overlaps, limits, missing sides, UTF-16, HTML/CSV/TSV format selection, immutable input reuse and CLI catalogs/exit codes. Dependency declarations and third-party notices were refreshed.
+- Comparison-report changes passed three-platform CI run 38677696889. New local automated checks/builds are recorded with this commit; client GUI/installation acceptance stays deferred.

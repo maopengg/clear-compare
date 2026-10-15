@@ -1,10 +1,12 @@
 //! Strict RFC-style delimited text parsing and explicit row/key comparison.
+pub mod document;
+pub mod html;
 use crate::{Error, Result, editing::MAX_DOCUMENT_BYTES};
 use clear_contracts::{Status, Summary, TableComparison, TableOptions, TableRow};
 use std::collections::BTreeMap;
-const MAX_CELLS: usize = 200_000;
-const MAX_ROWS: usize = 30_000;
-const MAX_COLUMNS: usize = 1024;
+pub(crate) const MAX_CELLS: usize = 200_000;
+pub(crate) const MAX_ROWS: usize = 30_000;
+pub(crate) const MAX_COLUMNS: usize = 1024;
 
 pub fn parse(text: &str, delimiter: char) -> Result<Vec<Vec<String>>> {
     if text.len() > MAX_DOCUMENT_BYTES {
@@ -110,6 +112,19 @@ fn equal(left: Option<&String>, right: Option<&String>, tolerance: Option<f64>) 
     }
 }
 pub fn compare(left: &str, right: &str, options: &TableOptions) -> Result<TableComparison> {
+    compare_optional(
+        Some(left),
+        Some(right),
+        options,
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+}
+pub fn compare_optional(
+    left: Option<&str>,
+    right: Option<&str>,
+    options: &TableOptions,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<TableComparison> {
     let delimiter = match options.delimiter.as_str() {
         "," => ',',
         "\t" => '\t',
@@ -128,8 +143,41 @@ pub fn compare(left: &str, right: &str, options: &TableOptions) -> Result<TableC
             "Numeric tolerance must be finite and nonnegative".into(),
         ));
     }
-    let mut l = parse(left, delimiter)?;
-    let mut r = parse(right, delimiter)?;
+    let (l, left_tables) = input(left, &options.left_source, delimiter, cancel)?;
+    let (r, right_tables) = input(right, &options.right_source, delimiter, cancel)?;
+    let warnings = if matches!(
+        options.left_source,
+        clear_contracts::TableSource::Html { .. }
+    ) || matches!(
+        options.right_source,
+        clear_contracts::TableSource::Html { .. }
+    ) {
+        vec!["Static HTML text only. ASCII whitespace is collapsed, NBSP is retained; scripts/styles/templates and nested-table text are omitted. Spanned values repeat in covered grid slots. CSS, images and form values are not evaluated.".into()]
+    } else {
+        Vec::new()
+    };
+    compare_rows(
+        l,
+        r,
+        (left_tables, right_tables, warnings),
+        options,
+        tolerance,
+        cancel,
+    )
+}
+fn compare_rows(
+    mut l: Vec<Vec<String>>,
+    mut r: Vec<Vec<String>>,
+    metadata: (
+        Vec<clear_contracts::HtmlTableInfo>,
+        Vec<clear_contracts::HtmlTableInfo>,
+        Vec<String>,
+    ),
+    options: &TableOptions,
+    tolerance: Option<f64>,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<TableComparison> {
+    let (left_tables, right_tables, warnings) = metadata;
     let lh = if options.headers && !l.is_empty() {
         l.remove(0)
     } else {
@@ -145,6 +193,7 @@ pub fn compare(left: &str, right: &str, options: &TableOptions) -> Result<TableC
     let mut rows = Vec::new();
     let mut summary = Summary::default();
     for (key, left) in a {
+        crate::compare::check_cancel(cancel)?;
         let right = b.remove(&key);
         let mut changed_columns = Vec::new();
         let status = match &right {
@@ -186,10 +235,50 @@ pub fn compare(left: &str, right: &str, options: &TableOptions) -> Result<TableC
         });
     }
     rows.sort_by(|a, b| a.key.cmp(&b.key));
+    let columns = rows
+        .iter()
+        .map(|r| {
+            r.left
+                .as_ref()
+                .map(Vec::len)
+                .unwrap_or_default()
+                .max(r.right.as_ref().map(Vec::len).unwrap_or_default())
+        })
+        .max()
+        .unwrap_or_default()
+        .max(lh.len())
+        .max(rh.len());
     Ok(TableComparison {
+        columns,
+        options: Some(options.clone()),
+        left_tables,
+        right_tables,
+        warnings,
         left_headers: lh,
         right_headers: rh,
         rows,
         summary,
     })
+}
+
+type ParsedInput = (Vec<Vec<String>>, Vec<clear_contracts::HtmlTableInfo>);
+fn input(
+    text: Option<&str>,
+    source: &clear_contracts::TableSource,
+    delimiter: char,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<ParsedInput> {
+    crate::compare::check_cancel(cancel)?;
+    let Some(text) = text else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    match source {
+        clear_contracts::TableSource::Html { table } => {
+            let doc = html::Document::parse(text, cancel)?;
+            Ok((doc.selected(*table, cancel)?, doc.tables))
+        }
+        clear_contracts::TableSource::Csv => Ok((parse(text, ',')?, Vec::new())),
+        clear_contracts::TableSource::Tsv => Ok((parse(text, '\t')?, Vec::new())),
+        _ => Ok((parse(text, delimiter)?, Vec::new())),
+    }
 }

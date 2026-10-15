@@ -14,6 +14,8 @@ fn parser_retains_quoted_newlines_commas_escapes_and_empty_cells() {
 #[test]
 fn keyed_numeric_comparison_detects_missing_rows_and_duplicate_keys() {
     let options = TableOptions {
+        left_source: clear_contracts::TableSource::Delimited,
+        right_source: clear_contracts::TableSource::Delimited,
         delimiter: ",".into(),
         headers: true,
         key_column: Some(0),

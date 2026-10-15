@@ -112,6 +112,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | dtoa-short | 0.3.5 | MPL-2.0 | [crate](https://crates.io/crates/dtoa-short/0.3.5) |
 | dunce | 1.0.5 | CC0-1.0 OR MIT-0 OR Apache-2.0 | [crate](https://crates.io/crates/dunce/1.0.5) |
 | dyn-clone | 1.0.20 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/dyn-clone/1.0.20) |
+| ego-tree | 0.11.0 | ISC | [crate](https://crates.io/crates/ego-tree/0.11.0) |
 | either | 1.19.0 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/either/1.19.0) |
 | either_of | 0.1.9 | MIT | [crate](https://crates.io/crates/either_of/0.1.9) |
 | embed-resource | 3.0.12 | MIT | [crate](https://crates.io/crates/embed-resource/3.0.12) |
@@ -345,6 +346,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | schemars | 1.2.3 | MIT | [crate](https://crates.io/crates/schemars/1.2.3) |
 | schemars_derive | 0.8.22 | MIT | [crate](https://crates.io/crates/schemars_derive/0.8.22) |
 | scopeguard | 1.2.0 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/scopeguard/1.2.0) |
+| scraper | 0.27.0 | ISC | [crate](https://crates.io/crates/scraper/0.27.0) |
 | selectors | 0.38.0 | MPL-2.0 | [crate](https://crates.io/crates/selectors/0.38.0) |
 | semver | 1.0.28 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/semver/1.0.28) |
 | send_wrapper | 0.6.0 | MIT/Apache-2.0 | [crate](https://crates.io/crates/send_wrapper/0.6.0) |
