@@ -755,7 +755,10 @@ fn App() -> impl IntoView {
             .await
             {
                 Ok(reply) => complete_file(reply),
-                Err(e) => error.set(e),
+                Err(e) => {
+                    error.set(e);
+                    reset();
+                }
             }
             plan.set(None);
             busy.set(false);
@@ -1002,7 +1005,10 @@ fn App() -> impl IntoView {
             .await
             {
                 Ok(reply) => complete_recovery(reply),
-                Err(e) => error.set(e),
+                Err(e) => {
+                    error.set(e);
+                    reset();
+                }
             }
             recovery.set(None);
             busy.set(false);
