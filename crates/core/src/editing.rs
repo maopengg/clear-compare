@@ -87,8 +87,8 @@ pub fn endings(text: &str) -> LineEnding {
 }
 
 pub(crate) fn encode(text: &str, original: &TextDocument) -> Result<Vec<u8>> {
-    if text.len() > MAX_DOCUMENT_BYTES {
-        return Err(Error::Invalid("Edited document exceeds 4 MiB".into()));
+    if text.len() > clear_contracts::edit_history::MAX_TEXT_BYTES {
+        return Err(Error::Invalid("Decoded editor text exceeds 8 MiB".into()));
     }
     if text.contains('\0') {
         return Err(Error::Invalid("Text contains a NUL character".into()));
@@ -239,6 +239,25 @@ pub fn save(
     backup_base: &Path,
 ) -> Result<(OpenDocument, SaveResult)> {
     save_with_options(original, text, backup_base, &SaveOptions::default())
+}
+
+pub fn save_merge_aware(
+    original: &OpenDocument,
+    text: &str,
+    backup_base: &Path,
+    options: &SaveOptions,
+    tokens: &[String],
+) -> Result<(OpenDocument, SaveResult)> {
+    if clear_contracts::edit_history::has_any_conflict(text, tokens)
+        || (!tokens.is_empty()
+            && clear_contracts::edit_history::generic_markers(text)
+                > clear_contracts::edit_history::generic_markers(&original.view.text))
+    {
+        return Err(Error::Invalid(
+            "Resolve all generated merge conflict markers before saving".into(),
+        ));
+    }
+    save_with_options(original, text, backup_base, options)
 }
 
 pub fn save_with_options(

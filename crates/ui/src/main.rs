@@ -99,6 +99,9 @@ fn App() -> impl IntoView {
     let plan = RwSignal::new(None::<SyncPlan>);
     let editor = RwSignal::new(None::<TextDocument>);
     let draft = RwSignal::new(String::new());
+    let saved_text = RwSignal::new(String::new());
+    let text_history = RwSignal::new(clear_contracts::edit_history::History::default());
+    let merge_tokens = RwSignal::new(Vec::<String>::new());
     let format_encoding = RwSignal::new(String::new());
     let format_ending = RwSignal::new(String::new());
     let format_bom = RwSignal::new(String::new());
@@ -126,6 +129,27 @@ fn App() -> impl IntoView {
     let merge_right = RwSignal::new(String::new());
     let merge_result = RwSignal::new(None::<MergeResult>);
 
+    let change_draft = move |value: String| {
+        let text = clear_contracts::edit_history::normalize(&value);
+        let mut outcome = Ok(());
+        text_history.update(|h| outcome = h.record(&text));
+        match outcome {
+            Ok(()) => draft.set(text),
+            Err(e) => {
+                error.set(e);
+                draft.set(text_history.with_untracked(|h| h.current().to_string()));
+            }
+        }
+    };
+    let reset_draft = move |value: String| {
+        let text = clear_contracts::edit_history::normalize(&value);
+        text_history.update(|h| h.reset(&text));
+        saved_text.set(text.clone());
+        draft.set(text);
+        merge_tokens.set(clear_contracts::edit_history::conflict_tokens(
+            &draft.get_untracked(),
+        ));
+    };
     let current_session = move || SavedSession {
         request: CompareRequest {
             left: left.get_untracked(),
@@ -523,9 +547,7 @@ fn App() -> impl IntoView {
     };
 
     let editor_dirty = move || {
-        editor
-            .get_untracked()
-            .is_some_and(|d| d.text != draft.get_untracked())
+        draft.with_untracked(|t| saved_text.with_untracked(|saved| t != saved))
             || !format_encoding.get_untracked().is_empty()
             || !format_ending.get_untracked().is_empty()
             || !format_bom.get_untracked().is_empty()
@@ -561,7 +583,7 @@ fn App() -> impl IntoView {
             {
                 Ok(document) => {
                     can_restore.set(false);
-                    draft.set(document.text.clone());
+                    reset_draft(document.text.clone());
                     editor.set(Some(document));
                 }
                 Err(e) => {
@@ -606,7 +628,10 @@ fn App() -> impl IntoView {
             .await
             {
                 Ok(result) => {
-                    draft.set(result.document.text.clone());
+                    change_draft(result.document.text.clone());
+                    saved_text.set(clear_contracts::edit_history::normalize(
+                        &result.document.text,
+                    ));
                     editor.set(Some(result.document));
                     format_encoding.set(String::new());
                     format_ending.set(String::new());
@@ -658,7 +683,7 @@ fn App() -> impl IntoView {
                 .await
             {
                 Ok(result) => {
-                    draft.set(result.document.text.clone());
+                    reset_draft(result.document.text.clone());
                     editor.set(Some(result.document));
                     can_restore.set(true);
                     reset();
@@ -749,7 +774,7 @@ fn App() -> impl IntoView {
                                 .await;
                     }
                     editor.set(None);
-                    draft.set(String::new());
+                    reset_draft(String::new());
                     can_restore.set(false);
                     reset();
                     message.set(format!(
@@ -840,7 +865,7 @@ fn App() -> impl IntoView {
                                 .await;
                     }
                     editor.set(None);
-                    draft.set(String::new());
+                    reset_draft(String::new());
                     can_restore.set(false);
                 }
                 Err(e) => error.set(e),
@@ -876,6 +901,42 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let load_merge = move |result: MergeResult| {
+        if editor_dirty() {
+            error.set(
+                tr(
+                    english.get_untracked(),
+                    "先保存或重置编辑内容。",
+                    "Save or reset the editor first.",
+                )
+                .into(),
+            );
+            return;
+        }
+        let Some(document) = editor.get_untracked() else {
+            return;
+        };
+        let Some(id) = result.id else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match invoke::<Vec<String>>(
+                "stage_merge_result",
+                serde_json::json!({"documentId":document.id,"resultId":id,"text":result.text}),
+            )
+            .await
+            {
+                Ok(tokens) => {
+                    merge_tokens.set(tokens);
+                    change_draft(result.text);
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
     let close_editor = move || {
         let Some(document) = editor.get_untracked() else {
             return;
@@ -892,6 +953,7 @@ fn App() -> impl IntoView {
             return;
         }
         editor.set(None);
+        reset_draft(String::new());
         spawn_local(async move {
             let _ = invoke::<()>(
                 "close_document",
@@ -959,8 +1021,8 @@ fn App() -> impl IntoView {
             {panels::picture::panel(english,busy,panels::picture::Signals{picture,picture_id,picture_tolerance,picture_ignore_alpha},open_picture)}
             {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_id, table_tsv, table_headers, table_key, table_tolerance, table_offset}, open_table, paginate_table)}
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id}, open_binary)}
-            {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, error})}
-            {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore)}
+            {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, saved_text, error},load_merge)}
+            {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, saved_text, text_history, merge_tokens, error, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore,change_draft)}
             {panels::history::panel(english,busy,history,recovery,preview_recovery,apply_recovery)}
             <Show when=move ||restore_preview.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-title"><h2 id="restore-title">{move ||tr(english.get(),"检查恢复计划","Review restore plan")}</h2><p>{move ||tr(english.get(),"恢复上次保存前的原始字节。恢复前的当前内容也会备份；文件若发生外部修改，恢复将被阻止。","Restore the original bytes from before the last save. Current contents are backed up first; external changes block restoration.")}</p><p class="backup-path">{move ||restore_preview.get().map(|p|format!("{} ← {} · {} bytes",p.target,p.backup,p.bytes))}</p><footer><button class="quiet" disabled=move ||busy.get() on:click=move |_|restore_preview.set(None)>{move ||tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move ||busy.get() on:click=move |_|apply_restore()>{move ||tr(english.get(),"执行已预览的恢复","Execute reviewed restore")}</button></footer></section></div></Show>
             <Show when=move || plan.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="sync-title"><h2 id="sync-title">{move || tr(english.get(),"检查同步计划","Review synchronization plan")}</h2><p>{move || tr(english.get(),if plan.get().is_some_and(|p|p.source_side==Side::Right){"从右侧复制到左侧。不会删除目标独有文件。所有覆盖文件将先备份。"}else{"从左侧复制到右侧。不会删除目标独有文件。所有覆盖文件将先备份。"},if plan.get().is_some_and(|p|p.source_side==Side::Right){"Copy right to left. Destination-only files are retained. Overwritten files are backed up first."}else{"Copy left to right. Destination-only files are retained. Overwritten files are backed up first."})}</p><div class="plan-actions"><For each=move || plan.get().map(|p|p.actions).unwrap_or_default() key=|a|a.row_id.clone() children=move |a| view! {<div><span>{a.path}</span><strong>{move || if a.overwrite {tr(english.get(),"覆盖并备份","Overwrite + backup")} else {tr(english.get(),"新增","Create")}}</strong></div>}/></div><p class="backup-path">{move || plan.get().map(|p|format!("{}: {}",tr(english.get(),"备份位置","Backup location"),p.backup_root))}</p><footer><button class="quiet" disabled=move || busy.get() on:click=move |_| plan.set(None)>{move || tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move || busy.get() on:click=move |_| apply()>{move || tr(english.get(),"执行已预览的同步","Execute reviewed plan")}</button></footer></section></div></Show>

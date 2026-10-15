@@ -128,3 +128,103 @@ fn corrupted_backup_and_bomless_utf16_requests_are_rejected() {
     fs::write(&result.backup, "corrupt").unwrap();
     assert!(editing::preview_restore(&saved, std::path::Path::new(&result.backup)).is_err());
 }
+
+#[test]
+fn generated_conflicts_block_save_and_history_cannot_reintroduce_them_after_save() {
+    use clear_contracts::{
+        SaveOptions,
+        edit_history::{History, conflict_tag},
+    };
+    let t = tempfile::tempdir().unwrap();
+    for name in ["files", "backups"] {
+        fs::create_dir(t.path().join(name)).unwrap();
+    }
+    let path = t.path().join("files/a");
+    fs::write(&path, "base\n").unwrap();
+    let document = editing::open_file(&path).unwrap();
+    let result = clear_core::merge::three_way("base\n", "left\n", "right\n").unwrap();
+    let token = result.conflict_token.unwrap();
+    let tokens = vec![token.clone()];
+    let mut history = History::default();
+    history.reset("base\n");
+    history.record(&result.text).unwrap();
+    assert!(
+        editing::save_merge_aware(
+            &document,
+            history.current(),
+            &t.path().join("backups"),
+            &SaveOptions::default(),
+            &tokens
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), "base\n");
+    assert!(
+        fs::read_dir(t.path().join("backups"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    let stripped = result.text.replace(&conflict_tag(&token), "");
+    assert!(
+        editing::save_merge_aware(
+            &document,
+            &stripped,
+            &t.path().join("backups"),
+            &SaveOptions::default(),
+            &tokens
+        )
+        .is_err()
+    );
+    history.record("resolved\n").unwrap();
+    let (saved, _) = editing::save_merge_aware(
+        &document,
+        history.current(),
+        &t.path().join("backups"),
+        &SaveOptions::default(),
+        &tokens,
+    )
+    .unwrap();
+    history.undo();
+    assert!(
+        editing::save_merge_aware(
+            &saved,
+            history.current(),
+            &t.path().join("backups"),
+            &SaveOptions::default(),
+            &tokens
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), "resolved\n");
+    assert!(
+        editing::save_merge_aware(
+            &saved,
+            "heading\n=======\n",
+            &t.path().join("backups"),
+            &SaveOptions::default(),
+            &tokens
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn decoded_utf16_expansion_can_be_saved_within_the_encoded_file_limit() {
+    let t = tempfile::tempdir().unwrap();
+    for name in ["files", "backups"] {
+        fs::create_dir(t.path().join(name)).unwrap();
+    }
+    let text = "中".repeat(1_500_000);
+    let mut bytes = vec![255, 254];
+    for unit in text.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    let path = t.path().join("files/a");
+    fs::write(&path, &bytes).unwrap();
+    let doc = editing::open_file(&path).unwrap();
+    assert!(doc.view.text.len() > editing::MAX_DOCUMENT_BYTES);
+    let (_, saved) = editing::save(&doc, &text, &t.path().join("backups")).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert_eq!(fs::read(saved.backup).unwrap(), bytes);
+}

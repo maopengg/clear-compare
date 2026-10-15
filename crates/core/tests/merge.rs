@@ -12,11 +12,8 @@ fn independent_adjacent_edits_and_insertions_merge_without_loss() {
 fn competing_replacements_and_same_position_insertions_conflict() {
     let result = three_way("a\nb\n", "a\nleft\n", "a\nright\n").unwrap();
     assert_eq!(result.conflicts, 1);
-    assert!(
-        result
-            .text
-            .contains("<<<<<<< LEFT\nleft\n||||||| BASE\nb\n=======\nright\n>>>>>>> RIGHT\n")
-    );
+    let token = result.conflict_token.as_ref().unwrap();
+    assert!(result.text.contains(&format!("<<<<<<< LEFT [cc:{token}]\nleft\n||||||| BASE [cc:{token}]\nb\n======= [cc:{token}]\nright\n>>>>>>> RIGHT [cc:{token}]\n")));
     let result = three_way("a\n", "one\na\n", "two\na\n").unwrap();
     assert_eq!(result.conflicts, 1);
     assert!(result.text.ends_with("a\n"));

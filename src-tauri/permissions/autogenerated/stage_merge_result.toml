@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stage-merge-result"
+description = "Enables the stage_merge_result command without any pre-configured scope."
+commands.allow = ["stage_merge_result"]
+
+[[permission]]
+identifier = "deny-stage-merge-result"
+description = "Denies the stage_merge_result command without any pre-configured scope."
+commands.deny = ["stage_merge_result"]

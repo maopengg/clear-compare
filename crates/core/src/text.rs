@@ -82,8 +82,12 @@ pub fn compare_strings(
     right: &str,
     options: &TextOptions,
 ) -> Result<TextDiff> {
-    if left.len() > editing::MAX_DOCUMENT_BYTES || right.len() > editing::MAX_DOCUMENT_BYTES {
-        return Err(Error::Invalid("Text comparison is limited to 4 MiB".into()));
+    if left.len() > clear_contracts::edit_history::MAX_TEXT_BYTES
+        || right.len() > clear_contracts::edit_history::MAX_TEXT_BYTES
+    {
+        return Err(Error::Invalid(
+            "Decoded text comparison is limited to 8 MiB".into(),
+        ));
     }
     let old = split_lines(left);
     let new = split_lines(right);

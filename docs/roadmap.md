@@ -112,3 +112,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Output must be an independent empty directory. Execution revalidates all inputs, creates files without clobbering external files, keeps manifests/generated text/journals outside output, and verifies the resulting tree.
 - Tests verify independent text edits and additions, source preservation, deleted-directory/edited-child conflicts, subtree resolution, probable rename/modify conflicts, changed baseline rejection, nonempty-output protection, two-way competing additions and CLI preview/apply.
 - Previous picture changes passed three-platform CI run 38560311740. New desktop interactions are compiled; packaged-client acceptance remains deferred.
+
+## Editor text history and generated-conflict save gate
+
+- Shared UTF-8 splice history supports bounded undo/redo and branch editing without full-document snapshots per keystroke. Toolbar and keyboard controls include input-method composition boundaries. LF editing buffers are compared against a normalized saved baseline while original file newline format is retained by native encoding.
+- Merge conflict markers carry unique tags. Native staging registers editor provenance; save rejects remaining tagged markers or introduced conflict labels before filesystem writes. Provenance transfers when saves rotate document IDs, protecting undo across save points. Existing tagged working copies are recognized on open.
+- Text file bytes remain bounded at 4 MiB; decoded text can use 8 MiB so UTF-16 expansion does not artificially block valid saves.
+- Tests cover Unicode byte boundaries, undo/redo branching, history pruning, tag/separator discrimination and blocked saves before/after a resolved save. Previous folder-merge changes passed three-platform CI run 38570516680.
+- The original projectless temporary directory was removed externally; development logs now reside under ignored `target/work`. Packaged-client interaction/installation acceptance is still deferred.

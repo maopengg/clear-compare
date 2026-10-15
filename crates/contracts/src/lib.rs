@@ -1,5 +1,6 @@
 //! Serializable desktop/WASM/CLI contracts. No filesystem or runtime dependencies.
 use serde::{Deserialize, Serialize};
+pub mod edit_history;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -203,6 +204,10 @@ pub struct SyncResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MergeResult {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub conflict_token: Option<String>,
     pub text: String,
     pub conflicts: usize,
 }

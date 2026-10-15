@@ -1,5 +1,5 @@
 //! Three-way line merge. Produces a buffer; never writes input files.
-use crate::{Error, Result, editing::MAX_DOCUMENT_BYTES, text::split_lines};
+use crate::{Error, Result, text::split_lines};
 use clear_contracts::MergeResult;
 use similar::{Algorithm, DiffTag, capture_diff_slices_deadline};
 use std::{
@@ -55,29 +55,34 @@ fn section(output: &mut String, label: &str, text: &str) {
 }
 
 pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
-    if [base, left, right]
-        .iter()
-        .any(|s| s.len() > MAX_DOCUMENT_BYTES || split_lines(s).len() > 30_000)
-    {
+    if [base, left, right].iter().any(|s| {
+        s.len() > clear_contracts::edit_history::MAX_TEXT_BYTES || split_lines(s).len() > 30_000
+    }) {
         return Err(Error::Invalid(
-            "Merge inputs are limited to 4 MiB and 30,000 lines".into(),
+            "Merge inputs are limited to 8 MiB decoded UTF-8 and 30,000 lines".into(),
         ));
     }
     // Exact shortcuts avoid algorithm timeouts creating unnecessary conflicts.
     if left == right {
         return Ok(MergeResult {
+            id: None,
+            conflict_token: None,
             text: left.into(),
             conflicts: 0,
         });
     }
     if left == base {
         return Ok(MergeResult {
+            id: None,
+            conflict_token: None,
             text: right.into(),
             conflicts: 0,
         });
     }
     if right == base {
         return Ok(MergeResult {
+            id: None,
+            conflict_token: None,
             text: left.into(),
             conflicts: 0,
         });
@@ -92,6 +97,13 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
     let mut cursor = 0;
     let mut index = 0;
     let mut conflicts = 0;
+    let token = crate::unique_id();
+    let marker = |label: &str| {
+        format!(
+            "{label} {}",
+            clear_contracts::edit_history::conflict_tag(&token)
+        )
+    };
     while index < changes.len() {
         let begin = index;
         let start = changes[index].range.start;
@@ -125,10 +137,11 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
             if !output.is_empty() && !output.ends_with(['\n', '\r']) {
                 output.push('\n');
             }
-            section(&mut output, "<<<<<<< LEFT", &left);
-            section(&mut output, "||||||| BASE", &original);
-            section(&mut output, "=======", &right);
-            output.push_str(">>>>>>> RIGHT\n");
+            section(&mut output, &marker("<<<<<<< LEFT"), &left);
+            section(&mut output, &marker("||||||| BASE"), &original);
+            section(&mut output, &marker("======="), &right);
+            output.push_str(&marker(">>>>>>> RIGHT"));
+            output.push('\n');
         }
         cursor = end;
     }
@@ -136,6 +149,8 @@ pub fn three_way(base: &str, left: &str, right: &str) -> Result<MergeResult> {
         output.push_str(line);
     }
     Ok(MergeResult {
+        id: None,
+        conflict_token: if conflicts > 0 { Some(token) } else { None },
         text: output,
         conflicts,
     })

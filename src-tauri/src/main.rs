@@ -22,6 +22,8 @@ struct Backend {
     restore: Mutex<Option<(String, clear_core::editing::RestorePlan)>>,
     recovery: Mutex<Option<clear_core::recovery::Plan>>,
     folder_merge: Mutex<Option<clear_core::folder_merge::Plan>>,
+    latest_merge: Mutex<Option<(String, Option<String>)>>,
+    merge_guards: Mutex<BTreeMap<String, std::collections::BTreeSet<String>>>,
     cancel: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
     documents: Mutex<BTreeMap<String, Arc<clear_core::editing::OpenDocument>>>,
@@ -117,12 +119,25 @@ async fn open_document(
     if documents.len() >= 8 {
         return Err("Close an editor before opening more documents".into());
     }
+    let tokens = clear_contracts::edit_history::conflict_tokens(&view.text);
+    if !tokens.is_empty() {
+        state
+            .merge_guards
+            .lock()
+            .map_err(|_| "State unavailable")?
+            .insert(view.id.clone(), tokens.into_iter().collect());
+    }
     documents.insert(view.id.clone(), Arc::new(document));
     Ok(view)
 }
 
 #[tauri::command]
 fn close_document(document_id: String, state: State<'_, Backend>) -> Result<(), String> {
+    state
+        .merge_guards
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .remove(&document_id);
     state
         .editor_backups
         .lock()
@@ -153,10 +168,17 @@ async fn save_document(
         .get(&document_id)
         .cloned()
         .ok_or("Editor expired. Reopen the document.")?;
+    let tokens = state
+        .merge_guards
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .get(&document_id)
+        .map(|s| s.iter().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
     let backup = data_dir(&app)?.join("editor-backups");
     std::fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
     let (updated, result) = tauri::async_runtime::spawn_blocking(move || {
-        clear_core::editing::save_with_options(&document, &text, &backup, &options)
+        clear_core::editing::save_merge_aware(&document, &text, &backup, &options, &tokens)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -170,6 +192,12 @@ async fn save_document(
     backups.remove(&document_id);
     backups.insert(updated.view.id.clone(), PathBuf::from(&result.backup));
     *state.restore.lock().map_err(|_| "State unavailable")? = None;
+    {
+        let mut guards = state.merge_guards.lock().map_err(|_| "State unavailable")?;
+        if let Some(tokens) = guards.remove(&document_id) {
+            guards.insert(updated.view.id.clone(), tokens);
+        }
+    }
     documents.insert(updated.view.id.clone(), Arc::new(updated));
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
     Ok(result)
@@ -239,12 +267,25 @@ async fn apply_editor_restore(
     .map_err(|e| e.to_string())?;
     let mut documents = state.documents.lock().map_err(|_| "State unavailable")?;
     documents.remove(&document_id);
+    state
+        .merge_guards
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .remove(&document_id);
     let mut backups = state
         .editor_backups
         .lock()
         .map_err(|_| "State unavailable")?;
     backups.remove(&document_id);
     backups.insert(updated.view.id.clone(), PathBuf::from(&result.backup));
+    let tokens = clear_contracts::edit_history::conflict_tokens(&updated.view.text);
+    if !tokens.is_empty() {
+        state
+            .merge_guards
+            .lock()
+            .map_err(|_| "State unavailable")?
+            .insert(updated.view.id.clone(), tokens.into_iter().collect());
+    }
     documents.insert(updated.view.id.clone(), Arc::new(updated));
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
     Ok(result)
@@ -459,10 +500,56 @@ async fn merge_buffers(
     state: State<'_, Backend>,
 ) -> Result<MergeResult, String> {
     let _operation_guard = state.begin()?;
-    tauri::async_runtime::spawn_blocking(move || clear_core::merge::three_way(&base, &left, &right))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+    let mut result = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::merge::three_way(&base, &left, &right)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let id = clear_core::unique_id();
+    result.id = Some(id.clone());
+    *state.latest_merge.lock().map_err(|_| "State unavailable")? =
+        Some((id, result.conflict_token.clone()));
+    Ok(result)
+}
+
+#[tauri::command]
+fn stage_merge_result(
+    document_id: String,
+    result_id: String,
+    text: String,
+    state: State<'_, Backend>,
+) -> Result<Vec<String>, String> {
+    let _operation_guard = state.begin()?;
+    if text.len() > clear_contracts::edit_history::MAX_TEXT_BYTES || text.contains('\0') {
+        return Err("Invalid merge text or decoded limit exceeded".into());
+    }
+    if !state
+        .documents
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .contains_key(&document_id)
+    {
+        return Err("Editor expired".into());
+    }
+    let (id, token) = state
+        .latest_merge
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .clone()
+        .ok_or("Generate a merge result first")?;
+    if id != result_id {
+        return Err("Merge result expired. Generate again.".into());
+    }
+    let mut guards = state.merge_guards.lock().map_err(|_| "State unavailable")?;
+    let tokens = guards.entry(document_id).or_default();
+    if tokens.len() >= 2048 {
+        return Err("Reopen the resolved editor to reset merge history".into());
+    }
+    if let Some(token) = token {
+        tokens.insert(token);
+    }
+    Ok(tokens.iter().cloned().collect())
 }
 
 #[tauri::command]
@@ -710,6 +797,7 @@ fn main() {
             apply_folder_merge,
             text_diff,
             merge_buffers,
+            stage_merge_result,
             binary_page,
             table_compare,
             table_page,

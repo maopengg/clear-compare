@@ -12,6 +12,7 @@ fn main() {
             "apply_folder_merge",
             "text_diff",
             "merge_buffers",
+            "stage_merge_result",
             "binary_page",
             "table_compare",
             "table_page",
