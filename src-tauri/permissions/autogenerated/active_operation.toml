@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-active-operation"
+description = "Enables the active_operation command without any pre-configured scope."
+commands.allow = ["active_operation"]
+
+[[permission]]
+identifier = "deny-active-operation"
+description = "Denies the active_operation command without any pre-configured scope."
+commands.deny = ["active_operation"]

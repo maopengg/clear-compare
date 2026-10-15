@@ -6,7 +6,7 @@ use std::{
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::AtomicBool,
     time::UNIX_EPOCH,
 };
 use walkdir::WalkDir;
@@ -23,11 +23,7 @@ pub struct Snapshot {
 }
 
 pub fn check_cancel(cancel: &AtomicBool) -> Result<()> {
-    if cancel.load(Ordering::Relaxed) {
-        Err(Error::Cancelled)
-    } else {
-        Ok(())
-    }
+    crate::task::checkpoint(cancel)
 }
 
 pub fn hash_file(path: &Path, cancel: &AtomicBool) -> Result<String> {
@@ -45,6 +41,7 @@ pub fn hash_file(path: &Path, cancel: &AtomicBool) -> Result<String> {
         if n == 0 {
             break;
         }
+        crate::task::read(n);
         digest.update(&buffer[..n]);
     }
     Ok(format!("{:x}", digest.finalize()))

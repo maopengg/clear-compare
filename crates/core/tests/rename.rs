@@ -208,7 +208,7 @@ fn cancelled_or_stale_renames_do_not_move_the_source() {
 }
 #[test]
 fn recovery_reconciles_staged_interruption_including_an_interrupted_prior_rollback() {
-    for state in ["running", "failed", "completed"] {
+    for state in ["running", "failed", "completed", "cancelled"] {
         let t = fixture();
         let root = t.path();
         fs::write(root.join("r/a"), "original").unwrap();

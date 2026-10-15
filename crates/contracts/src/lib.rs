@@ -794,3 +794,51 @@ pub struct RecoveryApplyReply {
     pub stale_documents: Vec<String>,
     pub warnings: Vec<String>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskPhase {
+    Running,
+    PauseRequested,
+    Paused,
+    CancelRequested,
+    Completed,
+    Failed,
+    Cancelled,
+}
+impl TaskPhase {
+    pub fn terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationKind {
+    File,
+    Recovery,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskHandle {
+    pub id: String,
+    pub kind: OperationKind,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskProgress {
+    pub handle: TaskHandle,
+    pub phase: TaskPhase,
+    pub stage: String,
+    pub current_path: Option<String>,
+    pub completed_actions: usize,
+    pub total_actions: usize,
+    pub bytes_read: String,
+    pub bytes_written: String,
+    pub elapsed_ms: String,
+    pub error: Option<String>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum OperationOutcome {
+    File(FileApplyReply),
+    Recovery(RecoveryApplyReply),
+    Error(String),
+}

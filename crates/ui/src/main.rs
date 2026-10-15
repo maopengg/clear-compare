@@ -1,3 +1,4 @@
+mod operations;
 mod panels;
 mod preferences;
 use clear_contracts::*;
@@ -7,9 +8,11 @@ use std::collections::BTreeSet;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(
-    inline_js = "export function desktopInvoke(command,args){ if(!window.__TAURI__) return Promise.reject('Please open the installed Clear Compare desktop app.'); return window.__TAURI__.core.invoke(command,args); }"
+    inline_js = "export function operationDelay(){return new Promise(resolve=>setTimeout(resolve,250));} export function desktopInvoke(command,args){ if(!window.__TAURI__) return Promise.reject('Please open the installed Clear Compare desktop app.'); return window.__TAURI__.core.invoke(command,args); }"
 )]
 extern "C" {
+    #[wasm_bindgen(js_name = operationDelay)]
+    fn operation_delay() -> js_sys::Promise;
     #[wasm_bindgen(js_name = desktopInvoke)]
     fn desktop_invoke(command: &str, args: JsValue) -> js_sys::Promise;
 }
@@ -66,6 +69,7 @@ fn size(entry: Option<&Entry>) -> String {
 
 #[component]
 fn App() -> impl IntoView {
+    let operation_progress = RwSignal::new(None::<TaskProgress>);
     let git_visible = RwSignal::new(false);
     let archive_visible = RwSignal::new(false);
     let folder_merge_visible = RwSignal::new(false);
@@ -704,6 +708,38 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let complete_file = move |reply: FileApplyReply| {
+        update_editor_locations(reply.locations, reply.stale_documents);
+        let result = reply.result;
+        if !reply.warnings.is_empty() {
+            error.set(reply.warnings.join(" · "));
+        }
+        let completed = result
+            .actions
+            .iter()
+            .filter(|a| a.state == "completed")
+            .count();
+        message.set(format!(
+            "{} {completed}/{} · {}",
+            tr(english.get_untracked(), "已完成", "Completed"),
+            result.actions.len(),
+            result.journal
+        ));
+        if let Some(failed) = result.actions.iter().find(|a| a.error.is_some()) {
+            error.set(format!(
+                "{}: {}",
+                failed.path,
+                failed.error.clone().unwrap_or_default()
+            ));
+        }
+        comparison.set(None);
+        rows.set(Vec::new());
+        file_operation.set("copy".into());
+        selected.set(BTreeSet::new());
+        diff.set(None);
+
+        plan.set(None);
+    };
     let apply = move || {
         let Some(p) = plan.get_untracked() else {
             return;
@@ -711,37 +747,14 @@ fn App() -> impl IntoView {
         busy.set(true);
         error.set(String::new());
         spawn_local(async move {
-            match invoke::<FileApplyReply>("apply_sync", serde_json::json!({"planId":p.id})).await {
-                Ok(reply) => {
-                    update_editor_locations(reply.locations, reply.stale_documents);
-                    let result = reply.result;
-                    if !reply.warnings.is_empty() {
-                        error.set(reply.warnings.join(" · "));
-                    }
-                    let completed = result
-                        .actions
-                        .iter()
-                        .filter(|a| a.state == "completed")
-                        .count();
-                    message.set(format!(
-                        "{} {completed}/{} · {}",
-                        tr(english.get_untracked(), "已完成", "Completed"),
-                        result.actions.len(),
-                        result.journal
-                    ));
-                    if let Some(failed) = result.actions.iter().find(|a| a.error.is_some()) {
-                        error.set(format!(
-                            "{}: {}",
-                            failed.path,
-                            failed.error.clone().unwrap_or_default()
-                        ));
-                    }
-                    comparison.set(None);
-                    rows.set(Vec::new());
-                    file_operation.set("copy".into());
-                    selected.set(BTreeSet::new());
-                    diff.set(None);
-                }
+            match operations::run::<FileApplyReply>(
+                "apply_sync",
+                serde_json::json!({"planId":p.id}),
+                operation_progress,
+            )
+            .await
+            {
+                Ok(reply) => complete_file(reply),
                 Err(e) => error.set(e),
             }
             plan.set(None);
@@ -945,6 +958,35 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let complete_recovery = move |reply: RecoveryApplyReply| {
+        update_editor_locations(reply.locations, reply.stale_documents);
+        let result = reply.result;
+        if !reply.warnings.is_empty() {
+            error.set(reply.warnings.join(" · "));
+        }
+        let completed = result
+            .actions
+            .iter()
+            .filter(|a| a.state == "completed")
+            .count();
+        if let Some(failed) = result.actions.iter().find(|a| a.error.is_some()) {
+            error.set(format!(
+                "{}: {}",
+                failed.path,
+                failed.error.as_deref().unwrap_or_default()
+            ));
+        }
+        reset();
+        message.set(format!(
+            "{} {}/{} · {}",
+            tr(english.get_untracked(), "恢复完成", "Recovered"),
+            completed,
+            result.actions.len(),
+            result.journal
+        ));
+
+        recovery.set(None);
+    };
     let apply_recovery = move || {
         let Some(p) = recovery.get_untracked() else {
             return;
@@ -952,45 +994,47 @@ fn App() -> impl IntoView {
         busy.set(true);
         error.set(String::new());
         spawn_local(async move {
-            match invoke::<RecoveryApplyReply>(
+            match operations::run::<RecoveryApplyReply>(
                 "apply_sync_recovery",
                 serde_json::json!({"planId":p.id}),
+                operation_progress,
             )
             .await
             {
-                Ok(reply) => {
-                    update_editor_locations(reply.locations, reply.stale_documents);
-                    let result = reply.result;
-                    if !reply.warnings.is_empty() {
-                        error.set(reply.warnings.join(" · "));
-                    }
-                    let completed = result
-                        .actions
-                        .iter()
-                        .filter(|a| a.state == "completed")
-                        .count();
-                    if let Some(failed) = result.actions.iter().find(|a| a.error.is_some()) {
-                        error.set(format!(
-                            "{}: {}",
-                            failed.path,
-                            failed.error.as_deref().unwrap_or_default()
-                        ));
-                    }
-                    reset();
-                    message.set(format!(
-                        "{} {}/{} · {}",
-                        tr(english.get_untracked(), "恢复完成", "Recovered"),
-                        completed,
-                        result.actions.len(),
-                        result.journal
-                    ));
-                }
+                Ok(reply) => complete_recovery(reply),
                 Err(e) => error.set(e),
             }
             recovery.set(None);
             busy.set(false);
         });
     };
+    let reconnect_operation = move || {
+        if busy.get_untracked() {
+            return;
+        }
+        busy.set(true);
+        spawn_local(async move {
+            match invoke::<Option<TaskHandle>>("active_operation", serde_json::json!({})).await {
+                Ok(Some(handle)) => {
+                    busy.set(true);
+                    match operations::follow(handle, operation_progress).await {
+                        Ok(OperationOutcome::File(reply)) => complete_file(reply),
+                        Ok(OperationOutcome::Recovery(reply)) => complete_recovery(reply),
+                        Ok(OperationOutcome::Error(e)) | Err(e) => {
+                            error.set(e);
+                            reset();
+                            recovery.set(None);
+                        }
+                    }
+                    busy.set(false);
+                }
+                Ok(None) => {}
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    reconnect_operation();
     let refresh_library = move || {
         busy.set(true);
         error.set(String::new());
@@ -1167,7 +1211,7 @@ fn App() -> impl IntoView {
         <main class="workspace" data-theme=move ||theme.get().value()>
             <header class="topbar">
                 <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">"0.1 preview"</span></div>
-                <div class="top-actions"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|git_visible.set(!git_visible.get_untracked())>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|archive_visible.set(!archive_visible.get_untracked())>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
+                <div class="top-actions"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|git_visible.set(!git_visible.get_untracked())>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|archive_visible.set(!archive_visible.get_untracked())>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|reconnect_operation()>{move ||tr(english.get(),"连接文件任务","Connect file task")}</button><span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
                 <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
             </header>
             {panels::help::panel(english,help_visible,theme,theme_error)}
@@ -1188,6 +1232,7 @@ fn App() -> impl IntoView {
             {panels::folder_merge::panel(english,busy,panels::folder_merge::Signals{visible:folder_merge_visible,preview:folder_merge_preview,left,right,exclusions,error,message})}
             <Show when=move || !error.get().is_empty()><div class="notice error-notice" role="alert">{move || error.get()}</div></Show>
             <Show when=move || !message.get().is_empty()><div class="notice" role="status">{move || message.get()}<br/>{move || tr(english.get(),"请重新比较以查看最新状态。备份与操作日志已保留。","Compare again to refresh. Backups and operation journal are retained.")}</div></Show>
+            {panels::tasks::panel(english,busy,error,operation_progress,reconnect_operation)}
             <Show when=move || busy.get()><div class="progress" role="status"><span class="pulse"></span>{move || tr(english.get(),"正在处理，请稍候…","Working, please wait…")}<button class="quiet" on:click=move |_| spawn_local(async move { let _ = invoke::<()>("cancel",serde_json::json!({})).await; })>{move || tr(english.get(),"取消任务","Cancel task")}</button></div></Show>
             <Show when=move || comparison.get().is_some() fallback=move || view! {
                 <section class="empty"><div class="empty-symbol" aria-hidden="true">"⇄"</div><h1>{move || tr(english.get(),"看清差异，再同步","See the difference. Then sync.")}</h1><p>{move || tr(english.get(),"选择两个独立的文件夹，比较内容，检查计划，然后复制你选择的文件。","Choose two separate directories, compare their contents, review a plan, then copy selected files.")}</p><div class="empty-notes"><span>{move || tr(english.get(),"目标独有文件保留","Destination-only files retained")}</span><span>{move || tr(english.get(),"覆盖前验证备份","Backups verified before overwrite")}</span></div></section>

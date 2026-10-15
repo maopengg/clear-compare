@@ -151,7 +151,8 @@ impl Undo {
                 .ok_or_else(|| Error::Invalid("Invalid rename recovery backup parent".into()))?,
             backup_root,
         )?;
-        check_cancel(cancel)?;
+        let _mutation = crate::task::mutation(cancel)?;
+        crate::task::stage("revalidate_and_reverse_rename");
         root_valid(root)?;
         self.backup(root, old_root, cancel)?;
         if self.state(root, cancel)? != self.live {

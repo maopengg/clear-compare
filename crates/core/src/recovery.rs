@@ -111,7 +111,10 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         if copied.path != state.path {
             return Err(Error::Invalid("Journal action labels differ".into()));
         }
-        if !matches!(state.state.as_str(), "completed" | "running" | "failed") {
+        if !matches!(
+            state.state.as_str(),
+            "completed" | "running" | "failed" | "cancelled"
+        ) {
             continue;
         }
         let relative = native_path::decode(
@@ -255,7 +258,9 @@ fn copy_to(source: &Path, destination: &mut File, cancel: &AtomicBool) -> Result
         if n == 0 {
             break;
         }
+        crate::task::read(n);
         destination.write_all(&chunk[..n])?;
+        crate::task::written(n);
     }
     destination.sync_all()?;
     Ok(())
@@ -351,13 +356,34 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
     } else {
         None
     };
-    check_cancel(cancel)?;
+    let _mutation = crate::task::mutation(cancel)?;
+    crate::task::stage("revalidate_and_restore");
     root_valid(&plan.target)?;
     checked_path(&plan.target, &action.relative, true)?;
     if current(&target, cancel)? != action.current_digest {
         return Err(Error::Invalid(
             "Recovery target changed during backup".into(),
         ));
+    }
+    if let Some(temp) = replacement.as_ref()
+        && Some(hash_file(temp.path(), cancel)?) != action.original_digest
+    {
+        return Err(Error::Invalid(
+            "Prepared restoration changed before commit".into(),
+        ));
+    }
+    if let Some(original) = &action.original_backup {
+        root_valid(&plan.original_root)?;
+        checked_path(
+            &plan.original_root,
+            &PathBuf::from("files").join(&action.relative),
+            false,
+        )?;
+        if Some(hash_file(original, cancel)?) != action.original_digest {
+            return Err(Error::Invalid(
+                "Original restoration backup changed before commit".into(),
+            ));
+        }
     }
     if let Some(temp) = replacement {
         if action.current_digest.is_some() {
@@ -382,8 +408,10 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
     Ok(())
 }
 pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
-    root_valid(&plan.target)?;
-    directory::validate_cleanup(&plan.target, &plan.actions, cancel)?;
+    let setup = crate::task::validated_mutation(cancel, || {
+        root_valid(&plan.target)?;
+        directory::validate_cleanup(&plan.target, &plan.actions, cancel)
+    })?;
     let root = Path::new(&plan.view.backup_root);
     let base = root
         .parent()
@@ -415,7 +443,9 @@ pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
         journal: journal.to_string_lossy().into(),
     };
     atomic_json(&journal, &result)?;
+    drop(setup);
     for index in 0..plan.actions.len() {
+        crate::task::action(&plan.view.actions[index].path);
         if let Err(e) = check_cancel(cancel) {
             result.actions[index].state = "cancelled".into();
             result.actions[index].error = Some(failure_message(&e));
@@ -425,9 +455,17 @@ pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
         result.actions[index].state = "running".into();
         atomic_json(&journal, &result)?;
         match recover_one(plan, index, cancel) {
-            Ok(()) => result.actions[index].state = "completed".into(),
+            Ok(()) => {
+                result.actions[index].state = "completed".into();
+                crate::task::completed();
+            }
             Err(e) => {
-                result.actions[index].state = "failed".into();
+                result.actions[index].state = if matches!(e, Error::Cancelled) {
+                    "cancelled"
+                } else {
+                    "failed"
+                }
+                .into();
                 result.actions[index].error = Some(failure_message(&e));
             }
         }

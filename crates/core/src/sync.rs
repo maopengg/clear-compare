@@ -426,6 +426,7 @@ fn copy_one(
             "Source or target changed after preview. Compare again.".into(),
         ));
     }
+    crate::task::stage("copy_and_backup");
     let parent = destination
         .parent()
         .ok_or_else(|| Error::Invalid("Missing parent".into()))?;
@@ -442,7 +443,9 @@ fn copy_one(
         if n == 0 {
             break;
         }
+        crate::task::read(n);
         temporary.write_all(&chunk[..n])?;
+        crate::task::written(n);
     }
     temporary
         .as_file()
@@ -469,7 +472,9 @@ fn copy_one(
             if n == 0 {
                 break;
             }
+            crate::task::read(n);
             backup_writer.write_all(&chunk[..n])?;
+            crate::task::written(n);
         }
         backup_writer.sync_all()?;
         drop(backup_writer);
@@ -483,11 +488,29 @@ fn copy_one(
             backup_root,
         )?;
     }
-    check_cancel(cancel)?;
+    let _mutation = crate::task::mutation(cancel)?;
+    crate::task::stage("revalidate_and_commit");
     roots_unchanged(snapshot)?;
+    checked_path(source_root, relative, false)?;
     checked_path(target_root, relative, true)?;
+    if hash_file(&source, cancel)? != source_digest {
+        return Err(Error::Invalid("Copy source changed before commit".into()));
+    }
     if regular_digest(&destination, cancel)? != action.target_digest {
         return Err(Error::Invalid("Destination changed during copy".into()));
+    }
+    if hash_file(temporary.path(), cancel)? != source_digest {
+        return Err(Error::Invalid("Prepared copy changed before commit".into()));
+    }
+    if let Some(expected) = &action.target_digest {
+        let backup = checked_path(
+            Path::new(&plan.backup_root),
+            &PathBuf::from("files").join(relative),
+            false,
+        )?;
+        if hash_file(&backup, cancel)? != *expected {
+            return Err(Error::Invalid("Copy backup changed before commit".into()));
+        }
     }
     if action.target_existed {
         temporary.persist(&destination).map_err(|e| e.error)?;
@@ -497,6 +520,7 @@ fn copy_one(
             .map_err(|e| e.error)?;
     }
     flush_ancestors(parent, target_root)?;
+    crate::task::stage("verify_committed_file");
     // Verification is mandatory even after a successful filesystem replacement.
     // Cancellation after replacement must not misreport a completed write.
     if hash_file(&destination, &AtomicBool::new(false))? != source_digest {
@@ -506,22 +530,26 @@ fn copy_one(
 }
 
 pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Result<SyncResult> {
+    crate::task::stage("validate_plan_and_inventory");
     validate_plan(plan)?;
     if plan.session != snapshot.report.session {
         return Err(Error::Invalid("Plan belongs to another comparison".into()));
     }
-    if matches!(
-        plan.policy,
-        FilePlanPolicy::SelectedCopy | FilePlanPolicy::MirrorFiles | FilePlanPolicy::MirrorTree
-    ) {
-        roots_unchanged(snapshot)?;
-    }
-    if plan.policy == FilePlanPolicy::MirrorFiles {
-        mirror::revalidate(snapshot, plan, cancel)?;
-    }
-    if plan.policy == FilePlanPolicy::MirrorTree {
-        mirror_tree::revalidate(snapshot, plan, cancel)?;
-    }
+    let setup = crate::task::validated_mutation(cancel, || {
+        if matches!(
+            plan.policy,
+            FilePlanPolicy::SelectedCopy | FilePlanPolicy::MirrorFiles | FilePlanPolicy::MirrorTree
+        ) {
+            roots_unchanged(snapshot)?;
+        }
+        if plan.policy == FilePlanPolicy::MirrorFiles {
+            mirror::revalidate(snapshot, plan, cancel)?;
+        }
+        if plan.policy == FilePlanPolicy::MirrorTree {
+            mirror_tree::revalidate(snapshot, plan, cancel)?;
+        }
+        Ok(())
+    })?;
     let target = target_root(snapshot, plan);
     if plan.version >= 2 && plan.target != target.to_string_lossy() {
         return Err(Error::Invalid(
@@ -561,7 +589,9 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
     let journal = backup.join("journal.json");
     let mut result = initial_result(plan);
     atomic_json(&journal, &result)?;
+    drop(setup);
     for (i, action) in plan.actions.iter().enumerate() {
+        crate::task::action(&action.path);
         if let Err(e) = check_cancel(cancel) {
             result.actions[i].state = "cancelled".into();
             result.actions[i].error = Some(failure_message(&e));
@@ -579,9 +609,17 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
             }
         };
         match applied {
-            Ok(()) => result.actions[i].state = "completed".into(),
+            Ok(()) => {
+                result.actions[i].state = "completed".into();
+                crate::task::completed();
+            }
             Err(e) => {
-                result.actions[i].state = "failed".into();
+                result.actions[i].state = if matches!(e, Error::Cancelled) {
+                    "cancelled"
+                } else {
+                    "failed"
+                }
+                .into();
                 result.actions[i].error = Some(failure_message(&e));
             }
         }

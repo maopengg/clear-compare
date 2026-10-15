@@ -15,6 +15,7 @@ pub mod rules;
 pub mod sessions;
 pub mod sync;
 pub mod table;
+pub mod task;
 pub mod text;
 pub mod tree;
 pub mod tree_snapshot;

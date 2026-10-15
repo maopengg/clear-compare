@@ -17,3 +17,5 @@ pub mod reports;
 pub mod help;
 
 pub mod file_plan;
+
+pub mod tasks;

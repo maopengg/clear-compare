@@ -185,7 +185,8 @@ pub(super) fn execute(
     action: &FileAction,
     cancel: &AtomicBool,
 ) -> Result<()> {
-    check_cancel(cancel)?;
+    let _mutation = crate::task::mutation(cancel)?;
+    crate::task::stage("directory_mutation");
     roots_unchanged(snapshot)?;
     let relative = snapshot
         .paths

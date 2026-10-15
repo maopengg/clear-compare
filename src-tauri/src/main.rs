@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod operations;
 use clear_contracts::*;
 use clear_core::compare::Snapshot;
 use std::{
@@ -15,6 +16,7 @@ use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 struct Backend {
+    operation: Mutex<Option<Arc<operations::DesktopOperation>>>,
     snapshot: Mutex<Option<Arc<Snapshot>>>,
     archive: Mutex<Option<Arc<clear_core::archive::Snapshot>>>,
     git: Mutex<Option<Arc<clear_core::git::Snapshot>>>,
@@ -70,7 +72,7 @@ fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[tauri::command]
 async fn compare(
     request: CompareRequest,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<OpenedComparison, String> {
     let _operation_guard = state.begin()?;
     *state
@@ -104,8 +106,13 @@ async fn compare(
 }
 
 #[tauri::command]
-fn cancel(state: State<'_, Backend>) {
+fn cancel(state: State<'_, Arc<Backend>>) {
     state.cancel.store(true, Ordering::Relaxed);
+    if let Ok(slot) = state.operation.lock()
+        && let Some(task) = slot.as_ref()
+    {
+        task.control.cancel();
+    }
 }
 
 #[tauri::command]
@@ -113,7 +120,7 @@ async fn open_document(
     session: String,
     row_id: String,
     side: Side,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<TextDocument, String> {
     let _operation_guard = state.begin()?;
     let snapshot = state.snapshot(&session)?;
@@ -141,7 +148,7 @@ async fn open_document(
 }
 
 #[tauri::command]
-fn close_document(document_id: String, state: State<'_, Backend>) -> Result<(), String> {
+fn close_document(document_id: String, state: State<'_, Arc<Backend>>) -> Result<(), String> {
     state
         .merge_guards
         .lock()
@@ -167,7 +174,7 @@ async fn save_document(
     text: String,
     options: SaveOptions,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SaveResult, String> {
     let _operation_guard = state.begin()?;
     let document = state
@@ -215,7 +222,7 @@ async fn save_document(
 #[tauri::command]
 async fn preview_editor_restore(
     document_id: String,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<RestorePreview, String> {
     let _operation_guard = state.begin()?;
     let document = state
@@ -246,7 +253,7 @@ async fn preview_editor_restore(
 async fn apply_editor_restore(
     plan_id: String,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SaveResult, String> {
     let _operation_guard = state.begin()?;
     let (document_id, plan) = state
@@ -301,7 +308,7 @@ async fn apply_editor_restore(
 }
 
 #[tauri::command]
-fn page(session: String, offset: usize, state: State<'_, Backend>) -> Result<Page, String> {
+fn page(session: String, offset: usize, state: State<'_, Arc<Backend>>) -> Result<Page, String> {
     let snapshot = state.snapshot(&session)?;
     Ok(Page {
         total: snapshot.report.rows.len(),
@@ -321,7 +328,7 @@ async fn query_folder(
     session: String,
     query: FolderQuery,
     offset: usize,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<FolderPage, String> {
     let snapshot = state.snapshot(&session)?;
     tauri::async_runtime::spawn_blocking(move || clear_core::tree::query(&snapshot, &query, offset))
@@ -353,7 +360,7 @@ async fn pick_report_destination(
 #[tauri::command]
 async fn export_report(
     request: ReportRequest,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<ReportResult, String> {
     let _guard = state.begin()?;
     let cancel = state.cancel.clone();
@@ -420,7 +427,7 @@ async fn export_report(
 #[tauri::command]
 async fn compare_git(
     request: GitCompareRequest,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<OpenedComparison, String> {
     let _guard = state.begin()?;
     *state.git.lock().map_err(|_| "State unavailable")? = None;
@@ -459,7 +466,7 @@ async fn git_page(
     offset: usize,
     search: String,
     differences_only: bool,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<Page, String> {
     let snapshot = git_snapshot(&state, &session)?;
     tauri::async_runtime::spawn_blocking(move || snapshot.page(offset, &search, differences_only))
@@ -472,7 +479,7 @@ async fn git_text_diff(
     session: String,
     row_id: String,
     options: TextOptions,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<TextDiff, String> {
     let _guard = state.begin()?;
     let snapshot = git_snapshot(&state, &session)?;
@@ -486,7 +493,7 @@ async fn git_text_diff(
 #[tauri::command]
 async fn capture_tree_snapshot(
     request: TreeSnapshotRequest,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<TreeSnapshotInfo, String> {
     let _guard = state.begin()?;
     let cancel = state.cancel.clone();
@@ -500,7 +507,7 @@ async fn capture_tree_snapshot(
 #[tauri::command]
 async fn compare_tree_snapshots(
     request: ArchiveRequest,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<OpenedComparison, String> {
     let _guard = state.begin()?;
     *state
@@ -534,7 +541,7 @@ async fn tree_snapshot_page(
     offset: usize,
     search: String,
     differences_only: bool,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<Page, String> {
     let snapshot = state
         .tree_snapshot
@@ -571,7 +578,7 @@ async fn pick_tree_snapshot(save: bool, app: tauri::AppHandle) -> Result<Option<
 #[tauri::command]
 async fn compare_archives(
     request: ArchiveRequest,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<OpenedComparison, String> {
     let _operation_guard = state.begin()?;
     *state.archive.lock().map_err(|_| "State unavailable")? = None;
@@ -614,7 +621,7 @@ async fn archive_page(
     offset: usize,
     search: String,
     differences_only: bool,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<Page, String> {
     let snapshot = archive_snapshot(&state, &session)?;
     tauri::async_runtime::spawn_blocking(move || snapshot.page(offset, &search, differences_only))
@@ -627,7 +634,7 @@ async fn archive_text_diff(
     session: String,
     row_id: String,
     options: TextOptions,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<TextDiff, String> {
     let _operation_guard = state.begin()?;
     let snapshot = archive_snapshot(&state, &session)?;
@@ -654,7 +661,7 @@ async fn pick_archive(app: tauri::AppHandle) -> Result<Option<String>, String> {
 async fn prepare_folder_merge(
     request: FolderMergeRequest,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<FolderMergePreview, String> {
     let _operation_guard = state.begin()?;
     *state.folder_merge.lock().map_err(|_| "State unavailable")? = None;
@@ -675,7 +682,7 @@ async fn prepare_folder_merge(
 fn folder_merge_page(
     plan_id: String,
     offset: usize,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<FolderMergePreview, String> {
     let guard = state.folder_merge.lock().map_err(|_| "State unavailable")?;
     let plan = guard.as_ref().ok_or("Preview folder merge first")?;
@@ -691,7 +698,7 @@ fn resolve_folder_merge(
     row_id: String,
     resolution: FolderResolution,
     offset: usize,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<FolderMergePreview, String> {
     let _operation_guard = state.begin()?;
     let mut guard = state.folder_merge.lock().map_err(|_| "State unavailable")?;
@@ -706,7 +713,7 @@ fn resolve_folder_merge(
 #[tauri::command]
 async fn apply_folder_merge(
     plan_id: String,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<FolderMergeResult, String> {
     let _operation_guard = state.begin()?;
     let plan = state
@@ -730,7 +737,7 @@ async fn picture_preview(
     session: String,
     row_id: String,
     options: PictureOptions,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<PicturePreview, String> {
     let _operation_guard = state.begin()?;
     let snapshot = state.snapshot(&session)?;
@@ -748,7 +755,7 @@ async fn text_diff(
     session: String,
     row_id: String,
     options: TextOptions,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<TextDiff, String> {
     let snapshot = state.snapshot(&session)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -763,7 +770,7 @@ async fn text_diff(
 async fn open_table_document(
     session: String,
     row_id: String,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<TableDocumentInfo, String> {
     let _guard = state.begin()?;
     *state
@@ -806,7 +813,7 @@ async fn table_catalog(
     document_id: String,
     left_html: bool,
     right_html: bool,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<TableDocumentInfo, String> {
     let _guard = state.begin()?;
     let doc = table_document(&state, &document_id)?;
@@ -817,7 +824,7 @@ async fn table_catalog(
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn close_table_document(document_id: String, state: State<'_, Backend>) -> Result<(), String> {
+fn close_table_document(document_id: String, state: State<'_, Arc<Backend>>) -> Result<(), String> {
     let _guard = state.begin()?;
     let mut doc = state
         .table_document
@@ -834,7 +841,7 @@ fn close_table_document(document_id: String, state: State<'_, Backend>) -> Resul
 async fn table_compare(
     document_id: String,
     options: TableOptions,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<OpenedTable, String> {
     let _operation_guard = state.begin()?;
     let document = table_document(&state, &document_id)?;
@@ -872,7 +879,7 @@ async fn table_compare(
 fn table_page(
     table_id: String,
     offset: usize,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<Vec<TableRow>, String> {
     let cache = state.table.lock().map_err(|_| "State unavailable")?;
     let (id, report) = cache.as_ref().ok_or("Compare a table first")?;
@@ -887,7 +894,7 @@ async fn binary_page(
     session: String,
     row_id: String,
     offset: String,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<BinaryPage, String> {
     let _guard = state.begin()?;
     let snapshot = state.snapshot(&session)?;
@@ -904,7 +911,7 @@ async fn binary_search(
     session: String,
     row_id: String,
     options: BinarySearchOptions,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<BinarySearchResult, String> {
     let _guard = state.begin()?;
     let snapshot = state.snapshot(&session)?;
@@ -922,7 +929,7 @@ async fn merge_buffers(
     base: String,
     left: String,
     right: String,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<MergeResult, String> {
     let _operation_guard = state.begin()?;
     let mut result = tauri::async_runtime::spawn_blocking(move || {
@@ -943,7 +950,7 @@ fn stage_merge_result(
     document_id: String,
     result_id: String,
     text: String,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<Vec<String>, String> {
     let _operation_guard = state.begin()?;
     if text.len() > clear_contracts::edit_history::MAX_TEXT_BYTES || text.contains('\0') {
@@ -983,7 +990,7 @@ async fn preview_sync(
     row_ids: Vec<String>,
     source_side: Side,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SyncPlan, String> {
     let _operation_guard = state.begin()?;
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
@@ -1007,7 +1014,7 @@ async fn preview_delete(
     row_ids: Vec<String>,
     target_side: Side,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SyncPlan, String> {
     let _guard = state.begin()?;
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
@@ -1030,7 +1037,7 @@ async fn preview_mirror_files(
     session: String,
     source_side: Side,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SyncPlan, String> {
     prepare_mirror(session, source_side, false, app, state).await
 }
@@ -1040,7 +1047,7 @@ async fn preview_mirror_tree(
     session: String,
     source_side: Side,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SyncPlan, String> {
     prepare_mirror(session, source_side, true, app, state).await
 }
@@ -1050,7 +1057,7 @@ async fn prepare_mirror(
     source_side: Side,
     tree: bool,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SyncPlan, String> {
     let _guard = state.begin()?;
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
@@ -1079,7 +1086,7 @@ async fn preview_rename(
     target_side: Side,
     new_name: String,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<SyncPlan, String> {
     let _guard = state.begin()?;
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
@@ -1181,8 +1188,8 @@ async fn refresh_editor_locations(
 }
 
 #[tauri::command]
-async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<FileApplyReply, String> {
-    let _operation_guard = state.begin()?;
+async fn apply_sync(plan_id: String, state: State<'_, Arc<Backend>>) -> Result<TaskHandle, String> {
+    let guard = state.begin()?;
     let plan = state
         .plan
         .lock()
@@ -1193,31 +1200,7 @@ async fn apply_sync(plan_id: String, state: State<'_, Backend>) -> Result<FileAp
         return Err("Sync plan expired".into());
     }
     let snapshot = state.snapshot(&plan.session)?;
-    let cancel = state.cancel.clone();
-    let (result, moves, affected) =
-        tauri::async_runtime::spawn_blocking(move || -> Result<_, clear_core::Error> {
-            let affected = clear_core::sync::affected_paths(&snapshot, &plan)?;
-            let result = clear_core::sync::execute(&snapshot, &plan, &cancel)?;
-            let moves = clear_core::sync::relocations(&snapshot, &result)?;
-            Ok((result, moves, affected))
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    let (locations, stale_documents, warnings) =
-        refresh_editor_locations(&state, moves, affected)
-            .await
-            .unwrap_or_else(|error| {
-                (Vec::new(), Vec::new(), vec![format!(
-                    "File operation finished, but editor locations could not be refreshed; retained buffers must be reviewed before saving: {error}"
-                )])
-            });
-    Ok(FileApplyReply {
-        result,
-        locations,
-        stale_documents,
-        warnings,
-    })
+    operations::launch_file(state.inner().clone(), guard, plan, snapshot)
 }
 
 #[tauri::command]
@@ -1274,7 +1257,7 @@ fn valid_history_id(id: &str) -> bool {
 async fn preview_sync_recovery(
     history_id: String,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<RecoveryPreview, String> {
     let _operation_guard = state.begin()?;
     if !valid_history_id(&history_id) {
@@ -1304,9 +1287,9 @@ async fn preview_sync_recovery(
 #[tauri::command]
 async fn apply_sync_recovery(
     plan_id: String,
-    state: State<'_, Backend>,
-) -> Result<RecoveryApplyReply, String> {
-    let _operation_guard = state.begin()?;
+    state: State<'_, Arc<Backend>>,
+) -> Result<TaskHandle, String> {
+    let guard = state.begin()?;
     let plan = state
         .recovery
         .lock()
@@ -1316,32 +1299,8 @@ async fn apply_sync_recovery(
     if plan.view.id != plan_id {
         return Err("Recovery preview expired".into());
     }
-    let cancel = state.cancel.clone();
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
-    let (result, moves, affected) =
-        tauri::async_runtime::spawn_blocking(move || -> Result<_, clear_core::Error> {
-            let affected = plan.affected_paths();
-            let result = clear_core::recovery::execute(&plan, &cancel)?;
-            let moves = plan.relocations(&result);
-            Ok((result, moves, affected))
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    let (locations, stale_documents, warnings) =
-        refresh_editor_locations(&state, moves, affected)
-            .await
-            .unwrap_or_else(|error| {
-                (Vec::new(), Vec::new(), vec![format!(
-                    "Recovery finished, but editor locations could not be refreshed; retained buffers must be reviewed before saving: {error}"
-                )])
-            });
-    Ok(RecoveryApplyReply {
-        result,
-        locations,
-        stale_documents,
-        warnings,
-    })
+    operations::launch_recovery(state.inner().clone(), guard, plan)
 }
 
 #[tauri::command]
@@ -1367,7 +1326,7 @@ fn save_session(session: SavedSession, app: tauri::AppHandle) -> Result<(), Stri
 #[tauri::command]
 async fn list_sessions(
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<Vec<LibraryEntry>, String> {
     let _operation_guard = state.begin()?;
     let base = data_dir(&app)?;
@@ -1380,7 +1339,7 @@ async fn list_sessions(
 async fn load_library_session(
     id: String,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<LibraryEntry, String> {
     let _operation_guard = state.begin()?;
     let base = data_dir(&app)?;
@@ -1396,7 +1355,7 @@ async fn save_library_session(
     name: String,
     session: SavedSession,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<LibraryEntry, String> {
     let _operation_guard = state.begin()?;
     let base = data_dir(&app)?;
@@ -1412,7 +1371,7 @@ async fn archive_session(
     id: String,
     revision: String,
     app: tauri::AppHandle,
-    state: State<'_, Backend>,
+    state: State<'_, Arc<Backend>>,
 ) -> Result<(), String> {
     let _operation_guard = state.begin()?;
     let base = data_dir(&app)?;
@@ -1426,7 +1385,7 @@ async fn archive_session(
 
 fn main() {
     tauri::Builder::default()
-        .manage(Backend::default())
+        .manage(Arc::new(Backend::default()))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             compare,
@@ -1467,6 +1426,12 @@ fn main() {
             preview_mirror_files,
             preview_mirror_tree,
             apply_sync,
+            operations::active_operation,
+            operations::operation_status,
+            operations::pause_operation,
+            operations::cancel_operation,
+            operations::resume_operation,
+            operations::take_operation_result,
             pick_directory,
             load_session,
             save_session,

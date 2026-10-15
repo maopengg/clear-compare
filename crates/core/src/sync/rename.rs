@@ -158,6 +158,26 @@ pub(super) fn rename_one(
     let stage = checked_path(root, &temporary, true)?;
     absent(&stage)?;
     let source = super::delete::backup_before_change(snapshot, plan, action, cancel)?;
+    let _mutation = crate::task::mutation(cancel)?;
+    crate::task::stage("revalidate_and_rename");
+    checked_path(root, &old, false)?;
+    if fs::canonicalize(root)? != root
+        || Some(hash_file(&source, cancel)?) != action.target_digest
+        || action.target_permissions.as_ref() != Some(&permissions(&fs::symlink_metadata(&source)?))
+    {
+        return Err(Error::Invalid("Rename source changed before commit".into()));
+    }
+
+    let backup = checked_path(
+        Path::new(&plan.backup_root),
+        &PathBuf::from("files").join(&old),
+        false,
+    )?;
+    if Some(hash_file(&backup, cancel)?) != action.target_digest
+        || action.target_permissions.as_ref() != Some(&permissions(&fs::symlink_metadata(&backup)?))
+    {
+        return Err(Error::Invalid("Rename backup changed before commit".into()));
+    }
     destination_available(root, &old, &new, cancel)?;
     absent(&stage)?;
     check_cancel(cancel)?;

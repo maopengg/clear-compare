@@ -207,7 +207,9 @@ pub(super) fn backup_before_change(
         if n == 0 {
             break;
         }
+        crate::task::read(n);
         writer.write_all(&buffer[..n])?;
+        crate::task::written(n);
     }
     set_permissions(&writer, saved_permissions)?;
     writer.sync_all()?;
@@ -264,6 +266,44 @@ pub(super) fn delete_one(
             .ok_or_else(|| Error::Invalid("Missing mirror deletion path".into()))?;
         super::mirror::source_absent(snapshot, plan, relative)?;
         check_cancel(cancel)?;
+    }
+    let _mutation = crate::task::mutation(cancel)?;
+    crate::task::stage("revalidate_and_remove");
+    let root = target_root(snapshot, plan);
+    let relative = snapshot
+        .paths
+        .get(&action.row_id)
+        .ok_or_else(|| Error::Invalid("Missing deletion path".into()))?;
+    if fs::canonicalize(root)? != root {
+        return Err(Error::Invalid(
+            "Deletion root changed before removal".into(),
+        ));
+    }
+    checked_path(root, relative, false)?;
+    if regular_digest(&path, cancel)? != action.target_digest
+        || action.target_permissions.as_ref() != Some(&permissions(&fs::symlink_metadata(&path)?))
+    {
+        return Err(Error::Invalid(
+            "Deletion target changed before commit".into(),
+        ));
+    }
+    if matches!(
+        plan.policy,
+        FilePlanPolicy::MirrorFiles | FilePlanPolicy::MirrorTree
+    ) {
+        super::mirror::source_absent(snapshot, plan, relative)?;
+    }
+    let backup = checked_path(
+        Path::new(&plan.backup_root),
+        &PathBuf::from("files").join(relative),
+        false,
+    )?;
+    if Some(hash_file(&backup, cancel)?) != action.target_digest
+        || action.target_permissions.as_ref() != Some(&permissions(&fs::symlink_metadata(&backup)?))
+    {
+        return Err(Error::Invalid(
+            "Deletion backup changed before commit".into(),
+        ));
     }
     fs::remove_file(&path)?;
     flush_directory(

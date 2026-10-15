@@ -22,6 +22,8 @@ impl Undo {
         backup: &Path,
         cancel: &AtomicBool,
     ) -> Result<()> {
+        let _mutation = crate::task::mutation(cancel)?;
+        crate::task::stage("directory_recovery");
         root_valid(root)?;
         let original = Record::read(old_root, &self.relative, self.remove)?;
         if original != self.record {
