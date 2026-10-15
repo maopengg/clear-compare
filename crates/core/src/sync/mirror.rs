@@ -157,11 +157,24 @@ pub(super) fn revalidate(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBo
     revalidate_inventory(snapshot, cancel)
 }
 pub(super) fn revalidate_inventory(snapshot: &Snapshot, cancel: &AtomicBool) -> Result<()> {
+    revalidate_inventory_ignoring(snapshot, cancel, Path::new(""), &BTreeSet::new())
+}
+pub(super) fn revalidate_inventory_ignoring(
+    snapshot: &Snapshot,
+    cancel: &AtomicBool,
+    ignore_root: &Path,
+    ignore_target: &BTreeSet<PathBuf>,
+) -> Result<()> {
     roots_unchanged(snapshot)?;
     // Re-scan the complete captured scope, including equal files. A new entry or
     // stale equal file must not be silently omitted by an old destructive plan.
     for (root, side) in [(&snapshot.left, Side::Left), (&snapshot.right, Side::Right)] {
-        let current = crate::compare::scan(root, &snapshot.rules, true, cancel)?;
+        let mut current = crate::compare::scan(root, &snapshot.rules, true, cancel)?;
+        if root == ignore_root {
+            for path in ignore_target {
+                current.remove(path);
+            }
+        }
         let mut seen = 0;
         for row in &snapshot.report.rows {
             check_cancel(cancel)?;

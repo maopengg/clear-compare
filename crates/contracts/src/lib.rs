@@ -211,7 +211,7 @@ pub enum FilePermissions {
     ReadOnly { value: bool },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenamePaths {
     pub destination: String,
     pub destination_native: NativePath,
@@ -227,8 +227,10 @@ pub struct DirectoryIdentity {
     pub birth: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileAction {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_namespace: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub directory_identity: Option<DirectoryIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -248,7 +250,7 @@ pub struct FileAction {
     pub target_digest: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncPlan {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
@@ -277,6 +279,10 @@ pub struct ActionResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attempts: Vec<String>,
     pub plan: SyncPlan,
     pub actions: Vec<ActionResult>,
     pub journal: String,
@@ -412,7 +418,7 @@ pub struct RestorePreview {
 }
 
 /// Lossless durable paths. Paths from another operating system are not executed.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "encoding", content = "value", rename_all = "snake_case")]
 pub enum NativePath {
     Unix(Vec<u8>),
@@ -431,6 +437,27 @@ pub struct RecoveryPreview {
     pub target: String,
     pub backup_root: String,
     pub actions: Vec<RecoveryAction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResumeAction {
+    pub path: String,
+    pub operation: String,
+    pub state: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResumePreview {
+    pub id: String,
+    pub journal: String,
+    pub source: String,
+    pub target: String,
+    pub backup_root: String,
+    pub satisfied: usize,
+    pub pending: usize,
+    pub cleanup_files: usize,
+    pub total: usize,
+    pub actions: Vec<ResumeAction>,
+    pub warnings: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoveryResult {

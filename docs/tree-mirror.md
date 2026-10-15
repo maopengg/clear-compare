@@ -30,7 +30,7 @@ Recovery previews verify every original directory record. Recreated removed-dire
 
 Recovery creates a new metadata/ownership backup set and journal. Removed directories are recreated with their recorded basic permissions, default current owner/group and newly created timestamps/identity. Original owner/group, ACLs, extended attributes and timestamps are not fully preserved. Newly mirrored directories initially use OS defaults. Native identifiers can be reused after deletion on some filesystems; identity plus creation time improves replacement detection but is not a universal race or storage guarantee.
 
-Scans are live and do not lock other processes. Neither the original multi-action mirror nor its rollback is an atomic transaction. Cancellation/errors can leave earlier actions applied. Automatic resume/redo and resuming a partially applied directory rollback remain planned. Retain complete backup sets for manual review when recovery refuses an inconsistent state.
+Scans are live and do not lock other processes. Neither the original multi-action mirror nor its rollback is an atomic transaction. Cancellation/errors can leave earlier actions applied. New original journals support [reviewed forward restart](operation-resume.md). Startup never automatically applies it; resuming/redoing a partially applied directory rollback remains planned. Retain complete backup sets for manual review when recovery refuses an inconsistent state.
 
 ## CLI
 

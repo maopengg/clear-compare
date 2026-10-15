@@ -17,6 +17,7 @@ pub(super) struct Undo {
     live: Live,
     digest: String,
     permissions: FilePermissions,
+    record_root: PathBuf,
 }
 impl Undo {
     fn observed(&self, root: &Path, relative: &Path, cancel: &AtomicBool) -> Result<bool> {
@@ -113,11 +114,12 @@ impl Undo {
     pub(super) fn execute(
         &self,
         root: &Path,
-        old_root: &Path,
+        _old_root: &Path,
         backup_root: &Path,
         cancel: &AtomicBool,
     ) -> Result<()> {
         root_valid(root)?;
+        let old_root = &self.record_root;
         self.backup(root, old_root, cancel)?;
         if self.state(root, cancel)? != self.live {
             return Err(Error::Invalid(
@@ -154,6 +156,7 @@ impl Undo {
         let _mutation = crate::task::mutation(cancel)?;
         crate::task::stage("revalidate_and_reverse_rename");
         root_valid(root)?;
+        let old_root = &self.record_root;
         self.backup(root, old_root, cancel)?;
         if self.state(root, cancel)? != self.live {
             return Err(Error::Invalid(
@@ -209,6 +212,7 @@ pub(super) fn preview(
         destination,
         temporary,
         live: Live::Destination,
+        record_root: old_root.to_owned(),
         digest: action
             .target_digest
             .clone()

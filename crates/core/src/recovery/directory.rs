@@ -6,6 +6,7 @@ pub(super) struct Undo {
     pub relative: PathBuf,
     remove: bool,
     record: Record,
+    record_root: PathBuf,
 }
 impl Undo {
     pub fn operation(&self) -> &'static str {
@@ -25,7 +26,9 @@ impl Undo {
         let _mutation = crate::task::mutation(cancel)?;
         crate::task::stage("directory_recovery");
         root_valid(root)?;
-        let original = Record::read(old_root, &self.relative, self.remove)?;
+        root_valid(&self.record_root)?;
+        let _ = old_root;
+        let original = Record::read(&self.record_root, &self.relative, self.remove)?;
         if original != self.record {
             return Err(Error::Invalid(
                 "Directory recovery record changed after preview".into(),
@@ -113,6 +116,7 @@ pub(super) fn preview(
             relative: relative.to_owned(),
             remove,
             record,
+            record_root: old_root.to_owned(),
         }))
     } else {
         if let Some(current) = current {
@@ -138,6 +142,7 @@ pub(super) fn preview(
             relative: relative.to_owned(),
             remove,
             record,
+            record_root: old_root.to_owned(),
         }))
     }
 }

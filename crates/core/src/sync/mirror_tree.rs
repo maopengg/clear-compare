@@ -169,6 +169,7 @@ pub fn plan_mirror_tree(
             None
         };
         plan.actions.push(FileAction {
+            backup_namespace: None,
             rename_to: None,
             operation,
             directory_identity: recorded.as_ref().map(|r| r.identity.clone()),
@@ -191,6 +192,14 @@ pub fn plan_mirror_tree(
     Ok(plan)
 }
 pub(super) fn revalidate(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Result<()> {
+    revalidate_layout(snapshot, plan, cancel)?;
+    mirror::revalidate_inventory(snapshot, cancel)
+}
+pub(super) fn revalidate_layout(
+    snapshot: &Snapshot,
+    plan: &SyncPlan,
+    cancel: &AtomicBool,
+) -> Result<()> {
     let expected = layout(snapshot, &plan.source_side, cancel)?.actions;
     let actual = plan
         .actions
@@ -231,5 +240,5 @@ pub(super) fn revalidate(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBo
             }
         }
     }
-    mirror::revalidate_inventory(snapshot, cancel)
+    Ok(())
 }

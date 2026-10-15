@@ -265,6 +265,23 @@ pub(crate) fn read(bytes: usize) {
 }
 pub(crate) fn written(bytes: usize) {
     update(|s| s.written = s.written.saturating_add(bytes as u64));
+
+    #[cfg(test)]
+    CRASH_PAUSE.with(|flag| {
+        if flag.replace(false) {
+            CURRENT.with(|slot| {
+                if let Some(binding) = slot.borrow().as_ref() {
+                    let _ = binding.control.pause();
+                }
+            });
+        }
+    });
+}
+#[cfg(test)]
+thread_local! {static CRASH_PAUSE:std::cell::Cell<bool>=const {std::cell::Cell::new(false)};}
+#[cfg(test)]
+pub(crate) fn pause_after_first_stream_write() {
+    CRASH_PAUSE.with(|flag| flag.set(true));
 }
 
 fn epoch() -> u64 {
@@ -478,4 +495,8 @@ mod tests {
             })
             .unwrap();
     }
+}
+
+pub(crate) fn completed_many(count: usize) {
+    update(|s| s.completed = s.completed.saturating_add(count));
 }

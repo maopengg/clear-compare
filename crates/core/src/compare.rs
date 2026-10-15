@@ -14,6 +14,7 @@ use walkdir::WalkDir;
 pub const MAX_ENTRIES: usize = 200_000;
 
 pub struct Snapshot {
+    pub(crate) restart: Option<std::sync::Arc<crate::sync::durable::Constraints>>,
     pub report: Comparison,
     pub left: PathBuf,
     pub right: PathBuf,
@@ -247,6 +248,7 @@ pub fn compare(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot
         .filter_map(|r| paths.get(&r.id).map(|p| (p.clone(), r.id.clone())))
         .collect();
     Ok(Snapshot {
+        restart: None,
         directory_index,
         report: Comparison {
             policy: Some(clear_contracts::ComparisonPolicy {

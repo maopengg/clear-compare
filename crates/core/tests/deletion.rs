@@ -342,6 +342,8 @@ fn version_one_copy_journals_remain_recoverable() {
     .unwrap();
     let result = sync::execute(&snapshot, &plan, &AtomicBool::new(false)).unwrap();
     let mut value = serde_json::to_value(&result).unwrap();
+    value.as_object_mut().unwrap().remove("intent_digest");
+    value.as_object_mut().unwrap().remove("attempts");
     let p = value["plan"].as_object_mut().unwrap();
     for field in ["version", "policy", "target"] {
         p.remove(field);

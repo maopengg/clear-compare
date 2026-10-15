@@ -40,7 +40,7 @@ The current comparison settings are kept under Tauri's application data director
 
 ## Remaining work
 
-Automatic resume/redo, full metadata preservation, large-scale performance baselines, workspace restoration, broader encodings, further merge/viewer capabilities, remote adapters and converters remain on the roadmap. The initial architecture leaves these separate from the UI and desktop runtime.
+Recovery-journal resume/redo, full metadata preservation, large-scale performance baselines, workspace restoration, broader encodings, further merge/viewer capabilities, remote adapters and converters remain on the roadmap. The initial architecture leaves these separate from the UI and desktop runtime.
 
 ## Specialized workspace panels
 
@@ -129,3 +129,8 @@ Recovery reverses version-five action dependencies and verifies ownership/metada
 Tauri file-application/recovery commands now return opaque task handles immediately. An Arc-owned backend holds one task/result slot and keeps write admission until the exact terminal result is collected once. The UI polls small status snapshots and reconnects to uncollected same-process work on startup. Full outcomes retain existing editor-location updates and journal results.
 
 The core task scope binds an exact cancellation token to cooperative pause checkpoints on the synchronous worker thread. Native mutation guards defer pause through fresh final validation/write/mandatory verification. Pausable complete-scope preflight repeats after an acknowledged-pause generation change. Scope drop restores prior bindings even after unwinding. The controller creates no service or progress thread; byte counters track instrumented file streams rather than claiming a completion percentage. See [operation tasks](operation-tasks.md) for states, persistence limits and tests.
+
+
+## Durable forward restart
+
+New file operations persist immutable bounded context and its journal digest before mutation. `sync::durable` owns native identity evidence, operation locks, registered copy work files and artifact namespaces. `sync::resume` reconstructs the original native scope, reconciles action states against actual files/backups and applies only an exact reviewed preview. Each retry retains previous journals and new backups under an independent attempt directory; original history rollback follows per-action namespaces. Full-scope mirror revalidation projects verified completed actions and ignores only owned target work files until retention/cleanup. Native IPC caches opaque restart previews and executes through the shared background task registry; UI history exposes paged bilingual review. CLI uses the same core. See [forward-restart evidence, ordering and limits](operation-resume.md). No automatic startup write or recovery redo is implied.

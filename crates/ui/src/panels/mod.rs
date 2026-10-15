@@ -19,3 +19,5 @@ pub mod help;
 pub mod file_plan;
 
 pub mod tasks;
+
+pub mod resume;

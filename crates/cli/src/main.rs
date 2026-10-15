@@ -229,6 +229,14 @@ enum Command {
         #[arg(long)]
         ignore_alpha: bool,
     },
+    /// Preview a locked forward restart using the immutable original intent; --apply continues.
+    ResumeSync {
+        journal: PathBuf,
+        #[arg(long)]
+        apply: bool,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+    },
     RecoverSync {
         journal: PathBuf,
         #[arg(long)]
@@ -866,6 +874,31 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             )?;
             println!("{}", serde_json::to_string_pretty(&result.summary)?);
             Ok(i32::from(result.summary.changed_pixels != "0"))
+        }
+        Command::ResumeSync {
+            journal,
+            apply,
+            offset,
+        } => {
+            let mut plan = clear_core::sync::resume::preview(&journal, &cancel)?;
+            if apply {
+                if offset != 0 {
+                    return Err(clear_core::Error::Invalid(
+                        "Paging applies only to preview".into(),
+                    ));
+                }
+                let result = clear_core::sync::resume::execute(&plan, &cancel)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(if result.actions.iter().all(|a| a.state == "completed") {
+                    0
+                } else {
+                    2
+                })
+            } else {
+                plan.view.actions = plan.page(offset);
+                println!("{}", serde_json::to_string_pretty(&plan.view)?);
+                Ok(0)
+            }
         }
         Command::RecoverSync {
             journal,

@@ -18,9 +18,11 @@ use tempfile::NamedTempFile;
 
 mod delete;
 pub(crate) mod directory;
+pub(crate) mod durable;
 mod mirror;
 mod mirror_tree;
 pub(crate) mod rename;
+pub mod resume;
 pub use delete::plan_delete;
 pub(crate) use delete::{permissions, set_permissions};
 pub use mirror::plan_mirror_files;
@@ -29,6 +31,8 @@ pub use rename::plan_rename;
 const MAX_PREVIEW_JOURNAL: usize = 32 * 1024 * 1024;
 fn initial_result(plan: &SyncPlan) -> SyncResult {
     SyncResult {
+        intent_digest: None,
+        attempts: Vec::new(),
         plan: plan.clone(),
         actions: plan
             .actions
@@ -57,6 +61,9 @@ pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
     let digest = |s: &str| s.len() == 64 && s.bytes().all(|c| c.is_ascii_hexdigit());
     let mut seen = BTreeSet::new();
     for action in &plan.actions {
+        if let Some(namespace) = &action.backup_namespace {
+            durable::namespace(namespace)?;
+        }
         if !seen.insert(&action.row_id)
             || action.operation != FileOperation::RemoveDirectory
                 && action.directory_identity.is_some()
@@ -158,7 +165,9 @@ pub(crate) fn validate_plan(plan: &SyncPlan) -> Result<()> {
             Ok(())
         }
     }
-    serde_json::to_writer_pretty(Bound(0), &initial_result(plan))
+    let mut sized = initial_result(plan);
+    sized.intent_digest = Some("0".repeat(64));
+    serde_json::to_writer_pretty(Bound(0), &sized)
         .map_err(|_| Error::Invalid("File-operation preview journal exceeds 32 MiB".into()))?;
     Ok(())
 }
@@ -308,6 +317,7 @@ pub fn plan_direction(
             ));
         }
         actions.push(FileAction {
+            backup_namespace: None,
             directory_identity: None,
             rename_to: None,
             operation: FileOperation::Copy,
@@ -432,7 +442,10 @@ fn copy_one(
         .ok_or_else(|| Error::Invalid("Missing parent".into()))?;
     fs::create_dir_all(parent)?;
     checked_path(target_root, relative, true)?;
-    let mut temporary = NamedTempFile::new_in(parent)?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(&format!(".clear-compare-{}-", plan.id))
+        .tempfile_in(parent)?;
+    durable::register_temporary(snapshot, plan, action, temporary.path())?;
     // Copy in bounded chunks with cancellation, rather than reading the file into memory.
     let mut reader = File::open(&source)?;
     let mut chunk = [0u8; 65536];
@@ -455,7 +468,8 @@ fn copy_one(
         return Err(Error::Invalid("Source changed during copy".into()));
     }
     if let Some(expected) = &action.target_digest {
-        let backup_root = Path::new(&plan.backup_root);
+        let artifact_root = durable::action_root(plan, action)?;
+        let backup_root = artifact_root.as_path();
         let backup = checked_path(backup_root, &PathBuf::from("files").join(relative), true)?;
         fs::create_dir_all(
             backup
@@ -476,6 +490,7 @@ fn copy_one(
             backup_writer.write_all(&chunk[..n])?;
             crate::task::written(n);
         }
+        backup_writer.set_permissions(fs::metadata(&destination)?.permissions())?;
         backup_writer.sync_all()?;
         drop(backup_writer);
         if hash_file(&backup, cancel)? != *expected {
@@ -490,6 +505,7 @@ fn copy_one(
     }
     let _mutation = crate::task::mutation(cancel)?;
     crate::task::stage("revalidate_and_commit");
+    durable::verify_restart(snapshot, plan, action)?;
     roots_unchanged(snapshot)?;
     checked_path(source_root, relative, false)?;
     checked_path(target_root, relative, true)?;
@@ -504,7 +520,7 @@ fn copy_one(
     }
     if let Some(expected) = &action.target_digest {
         let backup = checked_path(
-            Path::new(&plan.backup_root),
+            &durable::action_root(plan, action)?,
             &PathBuf::from("files").join(relative),
             false,
         )?;
@@ -586,8 +602,26 @@ pub fn execute(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBool) -> Res
         fs::set_permissions(backup, fs::Permissions::from_mode(0o700))?;
     }
     flush_directory(base)?;
+    let _lock = durable::lock(backup, true)?;
+    let intent = durable::capture(snapshot, plan)?;
+    let intent_digest = durable::write(&backup.join("intent.json"), &intent, durable::MAX_INTENT)?;
     let journal = backup.join("journal.json");
     let mut result = initial_result(plan);
+    result.intent_digest = Some(intent_digest);
+    let runtime = if intent.left_root.is_some()
+        && intent.right_root.is_some()
+        && intent.pins.iter().zip(&plan.actions).all(|(pin, a)| {
+            (!a.target_existed || pin.target.is_some())
+                && (!matches!(
+                    a.operation,
+                    FileOperation::Copy | FileOperation::CreateDirectory
+                ) || pin.source.is_some())
+        }) {
+        Some(intent.snapshot()?)
+    } else {
+        None
+    };
+    let snapshot = runtime.as_ref().unwrap_or(snapshot);
     atomic_json(&journal, &result)?;
     drop(setup);
     for (i, action) in plan.actions.iter().enumerate() {

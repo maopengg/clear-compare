@@ -1174,3 +1174,69 @@ fn tree_mirror_cli_previews_empty_directories_then_applies_and_recovers_them() {
     assert!(r.join("old/empty").is_dir());
     assert!(!r.join("new").exists());
 }
+
+#[test]
+fn resume_cli_previews_reconciles_and_preserves_the_original_history_for_rollback() {
+    let t = tempfile::tempdir().unwrap();
+    for p in ["l", "r", "b", "undo"] {
+        fs::create_dir(t.path().join(p)).unwrap();
+    }
+    let l = t.path().join("l");
+    let r = t.path().join("r");
+    let b = t.path().join("b");
+    fs::write(l.join("a"), b"source").unwrap();
+    fs::write(r.join("a"), b"target").unwrap();
+    let applied = run(&[
+        "sync".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--backup-dir".as_ref(),
+        b.as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        applied.status.success(),
+        "{}",
+        String::from_utf8_lossy(&applied.stderr)
+    );
+    let mut result: serde_json::Value = serde_json::from_slice(&applied.stdout).unwrap();
+    let journal = std::path::PathBuf::from(result["journal"].as_str().unwrap());
+    result["actions"][0]["state"] = "running".into();
+    fs::write(&journal, serde_json::to_vec_pretty(&result).unwrap()).unwrap();
+    let original = fs::read(&journal).unwrap();
+    let preview = run(&["resume-sync".as_ref(), journal.as_os_str()]);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let view: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+    assert_eq!(view["satisfied"], 1);
+    assert_eq!(view["pending"], 0);
+    assert_eq!(fs::read(&journal).unwrap(), original);
+    let resumed = run(&[
+        "resume-sync".as_ref(),
+        journal.as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        resumed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&resumed.stderr)
+    );
+    let resumed: serde_json::Value = serde_json::from_slice(&resumed.stdout).unwrap();
+    assert_eq!(resumed["attempts"].as_array().unwrap().len(), 1);
+    let undo = run(&[
+        "recover-sync".as_ref(),
+        journal.as_os_str(),
+        "--backup-dir".as_ref(),
+        t.path().join("undo").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        undo.status.success(),
+        "{}",
+        String::from_utf8_lossy(&undo.stderr)
+    );
+    assert_eq!(fs::read(r.join("a")).unwrap(), b"target");
+}

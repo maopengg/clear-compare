@@ -160,6 +160,7 @@ pub(super) fn rename_one(
     let source = super::delete::backup_before_change(snapshot, plan, action, cancel)?;
     let _mutation = crate::task::mutation(cancel)?;
     crate::task::stage("revalidate_and_rename");
+    super::durable::verify_restart(snapshot, plan, action)?;
     checked_path(root, &old, false)?;
     if fs::canonicalize(root)? != root
         || Some(hash_file(&source, cancel)?) != action.target_digest
@@ -169,7 +170,7 @@ pub(super) fn rename_one(
     }
 
     let backup = checked_path(
-        Path::new(&plan.backup_root),
+        &super::durable::action_root(plan, action)?,
         &PathBuf::from("files").join(&old),
         false,
     )?;

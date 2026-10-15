@@ -118,6 +118,7 @@ pub fn plan_delete(
             ));
         }
         actions.push(FileAction {
+            backup_namespace: None,
             directory_identity: None,
             rename_to: None,
             operation: FileOperation::Delete,
@@ -191,7 +192,8 @@ pub(super) fn backup_before_change(
             "Deletion target changed after preview".into(),
         ));
     }
-    let backup_root = Path::new(&plan.backup_root);
+    let artifact_root = super::durable::action_root(plan, action)?;
+    let backup_root = artifact_root.as_path();
     let backup = checked_path(backup_root, &PathBuf::from("files").join(relative), true)?;
     fs::create_dir_all(
         backup
@@ -269,6 +271,7 @@ pub(super) fn delete_one(
     }
     let _mutation = crate::task::mutation(cancel)?;
     crate::task::stage("revalidate_and_remove");
+    super::durable::verify_restart(snapshot, plan, action)?;
     let root = target_root(snapshot, plan);
     let relative = snapshot
         .paths
@@ -294,7 +297,7 @@ pub(super) fn delete_one(
         super::mirror::source_absent(snapshot, plan, relative)?;
     }
     let backup = checked_path(
-        Path::new(&plan.backup_root),
+        &super::durable::action_root(plan, action)?,
         &PathBuf::from("files").join(relative),
         false,
     )?;

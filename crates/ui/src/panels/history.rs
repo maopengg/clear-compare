@@ -9,6 +9,7 @@ pub fn panel(
     recovery: RwSignal<Option<RecoveryPreview>>,
     preview: impl Fn(String) + Copy + Send + Sync + 'static,
     apply: impl Fn() + Copy + Send + Sync + 'static,
+    resume: impl Fn(String) + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
     let limit = RwSignal::new(500usize);
     view! {
@@ -16,7 +17,7 @@ pub fn panel(
             <section class="history-panel"><header><strong>{move ||tr(english.get(),"文件操作历史","File operation history")}</strong><button class="quiet" on:click=move |_|history.set(None)>{move ||tr(english.get(),"关闭","Close")}</button></header>
             <p>{move ||tr(english.get(),"选择操作以检查恢复计划。可恢复覆盖或删除的文件；复制新增文件将先备份再移除。","Review recovery for an operation. Overwritten/deleted files can be restored; copied additions are backed up before removal.")}</p>
             <Show when=move ||history.get().is_some_and(|h|h.is_empty())><p>{move ||tr(english.get(),"暂无本机文件操作历史。","No local file-operation history yet.")}</p></Show>
-            <div class="history-list"><For each=move ||history.get().unwrap_or_default() key=|e|e.id.clone() children=move |entry|{let id=entry.id.clone();let date=entry.modified_ms.parse::<f64>().ok().filter(|ms|ms.is_finite() && ms.abs()<=8.64e15).map(|ms|js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms)).to_iso_string().as_string().unwrap_or_default()).unwrap_or_default();view!{<div><span>{date}<br/>{entry.id}</span><button class="quiet" disabled=move ||busy.get() on:click=move |_|{limit.set(500);preview(id.clone());}>{move ||tr(english.get(),"预览恢复","Preview recovery")}</button></div>}}/></div>
+            <div class="history-list"><For each=move ||history.get().unwrap_or_default() key=|e|e.id.clone() children=move |entry|{let id=entry.id.clone();let resume_id=entry.id.clone();let date=entry.modified_ms.parse::<f64>().ok().filter(|ms|ms.is_finite() && ms.abs()<=8.64e15).map(|ms|js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms)).to_iso_string().as_string().unwrap_or_default()).unwrap_or_default();view!{<div><span>{date}<br/>{entry.id}</span><button class="quiet" disabled=move ||busy.get() on:click=move |_|{limit.set(500);preview(id.clone());}>{move ||tr(english.get(),"预览恢复","Preview recovery")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|resume(resume_id.clone())>{move ||tr(english.get(),"预览续跑","Preview restart")}</button></div>}}/></div>
             </section>
         </Show>
         <Show when=move ||recovery.get().is_some()>

@@ -67,20 +67,43 @@ pub(super) fn launch_file(
     plan: SyncPlan,
     snapshot: Arc<Snapshot>,
 ) -> Result<TaskHandle, String> {
-    let task = start(&state, OperationKind::File, plan.actions.len(), guard)?;
+    start_file(state, guard, plan.actions.len(), move |cancel| {
+        let affected = clear_core::sync::affected_paths(&snapshot, &plan)?;
+        let result = clear_core::sync::execute(&snapshot, &plan, cancel)?;
+        let moves = clear_core::sync::relocations(&snapshot, &result)?;
+        Ok((result, moves, affected))
+    })
+}
+pub(super) fn launch_resume(
+    state: Arc<Backend>,
+    guard: Busy,
+    plan: clear_core::sync::resume::Plan,
+) -> Result<TaskHandle, String> {
+    let total = plan.view.pending + plan.view.satisfied + plan.view.cleanup_files;
+    start_file(state, guard, total, move |cancel| {
+        let result = clear_core::sync::resume::execute(&plan, cancel)?;
+        let (affected, moves) = plan.effects(&result)?;
+        Ok((result, moves, affected))
+    })
+}
+type FileWork = (
+    SyncResult,
+    Vec<clear_core::editing::Relocation>,
+    Vec<PathBuf>,
+);
+fn start_file(
+    state: Arc<Backend>,
+    guard: Busy,
+    total: usize,
+    work: impl FnOnce(&AtomicBool) -> clear_core::Result<FileWork> + Send + 'static,
+) -> Result<TaskHandle, String> {
+    let task = start(&state, OperationKind::File, total, guard)?;
     let handle = task.control.handle();
     tauri::async_runtime::spawn(async move {
         let cancel = state.cancel.clone();
         let controller = task.control.clone();
-        let result = tauri::async_runtime::spawn_blocking(move || {
-            controller.run(|| {
-                let affected = clear_core::sync::affected_paths(&snapshot, &plan)?;
-                let result = clear_core::sync::execute(&snapshot, &plan, &cancel)?;
-                let moves = clear_core::sync::relocations(&snapshot, &result)?;
-                Ok((result, moves, affected))
-            })
-        })
-        .await;
+        let result =
+            tauri::async_runtime::spawn_blocking(move || controller.run(|| work(&cancel))).await;
         let (outcome, phase, error) = match result {
             Ok(Ok((result, moves, affected))) => {
                 let phase = phase(&result.actions);

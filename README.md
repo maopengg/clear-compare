@@ -62,7 +62,7 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 执行已预览的文件操作或回退时，可查看动作进度及读取/写入计数，并暂停、继续或取消。界面区分“等待安全暂停点”和“已暂停”；替换、删除前的最终校验及日志写入不会被暂停打断。恢复执行前会重新校验暂停期间可能变化的文件。
 
-“连接文件任务”可找回同一原生进程中仍在运行或尚未领取结果的任务，界面重新加载时也会自动尝试连接。该功能不等于程序重启后的自动续跑；重启后仍使用操作历史检查日志并回退。详细状态、结果领取与限制见 [任务说明](docs/operation-tasks.md)。
+“连接文件任务”可找回同一原生进程中仍在运行或尚未领取结果的任务，界面重新加载时也会自动尝试连接。程序重启后可在原操作历史选择“预览续跑”，核对已完成、待重试和临时文件保留动作，再继续原同步；也可预览回退。新操作保留原始意图及每次重试的独立备份，外部变更会阻止不安全续跑。旧日志没有续跑上下文时仍使用回退。见 [重启续跑说明](docs/operation-resume.md)。详细状态、结果领取与限制见 [任务说明](docs/operation-tasks.md)。
 
 ### HTML / CSV / TSV 表格
 
@@ -256,7 +256,7 @@ CLI `--apply` generates a fresh plan; it does not consume previously exported JS
 - Editor backups: app data `editor-backups/<id>/original.bin` and a digest/state `manifest.json`. Original encoding/BOM and uniform newline style are retained by default; explicit conversion is available. The editor can preview and undo its most recent save, backing up the current contents before restoring. CLI can reopen matching completed editor backups across process restarts; manually inspect unresolved merge markers before saving.
 - Scan: at most200,000 entries per root and500 rows per page. Search, difference filtering and sorting operate across the entire selected directory scope before pagination. Folder navigation uses opaque native IDs and breadcrumbs; optional recursion includes descendants. Directories remain before files in both ascending and descending sorts.
 - Desktop backups: app data directory, `backups/<plan-id>/files/`, with `journal.json`. CLI uses the selected backup base.
-- Recovery-journal resume/redo, editor-backup browsing, automatic crash resume, timestamp/ACL/xattr preservation and full encoding support are not implemented yet.
+- Reviewed forward restart of new sync journals is available from operation history or `resume-sync`; immutable intent, identity/content checks and per-attempt backups preserve the original rollback history. Startup does not automatically apply it. Recovery-journal resume/redo, editor-backup browsing, timestamp/ACL/xattr preservation and full encoding support remain planned. See [forward restart](docs/operation-resume.md).
 - Copy/deletion history is available from the desktop “Operation history” button after restart. Reviewed rollback restores overwritten/deleted files and removes only hash-matching created files, backing up current files before replacement/removal. Deleted paths must still be absent; restored files use no-clobber persistence. `running`/`failed` journal entries are reconciled against actual contents; conflicting changes block recovery.
 - Durable native paths are recorded for new sync journals. Older journals without these fields cannot be automatically recovered. Journals must stay with their original backup directory and on the originating operating system. Recovery journals are currently evidence/backups, not resumable redo plans.
 - Recovery reads at most 64 MiB of source journal JSON. Desktop history lists at most 2,000 backup-directory entries. Unicode backup-directory paths are required; supported native entry names are stored losslessly.

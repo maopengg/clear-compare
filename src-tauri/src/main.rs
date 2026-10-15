@@ -27,6 +27,7 @@ struct Backend {
     editor_backups: Mutex<BTreeMap<String, PathBuf>>,
     restore: Mutex<Option<(String, clear_core::editing::RestorePlan)>>,
     recovery: Mutex<Option<clear_core::recovery::Plan>>,
+    restart: Mutex<Option<clear_core::sync::resume::Plan>>,
     folder_merge: Mutex<Option<clear_core::folder_merge::Plan>>,
     latest_merge: Mutex<Option<(String, Option<String>)>>,
     merge_guards: Mutex<BTreeMap<String, std::collections::BTreeSet<String>>>,
@@ -1254,6 +1255,67 @@ fn valid_history_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 128 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
 }
 #[tauri::command]
+async fn preview_sync_resume(
+    history_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<ResumePreview, String> {
+    let _guard = state.begin()?;
+    *state.restart.lock().map_err(|_| "State unavailable")? = None;
+    if !valid_history_id(&history_id) {
+        return Err("Invalid history entry".into());
+    }
+    let base = data_dir(&app)?.join("backups");
+    let journal = clear_core::compare::checked_path(
+        &base,
+        &PathBuf::from(history_id).join("journal.json"),
+        false,
+    )
+    .map_err(|e| e.to_string())?;
+    let cancel = state.cancel.clone();
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        clear_core::sync::resume::preview(&journal, &cancel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let view = plan.view.clone();
+    *state.restart.lock().map_err(|_| "State unavailable")? = Some(plan);
+    Ok(view)
+}
+#[tauri::command]
+fn resume_page(
+    plan_id: String,
+    offset: usize,
+    state: State<'_, Arc<Backend>>,
+) -> Result<Vec<ResumeAction>, String> {
+    let cached = state.restart.lock().map_err(|_| "State unavailable")?;
+    let plan = cached
+        .as_ref()
+        .filter(|p| p.view.id == plan_id)
+        .ok_or("Resume preview expired")?;
+    Ok(plan.page(offset))
+}
+#[tauri::command]
+fn apply_sync_resume(
+    plan_id: String,
+    state: State<'_, Arc<Backend>>,
+) -> Result<TaskHandle, String> {
+    let guard = state.begin()?;
+    let plan = state
+        .restart
+        .lock()
+        .map_err(|_| "State unavailable")?
+        .take()
+        .ok_or("Preview a restart first")?;
+    if plan.view.id != plan_id {
+        return Err("Resume preview expired".into());
+    }
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    *state.recovery.lock().map_err(|_| "State unavailable")? = None;
+    operations::launch_resume(state.inner().clone(), guard, plan)
+}
+#[tauri::command]
 async fn preview_sync_recovery(
     history_id: String,
     app: tauri::AppHandle,
@@ -1446,6 +1508,9 @@ fn main() {
             apply_editor_restore,
             list_sync_history,
             preview_sync_recovery,
+            preview_sync_resume,
+            resume_page,
+            apply_sync_resume,
             apply_sync_recovery
         ])
         .run(tauri::generate_context!())

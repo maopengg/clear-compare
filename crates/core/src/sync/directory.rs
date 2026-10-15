@@ -14,7 +14,7 @@ pub(crate) struct Record {
     pub identity: DirectoryIdentity,
     pub permissions: FilePermissions,
 }
-fn identity(path: &Path, metadata: &fs::Metadata) -> Result<DirectoryIdentity> {
+pub(crate) fn identity(path: &Path, metadata: &fs::Metadata) -> Result<DirectoryIdentity> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -187,6 +187,7 @@ pub(super) fn execute(
 ) -> Result<()> {
     let _mutation = crate::task::mutation(cancel)?;
     crate::task::stage("directory_mutation");
+    super::durable::verify_restart(snapshot, plan, action)?;
     roots_unchanged(snapshot)?;
     let relative = snapshot
         .paths
@@ -224,7 +225,7 @@ pub(super) fn execute(
         flush_directory(parent)?;
         let record = observe(root, relative)?
             .ok_or_else(|| Error::Invalid("Created directory disappeared".into()))?;
-        record.write(Path::new(&plan.backup_root), relative, true)?;
+        record.write(&super::durable::action_root(plan, action)?, relative, true)?;
         // Cancellation after mkdir must not hide an applied action.
         if observe(root, relative)?.as_ref() != Some(&record) {
             return Err(Error::Invalid("Created directory identity changed".into()));
@@ -241,8 +242,8 @@ pub(super) fn execute(
             ));
         }
         empty(&path)?;
-        record.write(Path::new(&plan.backup_root), relative, false)?;
-        if Record::read(Path::new(&plan.backup_root), relative, false)? != record
+        record.write(&super::durable::action_root(plan, action)?, relative, false)?;
+        if Record::read(&super::durable::action_root(plan, action)?, relative, false)? != record
             || observe(root, relative)?.as_ref() != Some(&record)
         {
             return Err(Error::Invalid(

@@ -37,6 +37,7 @@ pub struct Plan {
     target: PathBuf,
     original_root: PathBuf,
     actions: Vec<Action>,
+    source_digest: String,
 }
 fn current(path: &Path, cancel: &AtomicBool) -> Result<Option<String>> {
     match fs::symlink_metadata(path) {
@@ -69,6 +70,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
     if bytes.len() as u64 > MAX_JOURNAL {
         return Err(Error::Invalid("Journal exceeds 64 MiB".into()));
     }
+    let source_digest = crate::sync::durable::digest(&bytes);
     let report: SyncResult = serde_json::from_slice(&bytes)?;
     validate_plan_metadata(&report.plan)?;
     if report.actions.len() != report.plan.actions.len() {
@@ -89,6 +91,34 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         ));
     }
     reject_overlap(old_root, &target)?;
+    let lock_path = checked_path(old_root, Path::new("operation.lock"), true)?;
+    let _operation_lock = if lock_path.exists() {
+        Some(crate::sync::durable::lock(old_root, false)?)
+    } else {
+        None
+    };
+    let (_, locked_hash): (SyncResult, String) = crate::sync::durable::read(&source, MAX_JOURNAL)?;
+    if locked_hash != source_digest {
+        return Err(Error::Invalid(
+            "Operation journal changed while preparing recovery".into(),
+        ));
+    }
+    let context = if let Some(expected) = &report.intent_digest {
+        let (intent, hash): (crate::sync::durable::Intent, String) = crate::sync::durable::read(
+            &checked_path(old_root, Path::new("intent.json"), false)?,
+            crate::sync::durable::MAX_INTENT,
+        )?;
+        if &hash != expected
+            || !crate::sync::durable::intent_matches(&report.plan, &intent.plan)
+            || intent.pins.len() != report.plan.actions.len()
+        {
+            return Err(Error::Invalid("Recovery restart intent changed".into()));
+        }
+        Some(intent)
+    } else {
+        None
+    };
+
     let base = fs::canonicalize(backup_base)?;
     reject_overlap(&base, &target)?;
     if base.to_str().is_none() {
@@ -99,7 +129,9 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
     let mut actions = Vec::new();
     let mut labels = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
-    for (copied, state) in report.plan.actions.iter().zip(&report.actions) {
+    for (action_index, (copied, state)) in
+        report.plan.actions.iter().zip(&report.actions).enumerate()
+    {
         check_cancel(cancel)?;
         if copied.operation != clear_contracts::FileOperation::RemoveDirectory
             && copied.target_existed != copied.target_digest.is_some()
@@ -135,6 +167,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         if !seen.insert(relative.clone()) {
             return Err(Error::Invalid("Duplicate journal target".into()));
         }
+        let artifact_root = crate::sync::durable::action_root(&report.plan, copied)?;
         let label = crate::tree::display_path(&relative);
         if matches!(
             copied.operation,
@@ -142,7 +175,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
                 | clear_contracts::FileOperation::RemoveDirectory
         ) {
             if let Some(undo) =
-                directory::preview(&target, old_root, copied, &relative, &state.state)?
+                directory::preview(&target, &artifact_root, copied, &relative, &state.state)?
             {
                 labels.push(RecoveryAction {
                     path: label,
@@ -155,7 +188,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         if copied.operation == clear_contracts::FileOperation::Rename {
             if let Some(undo) = rename::preview(
                 &target,
-                old_root,
+                &artifact_root,
                 &report.plan,
                 copied,
                 &state.state,
@@ -189,15 +222,26 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
                 label
             )));
         }
+        let original_permissions = copied.target_permissions.clone().or_else(|| {
+            context
+                .as_ref()
+                .and_then(|c| c.pins.get(action_index))
+                .and_then(|p| p.target.as_ref())
+                .map(|p| p.permissions.clone())
+        });
         let original_backup = if let Some(expected) = &copied.target_digest {
-            let backup = checked_path(old_root, &PathBuf::from("files").join(&relative), false)?;
+            let backup = checked_path(
+                &artifact_root,
+                &PathBuf::from("files").join(&relative),
+                false,
+            )?;
             if hash_file(&backup, cancel)? != *expected {
                 return Err(Error::Invalid(format!(
                     "Original backup changed: {}",
                     label
                 )));
             }
-            if let Some(expected) = &copied.target_permissions
+            if let Some(expected) = &original_permissions
                 && permissions(&fs::symlink_metadata(&backup)?) != *expected
             {
                 return Err(Error::Invalid("Original backup permissions changed".into()));
@@ -220,7 +264,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         actions.push(Action::File(FileUndo {
             relative,
             current_digest: expected_current,
-            original_permissions: copied.target_permissions.clone(),
+            original_permissions,
             original_digest: copied.target_digest.clone(),
             original_backup,
         }));
@@ -246,6 +290,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         },
         target,
         original_root: old_root.to_path_buf(),
+        source_digest,
         actions,
     })
 }
@@ -320,7 +365,9 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
         root_valid(&plan.original_root)?;
         checked_path(
             &plan.original_root,
-            &PathBuf::from("files").join(&action.relative),
+            original
+                .strip_prefix(&plan.original_root)
+                .map_err(|_| Error::Invalid("Original backup escaped its root".into()))?,
             false,
         )?;
         if Some(hash_file(original, cancel)?) != action.original_digest {
@@ -376,7 +423,9 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
         root_valid(&plan.original_root)?;
         checked_path(
             &plan.original_root,
-            &PathBuf::from("files").join(&action.relative),
+            original
+                .strip_prefix(&plan.original_root)
+                .map_err(|_| Error::Invalid("Original backup escaped its root".into()))?,
             false,
         )?;
         if Some(hash_file(original, cancel)?) != action.original_digest {
@@ -408,6 +457,20 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
     Ok(())
 }
 pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
+    let lock_path = checked_path(&plan.original_root, Path::new("operation.lock"), true)?;
+    let _operation_lock = if lock_path.exists() {
+        Some(crate::sync::durable::lock(&plan.original_root, false)?)
+    } else {
+        None
+    };
+    let (_, hash): (SyncResult, String) =
+        crate::sync::durable::read(Path::new(&plan.view.source_journal), MAX_JOURNAL)?;
+    if hash != plan.source_digest {
+        return Err(Error::Invalid(
+            "Operation journal changed after recovery preview".into(),
+        ));
+    }
+
     let setup = crate::task::validated_mutation(cancel, || {
         root_valid(&plan.target)?;
         directory::validate_cleanup(&plan.target, &plan.actions, cancel)

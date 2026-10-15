@@ -70,6 +70,8 @@ fn size(entry: Option<&Entry>) -> String {
 #[component]
 fn App() -> impl IntoView {
     let operation_progress = RwSignal::new(None::<TaskProgress>);
+    let restart = RwSignal::new(None::<ResumePreview>);
+    let restart_offset = RwSignal::new(0usize);
     let git_visible = RwSignal::new(false);
     let archive_visible = RwSignal::new(false);
     let folder_merge_visible = RwSignal::new(false);
@@ -1014,6 +1016,81 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let preview_restart = move |id: String| {
+        busy.set(true);
+        error.set(String::new());
+        restart.set(None);
+        recovery.set(None);
+        restart_offset.set(0);
+        spawn_local(async move {
+            match invoke::<ResumePreview>(
+                "preview_sync_resume",
+                serde_json::json!({"historyId":id}),
+            )
+            .await
+            {
+                Ok(p) => restart.set(Some(p)),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let page_restart = move |next: bool| {
+        let Some(p) = restart.get_untracked() else {
+            return;
+        };
+        let offset = if next {
+            restart_offset.get_untracked().saturating_add(500)
+        } else {
+            restart_offset.get_untracked().saturating_sub(500)
+        };
+        busy.set(true);
+        spawn_local(async move {
+            match invoke::<Vec<ResumeAction>>(
+                "resume_page",
+                serde_json::json!({"planId":p.id,"offset":offset}),
+            )
+            .await
+            {
+                Ok(rows) => {
+                    restart.update(|value| {
+                        if let Some(v) = value
+                            && v.id == p.id
+                        {
+                            v.actions = rows;
+                        }
+                    });
+                    restart_offset.set(offset);
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let apply_restart = move || {
+        let Some(p) = restart.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match operations::run::<FileApplyReply>(
+                "apply_sync_resume",
+                serde_json::json!({"planId":p.id}),
+                operation_progress,
+            )
+            .await
+            {
+                Ok(reply) => complete_file(reply),
+                Err(e) => {
+                    error.set(e);
+                    reset();
+                }
+            }
+            restart.set(None);
+            busy.set(false);
+        });
+    };
     let reconnect_operation = move || {
         if busy.get_untracked() {
             return;
@@ -1276,7 +1353,8 @@ fn App() -> impl IntoView {
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id, comparison, error}, open_binary)}
             {panels::merge::panel(english,busy,panels::merge::Signals{merge_visible, merge_base, merge_left, merge_right, merge_result, editor, draft, saved_text, error},load_merge)}
             {panels::editor::panel(english,busy,panels::editor::Signals{editor, draft, saved_text, text_history, merge_tokens, error, format_encoding, format_ending, format_bom, can_restore}, close_editor, save_editor, preview_restore,change_draft)}
-            {panels::history::panel(english,busy,history,recovery,preview_recovery,apply_recovery)}
+            {panels::resume::panel(english,busy,restart,restart_offset,page_restart,apply_restart)}
+            {panels::history::panel(english,busy,history,recovery,preview_recovery,apply_recovery,preview_restart)}
             <Show when=move ||restore_preview.get().is_some()><div class="modal-backdrop"><section class="sync-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-title"><h2 id="restore-title">{move ||tr(english.get(),"检查恢复计划","Review restore plan")}</h2><p>{move ||tr(english.get(),"恢复上次保存前的原始字节。恢复前的当前内容也会备份；文件若发生外部修改，恢复将被阻止。","Restore the original bytes from before the last save. Current contents are backed up first; external changes block restoration.")}</p><p class="backup-path">{move ||restore_preview.get().map(|p|format!("{} ← {} · {} bytes",p.target,p.backup,p.bytes))}</p><footer><button class="quiet" disabled=move ||busy.get() on:click=move |_|restore_preview.set(None)>{move ||tr(english.get(),"返回","Back")}</button><button class="primary" disabled=move ||busy.get() on:click=move |_|apply_restore()>{move ||tr(english.get(),"执行已预览的恢复","Execute reviewed restore")}</button></footer></section></div></Show>
             {panels::file_plan::panel(english,busy,plan,comparison,apply)}
             <footer class="statusbar"><span>{move || tr(english.get(),"UTF-8 / UTF-16 预览 · 不跟随符号链接 · 不自动删除","UTF-8 / UTF-16 preview · Links not followed · No automatic deletion")}</span><span>"Clear Compare · MIT"</span></footer>

@@ -59,6 +59,9 @@ fn main() {
             "apply_editor_restore",
             "list_sync_history",
             "preview_sync_recovery",
+            "preview_sync_resume",
+            "resume_page",
+            "apply_sync_resume",
             "apply_sync_recovery",
         ]),
     ))
