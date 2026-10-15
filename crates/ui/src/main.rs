@@ -257,6 +257,10 @@ fn App() -> impl IntoView {
                     .parse::<usize>()
                     .map(|table| TableSource::Html { table })
                     .map_err(|_| "HTML table index must be a nonnegative integer".into()),
+                "xlsx" => index
+                    .parse::<usize>()
+                    .map(|sheet| TableSource::Xlsx { sheet })
+                    .map_err(|_| "Worksheet index must be a nonnegative integer".into()),
                 "delimited" => Ok(TableSource::Delimited),
                 "csv" => Ok(TableSource::Csv),
                 "tsv" => Ok(TableSource::Tsv),

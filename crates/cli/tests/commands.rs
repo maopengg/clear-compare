@@ -1240,3 +1240,61 @@ fn resume_cli_previews_reconciles_and_preserves_the_original_history_for_rollbac
     );
     assert_eq!(fs::read(r.join("a")).unwrap(), b"target");
 }
+
+#[path = "../../core/tests/support/xlsx_fixture.rs"]
+mod xlsx_fixture;
+#[test]
+fn excel_cli_lists_worksheets_compares_saved_values_and_rejects_invalid_sheet_selection() {
+    let t = tempfile::tempdir().unwrap();
+    let left = t.path().join("a.xlsx");
+    let right = t.path().join("b.csv");
+    fs::write(
+        &left,
+        xlsx_fixture::workbook(xlsx_fixture::DATA, xlsx_fixture::STRINGS),
+    )
+    .unwrap();
+    fs::write(&right, "id,value\na,1.000\nb,2\n").unwrap();
+    let list = run(&[
+        "table".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--list-tables".as_ref(),
+    ]);
+    assert_eq!(
+        list.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&list.stderr)
+    );
+    let catalog: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
+    assert_eq!(catalog["left_sheets"][1]["name"], "Hidden");
+    assert_eq!(catalog["left_sheets"][1]["hidden"], true);
+    let compared = run(&[
+        "table".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--left-sheet".as_ref(),
+        "0".as_ref(),
+        "--key-column".as_ref(),
+        "0".as_ref(),
+        "--numeric-tolerance".as_ref(),
+        "0.01".as_ref(),
+    ]);
+    assert_eq!(
+        compared.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&compared.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&compared.stdout).unwrap();
+    assert_eq!(json["summary"]["same"], 2);
+    let invalid = run(&[
+        "table".as_ref(),
+        left.as_os_str(),
+        right.as_os_str(),
+        "--left-sheet".as_ref(),
+        "64".as_ref(),
+    ]);
+    assert_eq!(invalid.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("worksheet index"));
+}

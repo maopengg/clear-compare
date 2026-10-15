@@ -21,6 +21,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | async-trait | 0.1.92 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/async-trait/0.1.92) |
 | atk | 0.18.2 | MIT | [crate](https://crates.io/crates/atk/0.18.2) |
 | atk-sys | 0.18.2 | MIT | [crate](https://crates.io/crates/atk-sys/0.18.2) |
+| atoi_simd | 0.18.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/atoi_simd/0.18.1) |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/atomic-waker/1.1.2) |
 | attribute-derive | 0.11.0 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/attribute-derive/0.11.0) |
 | attribute-derive-macro | 0.11.0 | MIT | [crate](https://crates.io/crates/attribute-derive-macro/0.11.0) |
@@ -46,6 +47,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | bytes | 1.12.1 | MIT | [crate](https://crates.io/crates/bytes/1.12.1) |
 | cairo-rs | 0.18.5 | MIT | [crate](https://crates.io/crates/cairo-rs/0.18.5) |
 | cairo-sys-rs | 0.18.2 | MIT | [crate](https://crates.io/crates/cairo-sys-rs/0.18.2) |
+| calamine | 0.36.1 | MIT | [crate](https://crates.io/crates/calamine/0.36.1) |
 | camino | 1.2.6 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/camino/1.2.6) |
 | cargo-platform | 0.1.9 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/cargo-platform/0.1.9) |
 | cargo_metadata | 0.19.2 | MIT | [crate](https://crates.io/crates/cargo_metadata/0.19.2) |
@@ -62,6 +64,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | clap_derive | 4.6.7 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/clap_derive/4.6.7) |
 | clap_lex | 1.1.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/clap_lex/1.1.1) |
 | codee | 0.3.5 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/codee/0.3.5) |
+| codepage | 0.1.3 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/codepage/0.1.3) |
 | collection_literals | 1.0.3 | MIT | [crate](https://crates.io/crates/collection_literals/1.0.3) |
 | colorchoice | 1.0.5 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/colorchoice/1.0.5) |
 | combine | 4.6.8 | MIT | [crate](https://crates.io/crates/combine/4.6.8) |
@@ -79,6 +82,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | core-foundation-sys | 0.8.7 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/core-foundation-sys/0.8.7) |
 | core-graphics | 0.25.0 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/core-graphics/0.25.0) |
 | core-graphics-types | 0.2.0 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/core-graphics-types/0.2.0) |
+| core_detect | 1.0.0 | MIT/Apache-2.0 | [crate](https://crates.io/crates/core_detect/1.0.0) |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/cpufeatures/0.2.17) |
 | crc32fast | 1.5.2 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/crc32fast/1.5.2) |
 | crossbeam-channel | 0.5.17 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/crossbeam-channel/0.5.17) |
@@ -91,6 +95,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | darling_core | 0.24.1 | MIT | [crate](https://crates.io/crates/darling_core/0.24.1) |
 | darling_macro | 0.24.1 | MIT | [crate](https://crates.io/crates/darling_macro/0.24.1) |
 | dbus | 0.9.12 | Apache-2.0/MIT | [crate](https://crates.io/crates/dbus/0.9.12) |
+| debug_unsafe | 0.1.4 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/debug_unsafe/0.1.4) |
 | defmt | 1.1.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/defmt/1.1.1) |
 | defmt-macros | 1.1.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/defmt-macros/1.1.1) |
 | defmt-parser | 1.0.0 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/defmt-parser/1.0.0) |
@@ -117,12 +122,14 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | either_of | 0.1.9 | MIT | [crate](https://crates.io/crates/either_of/0.1.9) |
 | embed-resource | 3.0.12 | MIT | [crate](https://crates.io/crates/embed-resource/3.0.12) |
 | embed_plist | 1.2.2 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/embed_plist/1.2.2) |
+| encoding_rs | 0.8.42 | (Apache-2.0 OR MIT) AND BSD-3-Clause | [crate](https://crates.io/crates/encoding_rs/0.8.42) |
 | equivalent | 1.0.3 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/equivalent/1.0.3) |
 | erased | 0.1.2 | MIT | [crate](https://crates.io/crates/erased/0.1.2) |
 | erased-serde | 0.4.10 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/erased-serde/0.4.10) |
 | errno | 0.3.14 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/errno/0.3.14) |
 | event-listener | 5.4.2 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/event-listener/5.4.2) |
 | event-listener-strategy | 0.5.4 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/event-listener-strategy/0.5.4) |
+| fast-float2 | 0.2.4 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/fast-float2/0.2.4) |
 | fastrand | 2.5.0 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/fastrand/2.5.0) |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/fdeflate/0.3.7) |
 | field-offset | 0.3.6 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/field-offset/0.3.6) |
@@ -248,6 +255,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | mio | 1.2.4 | MIT | [crate](https://crates.io/crates/mio/1.2.4) |
 | moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 | [crate](https://crates.io/crates/moxcms/0.8.1) |
 | muda | 0.20.0 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/muda/0.20.0) |
+| multiversion_no_op | 1.0.0 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/multiversion_no_op/1.0.0) |
 | ndk | 0.9.0 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/ndk/0.9.0) |
 | ndk-context | 0.1.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/ndk-context/0.1.1) |
 | ndk-sys | 0.6.0+11769913 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/ndk-sys/0.6.0+11769913) |
@@ -316,6 +324,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | proc-macro2-diagnostics | 0.11.0 | MIT/Apache-2.0 | [crate](https://crates.io/crates/proc-macro2-diagnostics/0.11.0) |
 | pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 | [crate](https://crates.io/crates/pxfm/0.1.30) |
 | quick-error | 2.0.1 | MIT/Apache-2.0 | [crate](https://crates.io/crates/quick-error/2.0.1) |
+| quick-xml | 0.41.0 | MIT | [crate](https://crates.io/crates/quick-xml/0.41.0) |
 | quick-xml | 0.42.0 | MIT | [crate](https://crates.io/crates/quick-xml/0.42.0) |
 | quote | 1.0.47 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/quote/1.0.47) |
 | quote-use | 0.9.0 | MIT | [crate](https://crates.io/crates/quote-use/0.9.0) |
@@ -373,6 +382,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | sha2 | 0.10.9 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/sha2/0.10.9) |
 | shlex | 2.0.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/shlex/2.0.1) |
 | simd-adler32 | 0.3.10 | MIT | [crate](https://crates.io/crates/simd-adler32/0.3.10) |
+| simdutf8 | 0.1.5 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/simdutf8/0.1.5) |
 | similar | 2.7.0 | Apache-2.0 | [crate](https://crates.io/crates/similar/2.7.0) |
 | siphasher | 1.0.4 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/siphasher/1.0.4) |
 | slab | 0.4.12 | MIT | [crate](https://crates.io/crates/slab/0.4.12) |
@@ -530,8 +540,10 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | zerotrie | 0.2.5 | Unicode-3.0 | [crate](https://crates.io/crates/zerotrie/0.2.5) |
 | zerovec | 0.11.8 | Unicode-3.0 | [crate](https://crates.io/crates/zerovec/0.11.8) |
 | zerovec-derive | 0.11.6 | Unicode-3.0 | [crate](https://crates.io/crates/zerovec-derive/0.11.6) |
+| zip | 8.6.0 | MIT | [crate](https://crates.io/crates/zip/8.6.0) |
 | zip | 9.0.3 | MIT | [crate](https://crates.io/crates/zip/9.0.3) |
 | zlib-rs | 0.6.8 | Zlib | [crate](https://crates.io/crates/zlib-rs/0.6.8) |
 | zmij | 1.0.23 | MIT | [crate](https://crates.io/crates/zmij/1.0.23) |
+| zopfli | 0.8.4 | Apache-2.0 | [crate](https://crates.io/crates/zopfli/0.8.4) |
 | zune-core | 0.5.3 | MIT OR Apache-2.0 OR Zlib | [crate](https://crates.io/crates/zune-core/0.5.3) |
 | zune-jpeg | 0.5.15 | MIT OR Apache-2.0 OR Zlib | [crate](https://crates.io/crates/zune-jpeg/0.5.15) |

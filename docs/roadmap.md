@@ -265,3 +265,10 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Copy work files are registered by native identity before data writes. A reviewed restart retains verified partial bytes before removing only owned temporary files. Identical-byte foreign replacements and unregistered lookalikes are rejected/preserved.
 - Added CLI `resume-sync`, three validated desktop commands, cached opaque preview IDs and bilingual paged history review integrated with live task progress/pause/cancel. Updated current feature matrix and detailed restart contract. Backend/core tests include an actual killed child process and rollback through the original history; packaged-client runtime/install acceptance is still deferred.
 - Baseline-aware bidirectional policies, recovery resume/redo, folder-merge resume, full metadata and remaining plan modules are still required for final completion. Historical entries above describe scope at their original milestones; the feature matrix is current.
+
+## Excel OOXML worksheet comparison
+
+- Added pinned calamine/quick-xml dependencies, package/XML allocation preflight and streaming cached-value extraction. No dense range is allocated from untrusted dimensions; raw/expanded bytes, coordinates, XML hints and text are bounded.
+- Native documents freeze bytes with folder digest pins. Worksheet catalogs expose names, zero-based selection and hidden status; row/column alignment, keys, tolerance and paging reuse the table engine.
+- Added desktop selectors/catalogs, CLI --left-sheet/--right-sheet, bilingual help and documented value/date/formula-cache policies. Missing caches, cell errors and malformed/oversized inputs reject comparison. Formula evaluation, display formatting, legacy formats and editing remain planned.
+- Tests cover strings, boolean/sparse grids, shared formula caches, 1900/1904 dates, cross-format keys/tolerance, source freezing/digest expiry, CLI and resource/error boundaries. Runtime/install acceptance remains deferred.

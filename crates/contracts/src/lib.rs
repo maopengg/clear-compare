@@ -737,6 +737,9 @@ pub enum TableSource {
     Html {
         table: usize,
     },
+    Xlsx {
+        sheet: usize,
+    },
 }
 impl Default for TableOptions {
     fn default() -> Self {
@@ -760,6 +763,14 @@ pub struct HtmlTableInfo {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableDocumentInfo {
+    #[serde(default)]
+    pub left_xlsx: bool,
+    #[serde(default)]
+    pub right_xlsx: bool,
+    #[serde(default)]
+    pub left_sheets: Vec<WorksheetInfo>,
+    #[serde(default)]
+    pub right_sheets: Vec<WorksheetInfo>,
     pub left_tsv: bool,
     pub right_tsv: bool,
     pub left_tables: Vec<HtmlTableInfo>,
@@ -868,4 +879,11 @@ pub enum OperationOutcome {
     File(FileApplyReply),
     Recovery(RecoveryApplyReply),
     Error(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorksheetInfo {
+    pub index: usize,
+    pub name: String,
+    pub hidden: bool,
 }

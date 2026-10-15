@@ -267,6 +267,11 @@ enum Command {
         left_html: Option<usize>,
         #[arg(long)]
         right_html: Option<usize>,
+        /// Zero-based OOXML worksheet index (cached cell values only).
+        #[arg(long, conflicts_with_all = ["left_html", "html", "delimited"])]
+        left_sheet: Option<usize>,
+        #[arg(long, conflicts_with_all = ["right_html", "html", "delimited"])]
+        right_sheet: Option<usize>,
         #[arg(long)]
         no_headers: bool,
         /// Match exact header names; key_column uses the left-then-right-only logical order.
@@ -944,6 +949,8 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             list_tables,
             left_html,
             right_html,
+            left_sheet,
+            right_sheet,
             no_headers,
             align_columns_by_name,
             key_column,
@@ -952,7 +959,10 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             let cancel = std::sync::atomic::AtomicBool::new(false);
             let document =
                 clear_core::table::document::Document::from_paths(&left, &right, &cancel)?;
-            let source = |selected: Option<usize>| {
+            let source = |selected: Option<usize>, sheet: Option<usize>| {
+                if let Some(sheet) = sheet {
+                    return clear_contracts::TableSource::Xlsx { sheet };
+                }
                 selected
                     .or(if html { Some(0) } else { None })
                     .map(|table| clear_contracts::TableSource::Html { table })
@@ -964,14 +974,20 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             };
             if list_tables {
                 let info = document.inspect(
-                    matches!(source(left_html), clear_contracts::TableSource::Html { .. })
-                        || (matches!(source(left_html), clear_contracts::TableSource::Auto)
-                            && document.info.left_html),
                     matches!(
-                        source(right_html),
+                        source(left_html, left_sheet),
                         clear_contracts::TableSource::Html { .. }
-                    ) || (matches!(source(right_html), clear_contracts::TableSource::Auto)
-                        && document.info.right_html),
+                    ) || (matches!(
+                        source(left_html, left_sheet),
+                        clear_contracts::TableSource::Auto
+                    ) && document.info.left_html),
+                    matches!(
+                        source(right_html, right_sheet),
+                        clear_contracts::TableSource::Html { .. }
+                    ) || (matches!(
+                        source(right_html, right_sheet),
+                        clear_contracts::TableSource::Auto
+                    ) && document.info.right_html),
                     &cancel,
                 )?;
                 println!("{}", serde_json::to_string_pretty(&info)?);
@@ -983,8 +999,8 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             }
             let result = document.compare(
                 &clear_contracts::TableOptions {
-                    left_source: source(left_html),
-                    right_source: source(right_html),
+                    left_source: source(left_html, left_sheet),
+                    right_source: source(right_html, right_sheet),
                     delimiter: if tsv { "\t" } else { "," }.into(),
                     headers: !no_headers,
                     align_columns_by_name,

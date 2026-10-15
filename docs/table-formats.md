@@ -4,11 +4,11 @@ Table comparison is read-only and compares extracted string values, not source b
 
 ## Inputs and native documents
 
-Files are bounded at 4 MiB raw bytes and decoded as UTF-8 or BOM-marked UTF-16 using the common editor decoder. HTML has an additional 1 MiB decoded limit. Other declared HTML character sets are not auto-decoded.
+Files are bounded at 4 MiB raw bytes. Text inputs use the UTF-8/BOM-marked UTF-16 decoder; OOXML workbooks remain binary. HTML has an additional 1 MiB decoded limit. Other declared HTML character sets are not auto-decoded.
 
-The desktop captures both source texts in one native document identified by an opaque ID. A verified folder comparison pins the original file digests; opening a changed file fails and requires another folder comparison. Metadata-only folder scans capture current text without claiming historical content verification. Later table option changes/listing reuse captured text. Reopening refreshes; close/new folder comparison invalidates the document. There is no persisted table workspace or editing.
+The desktop captures both source byte buffers in one native document identified by an opaque ID. A verified folder comparison pins the original file digests; opening a changed file fails and requires another folder comparison. Metadata-only folder scans capture current bytes without claiming historical content verification. Later table option changes/listing reuse captured bytes. Reopening refreshes; close/new folder comparison invalidates the document. There is no persisted table workspace or editing.
 
-Auto format uses `.html`/`.htm` for HTML, `.tsv` for TSV and otherwise CSV. Explicit per-side CSV, TSV or HTML choices override it. The legacy delimited source uses `TableOptions.delimiter`. Direct string comparison has no filename hints and retains that delimiter default for `auto`.
+Auto format recognizes `.xlsx`/`.xlsm`/`.xltx`/`.xltm` and ZIP-signature inputs as OOXML workbooks, `.html`/`.htm` for HTML, `.tsv` for TSV and otherwise CSV. Explicit per-side CSV, TSV, HTML or Excel choices override it. The legacy delimited source uses `TableOptions.delimiter`. Direct string comparison has no filename hints and retains that delimiter default for `auto`.
 
 ## HTML extraction
 
@@ -32,7 +32,7 @@ A budget failure is an error, not equality. The native single-document/result ca
 
 ## Matching and CLI
 
-Rows match by position or one zero-based key column. Duplicate/missing key columns are errors, including repeated keys introduced by rowspans. Numeric tolerance is optional finite, nonnegative absolute f64 tolerance; all other cells are exact strings. Multi-column keys, arbitrary renamed-column mappings, Excel and table editing remain planned. Formula expressions are not evaluated.
+Rows match by position or one zero-based key column. Duplicate/missing key columns are errors, including repeated keys introduced by rowspans. Numeric tolerance is optional finite, nonnegative absolute f64 tolerance; all other cells are exact strings. Multi-column keys, arbitrary renamed-column mappings, legacy Excel formats and table editing remain planned. Formula expressions are not evaluated.
 
 Columns match positionally by default. Enable **Align by header name** / `--align-columns-by-name` to match exact header strings independently of physical order. This requires headers, unique nonblank names on each side, and no data row wider than its header. Names are case-sensitive, without trimming or Unicode normalization; whitespace-only names are rejected. HTML uses the already-extracted static header text. The aligned union follows left header order, then right-only names in right order, with a maximum of 1024 logical columns.
 
@@ -51,4 +51,24 @@ The UI displays both sides in logical order with numbered headers and source-col
 - `--align-columns-by-name`: exact named-column alignment; conflicts with `--no-headers`.
 - `--key-column`, `--numeric-tolerance`, `--no-headers`: row/cell policies; name mode uses the logical key index.
 
-Column totals are computed over the entire result before row paging. The result records effective TableOptions, including resolved CSV/TSV/HTML formats and selected HTML indices. Comparison exit codes remain 0 equal, 1 different (including headers), 2 invalid/unreadable/unsupported input. A regular empty HTML file has no selectable table and cannot be silently treated as equal to another empty HTML input. A missing side in a folder snapshot is explicitly an empty side, not an empty existing HTML file.
+Column totals are computed over the entire result before row paging. The result records effective TableOptions, including resolved CSV/TSV/HTML/OOXML formats and selected table/worksheet indices. Comparison exit codes remain 0 equal, 1 different (including headers), 2 invalid/unreadable/unsupported input. A regular empty HTML file has no selectable table and cannot be silently treated as equal to another empty HTML input. A missing side in a folder snapshot is explicitly an empty side, not an empty existing HTML file.
+
+## Excel OOXML worksheets
+
+XLSX/XLSM/XLTX/XLTM use the pinned calamine reader, with an application package preflight and [streaming cell metadata API](https://docs.rs/calamine/0.36.1/calamine/struct.XlsxCellReader.html). No dense library Range is created from declared dimensions. Catalogs accept at most 64 workbook sheets and expose only worksheets with zero-based indices, original names and hidden status. Hidden worksheets may be selected. Chart, macro and dialog sheets are not data worksheets. Macros, external resources, queries and formula evaluation are never executed. Legacy XLS, XLSB, encrypted workbooks and ODS remain unsupported.
+
+Only saved literal/cached values are compared. Ordinary and shared formulas use saved cached results without shared-formula expansion. Missing caches and Excel cell errors return errors rather than equal/empty values. Caches may be stale; recalculate/save in an appropriate spreadsheet application when freshness matters. Formula-text changes with identical cached values do not produce a difference under this policy. Selected workbook sides contribute explicit cached-value/format-limit notes.
+
+Shared/inline strings, including rich-text runs, become text; OOXML xml:space preservation applies. Booleans become TRUE/FALSE, finite numbers use their numeric value's shortest round-trip string form. Currency/percentage formatting, styles, charts, filters and merged-cell expansion are not compared. Recognized dates normalize through the workbook's 1900/1904 date system to YYYY-MM-DDTHH:MM:SS.mmm without a timezone. Elapsed-time formats use duration-days:VALUE; ISO date/duration strings remain stored strings. Nonfinite numbers and date serials outside 0 to 2,958,465 are rejected. Cell types are compared as extracted strings: text can equal a numeric/boolean cell with the same spelling. Numeric tolerance applies to finite numeric strings, not ISO dates or prefixed durations.
+
+The selected grid is anchored at A1 through the last explicit nonempty or empty-string value. Leading/interior absent cells become empty strings in a rectangular worksheet; purely empty styled cells are skipped. Unused rows/columns are not synthesized from dimensions. Duplicate coordinates, more than 30,000 rows, 1,024 columns, 200,000 visited/expanded cells or 8 MiB extracted text are errors. Sparse cells outside these bounds are rejected before result allocation. Excel does not expose distinct missing-vs-empty source-cell provenance; missing sides and columns remain separate.
+
+Package preflight accepts at most 512 parts, 8 MiB per expanded part and 32 MiB total expanded bytes, validates decompressed lengths/CRC, rejects case-insensitive duplicate/traversal names and encrypted parts, and bounds XML to depth 64 and one million elements. XML must be UTF-8; DTDs are rejected. Worksheet relationships must target internal XML parts so allocation-hint validation cannot be bypassed through binary part names. Shared-string uniqueCount and shared-formula indices are bounded before library allocation. The reader then streams selected cells under application grid/text budgets. Native source bytes remain frozen; changing rules does not reread files. Content-verified folder opening pins the raw workbook hash.
+
+```sh
+clear-compare table ./left.xlsx ./right.csv --list-tables
+clear-compare table ./left.xlsx ./right.xlsx --left-sheet 0 --right-sheet 1 --key-column 0
+clear-compare table ./left.xlsx ./right.csv --left-sheet 0 --align-columns-by-name --key-column 0 --numeric-tolerance 0.01
+```
+
+Sheet arguments conflict with HTML/delimited selection for that side. Effective source options and selected-sheet notes are in comparison JSON; worksheet catalogs are in document/list responses. Existing exit codes remain zero for equal extracted values, one for differences including header structure, and two for errors. Core/CLI tests cover catalogs/selections, shared/inline/rich strings, formulas, date systems, sparse grids, cross-format alignment, frozen/digest-checked sources and resource/error boundaries. Packaged-client interaction/install acceptance remains deferred.

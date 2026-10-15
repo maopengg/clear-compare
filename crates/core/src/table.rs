@@ -1,6 +1,7 @@
 //! Strict RFC-style delimited text parsing and explicit row/key comparison.
 pub mod document;
 pub mod html;
+pub mod xlsx;
 use crate::{Error, Result, editing::MAX_DOCUMENT_BYTES};
 use clear_contracts::{Status, Summary, TableComparison, TableOptions, TableRow};
 use std::collections::BTreeMap;
@@ -125,24 +126,7 @@ pub fn compare_optional(
     options: &TableOptions,
     cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<TableComparison> {
-    let delimiter = match options.delimiter.as_str() {
-        "," => ',',
-        "\t" => '\t',
-        _ => return Err(Error::Invalid("Use comma or tab delimiter".into())),
-    };
-    let tolerance = options
-        .numeric_tolerance
-        .as_ref()
-        .map(|v| {
-            v.parse::<f64>()
-                .map_err(|_| Error::Invalid("Invalid numeric tolerance".into()))
-        })
-        .transpose()?;
-    if tolerance.is_some_and(|n| !n.is_finite() || n < 0.) {
-        return Err(Error::Invalid(
-            "Numeric tolerance must be finite and nonnegative".into(),
-        ));
-    }
+    let (delimiter, tolerance) = validated_options(options)?;
     let (l, left_tables) = input(left, &options.left_source, delimiter, cancel)?;
     let (r, right_tables) = input(right, &options.right_source, delimiter, cancel)?;
     let warnings = if matches!(
@@ -164,6 +148,27 @@ pub fn compare_optional(
         tolerance,
         cancel,
     )
+}
+fn validated_options(options: &TableOptions) -> Result<(char, Option<f64>)> {
+    let delimiter = match options.delimiter.as_str() {
+        "," => ',',
+        "\t" => '\t',
+        _ => return Err(Error::Invalid("Use comma or tab delimiter".into())),
+    };
+    let tolerance = options
+        .numeric_tolerance
+        .as_ref()
+        .map(|v| {
+            v.parse::<f64>()
+                .map_err(|_| Error::Invalid("Invalid numeric tolerance".into()))
+        })
+        .transpose()?;
+    if tolerance.is_some_and(|n| !n.is_finite() || n < 0.) {
+        return Err(Error::Invalid(
+            "Numeric tolerance must be finite and nonnegative".into(),
+        ));
+    }
+    Ok((delimiter, tolerance))
 }
 fn named_columns(
     left: &[String],
@@ -382,6 +387,9 @@ fn input(
             let doc = html::Document::parse(text, cancel)?;
             Ok((doc.selected(*table, cancel)?, doc.tables))
         }
+        clear_contracts::TableSource::Xlsx { .. } => Err(Error::Invalid(
+            "Use native workbook bytes for Excel input".into(),
+        )),
         clear_contracts::TableSource::Csv => Ok((parse(text, ',')?, Vec::new())),
         clear_contracts::TableSource::Tsv => Ok((parse(text, '\t')?, Vec::new())),
         _ => Ok((parse(text, delimiter)?, Vec::new())),

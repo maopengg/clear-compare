@@ -2,13 +2,14 @@
 
 版本：1.2  
 日期：2026年10月14日  
-状态：实施前计划  
+状态：实施中；当前功能与未完成范围见 [功能矩阵](feature-matrix.md)
+
 技术栈：Rust、Tauri 2、Leptos、WebAssembly  
 目标平台：Windows、macOS、Linux
 
 实现一款以 Beyond Compare 5 为功能参考的独立桌面比较工具，支持本地与远程文件比较、文本合并和目录同步。先交付可安全完成项目代码同步的版本，再逐步覆盖高级比较、远程存储和平台集成。界面、品牌与实现由本项目独立设计。
 
-产品名称为 Clear Compare，代码目录为 `<checkout>/clear-compare`，公开仓库为 [maopengg/clear-compare](https://github.com/maopengg/clear-compare)。分发方式在项目启动时确定。本计划不执行此前两个项目之间的同步；仓库已创建并克隆，尚未生成应用骨架。本次技术栈修订同时准备Rust工具链。
+产品名称为 Clear Compare，代码目录为 `<checkout>/clear-compare`，公开仓库为 [maopengg/clear-compare](https://github.com/maopengg/clear-compare)。分发方式在项目启动时确定。本计划不执行此前两个项目之间的同步。仓库、Rust 工具链、Tauri/Leptos 客户端、CLI 与共享核心已建立，按下列范围持续实施；本文件保留完整目标，交付状态以功能矩阵和开发记录为准。
 
 ## 1 项目目标与完成定义
 
