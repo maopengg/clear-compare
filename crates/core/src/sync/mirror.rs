@@ -2,14 +2,17 @@
 use super::*;
 use clear_contracts::{Entry, VerificationBasis};
 
-fn sides<'a>(row: &'a clear_contracts::Row, side: &Side) -> (Option<&'a Entry>, Option<&'a Entry>) {
+pub(super) fn sides<'a>(
+    row: &'a clear_contracts::Row,
+    side: &Side,
+) -> (Option<&'a Entry>, Option<&'a Entry>) {
     if *side == Side::Left {
         (row.left.as_ref(), row.right.as_ref())
     } else {
         (row.right.as_ref(), row.left.as_ref())
     }
 }
-fn expected(
+pub(super) fn expected(
     snapshot: &Snapshot,
     side: &Side,
     cancel: &AtomicBool,
@@ -57,6 +60,20 @@ pub fn plan_mirror_files(
     cancel: &AtomicBool,
     source_side: Side,
 ) -> Result<SyncPlan> {
+    let plan = file_plan(snapshot, backup_base, cancel, source_side)?.ok_or_else(|| {
+        Error::Invalid(
+            "No regular-file changes to mirror; empty-directory differences are retained".into(),
+        )
+    })?;
+    revalidate(snapshot, &plan, cancel)?;
+    Ok(plan)
+}
+pub(super) fn file_plan(
+    snapshot: &Snapshot,
+    backup_base: &Path,
+    cancel: &AtomicBool,
+    source_side: Side,
+) -> Result<Option<SyncPlan>> {
     check_cancel(cancel)?;
     let expected = expected(snapshot, &source_side, cancel)?;
     let copies = expected
@@ -71,10 +88,7 @@ pub fn plan_mirror_files(
         .collect::<Vec<_>>();
     let mut plan = if copies.is_empty() {
         if deletions.is_empty() {
-            return Err(Error::Invalid(
-                "No regular-file changes to mirror; empty-directory differences are retained"
-                    .into(),
-            ));
+            return Ok(None);
         }
         plan_delete(
             snapshot,
@@ -109,8 +123,7 @@ pub fn plan_mirror_files(
     plan.policy = FilePlanPolicy::MirrorFiles;
     plan.source_side = source_side;
     validate_plan(&plan)?;
-    revalidate(snapshot, &plan, cancel)?;
-    Ok(plan)
+    Ok(Some(plan))
 }
 pub(super) fn source_absent(snapshot: &Snapshot, plan: &SyncPlan, relative: &Path) -> Result<()> {
     roots_unchanged(snapshot)?;
@@ -141,6 +154,10 @@ pub(super) fn revalidate(snapshot: &Snapshot, plan: &SyncPlan, cancel: &AtomicBo
             "Mirror actions differ from the complete reviewed file scope".into(),
         ));
     }
+    revalidate_inventory(snapshot, cancel)
+}
+pub(super) fn revalidate_inventory(snapshot: &Snapshot, cancel: &AtomicBool) -> Result<()> {
+    roots_unchanged(snapshot)?;
     // Re-scan the complete captured scope, including equal files. A new entry or
     // stale equal file must not be silently omitted by an old destructive plan.
     for (root, side) in [(&snapshot.left, Side::Left), (&snapshot.right, Side::Right)] {

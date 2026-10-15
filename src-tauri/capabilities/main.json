@@ -5,7 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default", "allow-compare", "allow-compare-archives", "allow-compare-git", "allow-export-report", "allow-pick-report-destination", "allow-git-page", "allow-git-text-diff", "allow-capture-tree-snapshot", "allow-compare-tree-snapshots", "allow-tree-snapshot-page", "allow-pick-tree-snapshot", "allow-archive-page", "allow-archive-text-diff", "allow-pick-archive", "allow-cancel", "allow-page", "allow-query-folder", "allow-picture-preview", "allow-prepare-folder-merge", "allow-folder-merge-page", "allow-resolve-folder-merge", "allow-apply-folder-merge", "allow-text-diff", "allow-merge-buffers", "allow-stage-merge-result", "allow-binary-page", "allow-binary-search", "allow-table-compare", "allow-open-table-document", "allow-table-catalog", "allow-close-table-document", "allow-table-page",
-    "allow-preview-sync", "allow-preview-delete", "allow-preview-rename", "allow-preview-mirror-files", "allow-apply-sync", "allow-pick-directory", "allow-load-session", "allow-save-session", "allow-list-sessions", "allow-load-library-session", "allow-save-library-session", "allow-archive-session",
+    "allow-preview-sync", "allow-preview-delete", "allow-preview-rename", "allow-preview-mirror-files", "allow-preview-mirror-tree", "allow-apply-sync", "allow-pick-directory", "allow-load-session", "allow-save-session", "allow-list-sessions", "allow-load-library-session", "allow-save-library-session", "allow-archive-session",
     "allow-open-document", "allow-close-document", "allow-save-document", "allow-preview-editor-restore", "allow-apply-editor-restore", "allow-list-sync-history", "allow-preview-sync-recovery", "allow-apply-sync-recovery"
   ]
 }

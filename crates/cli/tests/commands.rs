@@ -1117,3 +1117,60 @@ fn file_mirror_cli_requires_direction_previews_deletions_and_applies_with_recove
     ]);
     assert_eq!(missing.status.code(), Some(2));
 }
+
+#[test]
+fn tree_mirror_cli_previews_empty_directories_then_applies_and_recovers_them() {
+    let t = tempfile::tempdir().unwrap();
+    for p in ["l/new/empty", "r/old/empty", "b", "undo"] {
+        fs::create_dir_all(t.path().join(p)).unwrap();
+    }
+    let l = t.path().join("l");
+    let r = t.path().join("r");
+    let b = t.path().join("b");
+    let args = [
+        "mirror-tree".as_ref(),
+        l.as_os_str(),
+        r.as_os_str(),
+        "--source".as_ref(),
+        "left".as_ref(),
+        "--backup-dir".as_ref(),
+        b.as_os_str(),
+    ];
+    let preview = run(&args);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+    assert_eq!(plan["policy"]["mode"], "mirror_tree");
+    assert_eq!(plan["version"], 5);
+    assert_eq!(plan["actions"].as_array().unwrap().len(), 4);
+    assert!(r.join("old/empty").is_dir());
+    assert!(!r.join("new").exists());
+    let mut apply = args.to_vec();
+    apply.push("--apply".as_ref());
+    let out = run(&apply);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(r.join("new/empty").is_dir());
+    assert!(!r.join("old").exists());
+    let undo = run(&[
+        "recover-sync".as_ref(),
+        result["journal"].as_str().unwrap().as_ref(),
+        "--backup-dir".as_ref(),
+        t.path().join("undo").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        undo.status.success(),
+        "{}",
+        String::from_utf8_lossy(&undo.stderr)
+    );
+    assert!(r.join("old/empty").is_dir());
+    assert!(!r.join("new").exists());
+}

@@ -57,21 +57,26 @@ impl From<FileSide> for clear_contracts::Side {
     }
 }
 
+#[derive(clap::Args)]
+struct MirrorArgs {
+    left: String,
+    right: String,
+    #[arg(long, value_enum)]
+    source: FileSide,
+    #[arg(long, default_value = "")]
+    exclude: String,
+    #[arg(long)]
+    backup_dir: PathBuf,
+    #[arg(long)]
+    apply: bool,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Mirror included regular files across the whole comparison, retaining empty directories.
-    MirrorFiles {
-        left: String,
-        right: String,
-        #[arg(long, value_enum)]
-        source: FileSide,
-        #[arg(long, default_value = "")]
-        exclude: String,
-        #[arg(long)]
-        backup_dir: PathBuf,
-        #[arg(long)]
-        apply: bool,
-    },
+    MirrorFiles(MirrorArgs),
+    /// Mirror included files and directories, with reviewed empty-directory removal.
+    MirrorTree(MirrorArgs),
     /// Preview a same-directory file rename with no overwrite; --apply executes a fresh plan.
     Rename {
         left: String,
@@ -293,45 +298,49 @@ enum Command {
     },
 }
 
+fn mirror_command(args: MirrorArgs, tree: bool, cancel: &AtomicBool) -> clear_core::Result<i32> {
+    let MirrorArgs {
+        left,
+        right,
+        source,
+        exclude,
+        backup_dir,
+        apply,
+    } = args;
+    let snapshot = clear_core::compare::compare(
+        &CompareRequest {
+            left,
+            right,
+            exclusions: exclude,
+            content: true,
+        },
+        cancel,
+    )?;
+    let planner = if tree {
+        clear_core::sync::plan_mirror_tree
+    } else {
+        clear_core::sync::plan_mirror_files
+    };
+    let plan = planner(&snapshot, &backup_dir, cancel, source.into())?;
+    if apply {
+        let result = clear_core::sync::execute(&snapshot, &plan, cancel)?;
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        Ok(if result.actions.iter().all(|a| a.state == "completed") {
+            0
+        } else {
+            2
+        })
+    } else {
+        println!("{}", serde_json::to_string_pretty(&plan)?);
+        Ok(0)
+    }
+}
+
 fn run(cli: Cli) -> clear_core::Result<i32> {
     let cancel = AtomicBool::new(false);
     match cli.command {
-        Command::MirrorFiles {
-            left,
-            right,
-            source,
-            exclude,
-            backup_dir,
-            apply,
-        } => {
-            let snapshot = clear_core::compare::compare(
-                &CompareRequest {
-                    left,
-                    right,
-                    exclusions: exclude,
-                    content: true,
-                },
-                &cancel,
-            )?;
-            let plan = clear_core::sync::plan_mirror_files(
-                &snapshot,
-                &backup_dir,
-                &cancel,
-                source.into(),
-            )?;
-            if apply {
-                let result = clear_core::sync::execute(&snapshot, &plan, &cancel)?;
-                println!("{}", serde_json::to_string_pretty(&result)?);
-                Ok(if result.actions.iter().all(|a| a.state == "completed") {
-                    0
-                } else {
-                    2
-                })
-            } else {
-                println!("{}", serde_json::to_string_pretty(&plan)?);
-                Ok(0)
-            }
-        }
+        Command::MirrorFiles(args) => mirror_command(args, false, &cancel),
+        Command::MirrorTree(args) => mirror_command(args, true, &cancel),
         Command::Rename {
             left,
             right,

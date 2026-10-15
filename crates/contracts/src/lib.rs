@@ -187,6 +187,8 @@ pub enum FileOperation {
     Copy,
     Delete,
     Rename,
+    CreateDirectory,
+    RemoveDirectory,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
@@ -200,6 +202,7 @@ pub enum FilePlanPolicy {
         target_side: Side,
     },
     MirrorFiles,
+    MirrorTree,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "platform", rename_all = "snake_case")]
@@ -215,8 +218,19 @@ pub struct RenamePaths {
     pub temporary_native: NativePath,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DirectoryIdentity {
+    pub platform: String,
+    pub volume: String,
+    pub index: String,
+    pub birth: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileAction {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directory_identity: Option<DirectoryIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rename_to: Option<RenamePaths>,
     #[serde(default)]
@@ -236,6 +250,8 @@ pub struct FileAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncPlan {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     #[serde(default)]
     pub target: String,
     #[serde(default = "legacy_file_plan_version")]

@@ -1032,6 +1032,26 @@ async fn preview_mirror_files(
     app: tauri::AppHandle,
     state: State<'_, Backend>,
 ) -> Result<SyncPlan, String> {
+    prepare_mirror(session, source_side, false, app, state).await
+}
+
+#[tauri::command]
+async fn preview_mirror_tree(
+    session: String,
+    source_side: Side,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<SyncPlan, String> {
+    prepare_mirror(session, source_side, true, app, state).await
+}
+
+async fn prepare_mirror(
+    session: String,
+    source_side: Side,
+    tree: bool,
+    app: tauri::AppHandle,
+    state: State<'_, Backend>,
+) -> Result<SyncPlan, String> {
     let _guard = state.begin()?;
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
     let snapshot = state.snapshot(&session)?;
@@ -1039,7 +1059,11 @@ async fn preview_mirror_files(
     let base = data_dir(&app)?.join("backups");
     std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     let plan = tauri::async_runtime::spawn_blocking(move || {
-        clear_core::sync::plan_mirror_files(&snapshot, &base, &cancel, source_side)
+        if tree {
+            clear_core::sync::plan_mirror_tree(&snapshot, &base, &cancel, source_side)
+        } else {
+            clear_core::sync::plan_mirror_files(&snapshot, &base, &cancel, source_side)
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1441,6 +1465,7 @@ fn main() {
             preview_delete,
             preview_rename,
             preview_mirror_files,
+            preview_mirror_tree,
             apply_sync,
             pick_directory,
             load_session,

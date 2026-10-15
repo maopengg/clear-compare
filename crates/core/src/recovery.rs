@@ -18,10 +18,12 @@ use std::{
 };
 use tempfile::NamedTempFile;
 const MAX_JOURNAL: u64 = 64 * 1024 * 1024;
+mod directory;
 mod rename;
 enum Action {
     File(FileUndo),
     Rename(rename::Undo),
+    Directory(directory::Undo),
 }
 struct FileUndo {
     relative: PathBuf,
@@ -99,7 +101,9 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
     let mut seen = std::collections::BTreeSet::new();
     for (copied, state) in report.plan.actions.iter().zip(&report.actions) {
         check_cancel(cancel)?;
-        if copied.target_existed != copied.target_digest.is_some() {
+        if copied.operation != clear_contracts::FileOperation::RemoveDirectory
+            && copied.target_existed != copied.target_digest.is_some()
+        {
             return Err(Error::Invalid(
                 "Journal target-presence metadata differs".into(),
             ));
@@ -129,6 +133,22 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
             return Err(Error::Invalid("Duplicate journal target".into()));
         }
         let label = crate::tree::display_path(&relative);
+        if matches!(
+            copied.operation,
+            clear_contracts::FileOperation::CreateDirectory
+                | clear_contracts::FileOperation::RemoveDirectory
+        ) {
+            if let Some(undo) =
+                directory::preview(&target, old_root, copied, &relative, &state.state)?
+            {
+                labels.push(RecoveryAction {
+                    path: label,
+                    operation: undo.operation().into(),
+                });
+                actions.push(Action::Directory(undo));
+            }
+            continue;
+        }
         if copied.operation == clear_contracts::FileOperation::Rename {
             if let Some(undo) = rename::preview(
                 &target,
@@ -154,7 +174,9 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         let expected_current = match copied.operation {
             clear_contracts::FileOperation::Copy => copied.source_digest.clone(),
             clear_contracts::FileOperation::Delete => None,
-            clear_contracts::FileOperation::Rename => {
+            clear_contracts::FileOperation::Rename
+            | clear_contracts::FileOperation::CreateDirectory
+            | clear_contracts::FileOperation::RemoveDirectory => {
                 return Err(Error::Invalid("Rename recovery was not dispatched".into()));
             }
         };
@@ -205,6 +227,11 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
             "No applied file operations to recover".into(),
         ));
     }
+    if report.plan.version >= 5 {
+        actions.reverse();
+        labels.reverse();
+        directory::validate_cleanup(&target, &actions, cancel)?;
+    }
     let id = unique_id();
     Ok(Plan {
         view: RecoveryPreview {
@@ -237,6 +264,14 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
     root_valid(&plan.target)?;
     let action = match &plan.actions[index] {
         Action::File(action) => action,
+        Action::Directory(action) => {
+            return action.execute(
+                &plan.target,
+                &plan.original_root,
+                Path::new(&plan.view.backup_root),
+                cancel,
+            );
+        }
         Action::Rename(action) => {
             return action.execute(
                 &plan.target,
@@ -348,6 +383,7 @@ fn recover_one(plan: &Plan, index: usize, cancel: &AtomicBool) -> Result<()> {
 }
 pub fn execute(plan: &Plan, cancel: &AtomicBool) -> Result<RecoveryResult> {
     root_valid(&plan.target)?;
+    directory::validate_cleanup(&plan.target, &plan.actions, cancel)?;
     let root = Path::new(&plan.view.backup_root);
     let base = root
         .parent()
@@ -410,6 +446,7 @@ impl Plan {
             .flat_map(|action| match action {
                 Action::File(a) => vec![self.target.join(&a.relative)],
                 Action::Rename(a) => a.affected(&self.target),
+                Action::Directory(a) => vec![self.target.join(&a.relative)],
             })
             .collect()
     }

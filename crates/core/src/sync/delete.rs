@@ -118,6 +118,7 @@ pub fn plan_delete(
             ));
         }
         actions.push(FileAction {
+            directory_identity: None,
             rename_to: None,
             operation: FileOperation::Delete,
             target_permissions: Some(permissions(&meta)),
@@ -132,6 +133,7 @@ pub fn plan_delete(
     }
     let id = unique_id();
     let plan = SyncPlan {
+        warnings: Vec::new(),
         target: root.to_string_lossy().into(),
         version: 2,
         policy: FilePlanPolicy::DeleteSelected { target_side },
@@ -168,7 +170,10 @@ pub(super) fn backup_before_change(
         ));
     }
     let path = checked_path(root, relative, false)?;
-    if plan.policy == FilePlanPolicy::MirrorFiles {
+    if matches!(
+        plan.policy,
+        FilePlanPolicy::MirrorFiles | FilePlanPolicy::MirrorTree
+    ) {
         super::mirror::source_absent(snapshot, plan, relative)?;
     }
     let expected = action
@@ -249,7 +254,10 @@ pub(super) fn delete_one(
     cancel: &AtomicBool,
 ) -> Result<()> {
     let path = backup_before_change(snapshot, plan, action, cancel)?;
-    if plan.policy == FilePlanPolicy::MirrorFiles {
+    if matches!(
+        plan.policy,
+        FilePlanPolicy::MirrorFiles | FilePlanPolicy::MirrorTree
+    ) {
         let relative = snapshot
             .paths
             .get(&action.row_id)

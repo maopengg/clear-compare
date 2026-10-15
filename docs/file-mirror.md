@@ -1,6 +1,6 @@
 # Reviewed regular-file mirror
 
-File mirror makes included regular-file contents follow the explicitly chosen source side. It copies new/changed source files and backs up/deletes target-only regular files. It covers the entire captured comparison under its exclusions, independently of search, current folder, paging or selected rows. Empty directories are retained; this is not an exact directory-tree mirror or baseline-aware bidirectional synchronization.
+File mirror makes included regular-file contents follow the explicitly chosen source side. It copies new/changed source files and backs up/deletes target-only regular files. It covers the entire captured comparison under its exclusions, independently of search, current folder, paging or selected rows. Empty directories are retained in this policy. Use the separate [directory-tree mirror](tree-mirror.md) policy to include directory creation/removal. Baseline-aware bidirectional synchronization remains planned.
 
 ## Desktop
 
