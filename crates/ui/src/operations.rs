@@ -24,6 +24,24 @@ impl FromOutcome for RecoveryApplyReply {
         }
     }
 }
+impl FromOutcome for BidirectionalApplyReply {
+    fn from_outcome(value: OperationOutcome) -> Result<Self, String> {
+        match value {
+            OperationOutcome::Bidirectional(v) => Ok(v),
+            OperationOutcome::Error(e) => Err(e),
+            _ => Err("Unexpected bidirectional result".into()),
+        }
+    }
+}
+impl FromOutcome for BidirectionalRecoveryReply {
+    fn from_outcome(value: OperationOutcome) -> Result<Self, String> {
+        match value {
+            OperationOutcome::BidirectionalRecovery(v) => Ok(v),
+            OperationOutcome::Error(e) => Err(e),
+            _ => Err("Unexpected coordinated rollback result".into()),
+        }
+    }
+}
 pub async fn run<T: FromOutcome>(
     command: &str,
     args: impl Serialize,

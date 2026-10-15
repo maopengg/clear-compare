@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-bidirectional-page"
+description = "Enables the bidirectional_page command without any pre-configured scope."
+commands.allow = ["bidirectional_page"]
+
+[[permission]]
+identifier = "deny-bidirectional-page"
+description = "Denies the bidirectional_page command without any pre-configured scope."
+commands.deny = ["bidirectional_page"]

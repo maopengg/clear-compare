@@ -274,3 +274,12 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Tests cover strings, boolean/sparse grids, shared formula caches, 1900/1904 dates, cross-format keys/tolerance, source freezing/digest expiry, CLI and resource/error boundaries. Runtime/install acceptance remains deferred.
 
 - Follow-up OOXML hardening reuses the classic ZIP central-directory guard with a 512-entry cap before constructing either ZIP library, so malicious count hints cannot allocate ahead of package inspection. Archive compatibility and worksheet attack tests cover the shared guard.
+
+
+## Common-baseline bidirectional synchronization
+
+- Added bounded content-only `.ccbase` profiles with exact rules/native root identity bindings, revision control and cross-process profile locks. Initialization requires equal verified trees rather than guessing a common past.
+- Added independent change/deletion classification, subtree fingerprints, explicit file/branch conflict winners, whole-scope preference and pagination. Empty directories participate; excluded children block ancestor deletion. Type replacement remains visibly blocked.
+- Added version-six target-specific sync children, immutable coordinated run intent, exact before/after baseline artifacts and profile commit only after both trees match the reviewed inventory. Scoped mutation guards protect both roots at inner commit boundaries after pauses. Coordinated rollback restores both targets and exact previous baseline bytes; later profile revisions refuse older rollback.
+- Added baseline/bidirectional/recover-bidirectional CLI, eight validated desktop commands, opaque native selections/previews, bilingual review and existing background progress/pause/cancel/reconnect integration. Existing editor staleness rules cover both sides.
+- Core/CLI tests cover normal and conflicting paths, empty/excluded branches, type blockers, profile/root/rule expiry, locks, paging/bulk choices, exact baseline rollback and newer revision refusal. Thread tests exercise partial cancellation and Unix root replacement during paused forward/recovery streams. Full metadata/type replacement, advanced rename handling, partial-recovery resume/redo and remaining plan modules are still incomplete. Packaged-client installation/interaction acceptance remains deferred.

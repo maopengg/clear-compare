@@ -1298,3 +1298,90 @@ fn excel_cli_lists_worksheets_compares_saved_values_and_rejects_invalid_sheet_se
     assert_eq!(invalid.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&invalid.stderr).contains("worksheet index"));
 }
+
+#[test]
+fn baseline_and_bidirectional_cli_preview_apply_and_coordinated_rollback_keep_exact_baseline() {
+    let t = tempfile::tempdir().unwrap();
+    let r = t.path();
+    for d in ["l", "r", "b", "undo"] {
+        fs::create_dir(r.join(d)).unwrap();
+    }
+    for side in ["l", "r"] {
+        fs::write(r.join(side).join("a"), b"old").unwrap();
+    }
+    let baseline = r.join("common.ccbase");
+    let baseline_preview = run(&[
+        "baseline".as_ref(),
+        r.join("l").as_os_str(),
+        r.join("r").as_os_str(),
+        baseline.as_os_str(),
+    ]);
+    assert!(baseline_preview.status.success());
+    assert!(!baseline.exists());
+    assert!(!r.join("common.ccbase.lock").exists());
+    let created = run(&[
+        "baseline".as_ref(),
+        r.join("l").as_os_str(),
+        r.join("r").as_os_str(),
+        baseline.as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let original = fs::read(&baseline).unwrap();
+    fs::write(r.join("l/a"), b"left").unwrap();
+    fs::create_dir(r.join("r/empty")).unwrap();
+    let left_root = r.join("l");
+    let right_root = r.join("r");
+    let backup_root = r.join("b");
+    let args = [
+        "bidirectional".as_ref(),
+        left_root.as_os_str(),
+        right_root.as_os_str(),
+        "--baseline".as_ref(),
+        baseline.as_os_str(),
+        "--backup-dir".as_ref(),
+        backup_root.as_os_str(),
+    ];
+    let preview = run(&args);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let view: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+    assert_eq!(view["actions"], 2);
+    assert!(!r.join("b/.bidirectional").exists());
+    assert_eq!(fs::read(r.join("r/a")).unwrap(), b"old");
+    let mut apply = args.to_vec();
+    apply.push("--apply".as_ref());
+    let done = run(&apply);
+    assert!(
+        done.status.success(),
+        "{}",
+        String::from_utf8_lossy(&done.stderr)
+    );
+    let done: serde_json::Value = serde_json::from_slice(&done.stdout).unwrap();
+    assert_eq!(done["baseline_updated"], true);
+    assert!(r.join("l/empty").is_dir());
+    let journal = Path::new(done["journal"].as_str().unwrap());
+    let undo = run(&[
+        "recover-bidirectional".as_ref(),
+        journal.as_os_str(),
+        "--backup-dir".as_ref(),
+        r.join("undo").as_os_str(),
+        "--apply".as_ref(),
+    ]);
+    assert!(
+        undo.status.success(),
+        "{}",
+        String::from_utf8_lossy(&undo.stderr)
+    );
+    assert_eq!(fs::read(&baseline).unwrap(), original);
+    assert!(!r.join("l/empty").exists());
+    assert_eq!(fs::read(r.join("r/a")).unwrap(), b"old");
+    assert_eq!(fs::read(r.join("l/a")).unwrap(), b"left");
+}

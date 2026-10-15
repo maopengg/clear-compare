@@ -2,6 +2,14 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "compare",
+            "choose_baseline",
+            "prepare_bidirectional",
+            "bidirectional_page",
+            "bidirectional_recovery_page",
+            "resolve_bidirectional",
+            "apply_bidirectional",
+            "preview_bidirectional_recovery",
+            "apply_bidirectional_recovery",
             "compare_archives",
             "compare_git",
             "export_report",

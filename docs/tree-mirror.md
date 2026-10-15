@@ -10,7 +10,7 @@ The supported tree consists of readable regular files and real directories. Miss
 
 Excluded entries remain outside the operation. A target-only directory containing an excluded child, or a retained descendant directory, remains in place with a preview notice. Its other included children can still be mirrored. A newly appeared excluded child can change the removal layout and expire the old plan before any write; another arrival during execution causes the final empty-directory removal to fail, preserving it. Excluded-file ancestors may therefore remain visible as destination-only directory differences after mirror.
 
-Links, special files, unreadable entries and file/directory type conflicts block the preview. Existing names that alias a proposed directory creation on an insensitive filesystem are refused rather than renamed implicitly. Metadata-complete replication, type replacement, directory rename/move and baseline-aware bidirectional policies remain separate planned work.
+Links, special files, unreadable entries and file/directory type conflicts block the preview. Existing names that alias a proposed directory creation on an insensitive filesystem are refused rather than renamed implicitly. Metadata-complete replication, type replacement and directory rename/move remain planned. Common-baseline bidirectional reconciliation is available through its [separate workflow](bidirectional-sync.md).
 
 ## Identity, backup and journaling
 

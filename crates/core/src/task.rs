@@ -223,6 +223,7 @@ pub(crate) fn checkpoint(cancel: &AtomicBool) -> Result<()> {
 /// Pause before entering; checks within the returned guard can cancel but cannot pause.
 pub(crate) fn mutation(cancel: &AtomicBool) -> Result<Mutation> {
     checkpoint(cancel)?;
+    verify_mutation_guards(cancel)?;
     let control = matching(cancel).map(|(c, _)| c);
     if control.is_some() {
         CURRENT.with(|c| {
@@ -235,6 +236,48 @@ pub(crate) fn mutation(cancel: &AtomicBool) -> Result<Mutation> {
         control,
         _thread: PhantomData,
     })
+}
+struct MutationValidator {
+    token: *const AtomicBool,
+    verify: Rc<dyn Fn() -> Result<()>>,
+}
+thread_local! {static VALIDATORS:RefCell<Vec<MutationValidator>>=const{RefCell::new(Vec::new())};}
+struct ValidatorScope(usize);
+impl Drop for ValidatorScope {
+    fn drop(&mut self) {
+        VALIDATORS.with(|s| s.borrow_mut().truncate(self.0));
+    }
+}
+/// Compose operation-wide native preconditions with every inner commit boundary.
+pub(crate) fn with_mutation_guard<T>(
+    cancel: &AtomicBool,
+    verify: impl Fn() -> Result<()> + 'static,
+    work: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    let old = VALIDATORS.with(|s| {
+        let mut stack = s.borrow_mut();
+        let old = stack.len();
+        stack.push(MutationValidator {
+            token: cancel,
+            verify: Rc::new(verify),
+        });
+        old
+    });
+    let _scope = ValidatorScope(old);
+    work()
+}
+fn verify_mutation_guards(cancel: &AtomicBool) -> Result<()> {
+    let checks = VALIDATORS.with(|s| {
+        s.borrow()
+            .iter()
+            .filter(|v| std::ptr::eq(v.token, cancel))
+            .map(|v| v.verify.clone())
+            .collect::<Vec<_>>()
+    });
+    for check in checks {
+        check()?;
+    }
+    Ok(())
 }
 fn update(body: impl FnOnce(&mut State)) {
     CURRENT.with(|c| {
@@ -305,6 +348,7 @@ pub(crate) fn validated_mutation(
 ) -> Result<Mutation> {
     if matching(cancel).is_none() {
         verify()?;
+        verify_mutation_guards(cancel)?;
         return Ok(Mutation {
             control: None,
             _thread: PhantomData,

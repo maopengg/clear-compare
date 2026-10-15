@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bidirectional;
 mod operations;
 use clear_contracts::*;
 use clear_core::compare::Snapshot;
@@ -16,6 +17,9 @@ use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 struct Backend {
+    baseline: Mutex<Option<(String, PathBuf)>>,
+    bidirectional: Mutex<Option<clear_core::bidirectional::Plan>>,
+    bidirectional_recovery: Mutex<Option<clear_core::bidirectional::RecoveryPlan>>,
     operation: Mutex<Option<Arc<operations::DesktopOperation>>>,
     snapshot: Mutex<Option<Arc<Snapshot>>>,
     archive: Mutex<Option<Arc<clear_core::archive::Snapshot>>>,
@@ -1451,6 +1455,14 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             compare,
+            bidirectional::choose_baseline,
+            bidirectional::prepare_bidirectional,
+            bidirectional::bidirectional_page,
+            bidirectional::bidirectional_recovery_page,
+            bidirectional::resolve_bidirectional,
+            bidirectional::apply_bidirectional,
+            bidirectional::preview_bidirectional_recovery,
+            bidirectional::apply_bidirectional_recovery,
             compare_archives,
             compare_git,
             export_report,

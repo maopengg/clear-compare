@@ -1,6 +1,6 @@
 # Reviewed file copy, deletion, rename and recovery
 
-The local folder workspace supports directional regular-file copy and explicit selected-file deletion or single-file same-directory rename on either side. These operations use native cached paths, a reviewed plan, content checks, verified backups and a state journal. Directory removal, recursive deletion, cross-directory move, bulk/directory rename, type replacement, metadata-complete mirror and baseline-aware bidirectional policies remain planned. A separate [regular-file mirror](file-mirror.md) policy reviews whole-comparison copy/deletion actions, preserving empty directories; [tree mirror](tree-mirror.md) adds reviewed directory creation/emptied-directory removal.
+The local folder workspace supports directional regular-file copy and explicit selected-file deletion or single-file same-directory rename on either side. These operations use native cached paths, a reviewed plan, content checks, verified backups and a state journal. Directory removal, recursive deletion, cross-directory move, bulk/directory rename, type replacement, metadata-complete mirror and advanced bidirectional metadata/rename policies remain planned. Common-baseline reconciliation is available separately; see its linked contract below. A separate [regular-file mirror](file-mirror.md) policy reviews whole-comparison copy/deletion actions, preserving empty directories; [tree mirror](tree-mirror.md) adds reviewed directory creation/emptied-directory removal.
 
 ## Desktop workflow
 
@@ -74,3 +74,6 @@ clear-compare recover-sync ./backups/PLAN/journal.json --backup-dir ./recovery-b
 ```
 
 Paths are literal native relative paths, without wildcard expansion; a leading ./ is accepted. Parent traversal, absolute/drive-relative paths, missing/excluded entries and directories are rejected. CLI parsing requires explicit target side and at least one --path. Preview/application exits 0 when successful and 2 for invalid input or failed/cancelled actions. The copy command's existing comparison/selection behavior remains unchanged. Packaged-client interaction and installation validation remain deferred until planned feature development is complete.
+
+
+Version-six `reconcile` plans are target-specific mixed file/directory children of a [common-baseline bidirectional run](bidirectional-sync.md). Their explicit target side must oppose the copy source side, and recovery reverses dependencies as for version five. Each child retains normal immutable restart intent, backups and journals. Recovering/restarting an individual child does not restore/advance the common baseline; use the coordinated run preview when reverting both targets and the profile.

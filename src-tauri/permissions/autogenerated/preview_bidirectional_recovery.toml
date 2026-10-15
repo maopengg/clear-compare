@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-bidirectional-recovery"
+description = "Enables the preview_bidirectional_recovery command without any pre-configured scope."
+commands.allow = ["preview_bidirectional_recovery"]
+
+[[permission]]
+identifier = "deny-preview-bidirectional-recovery"
+description = "Denies the preview_bidirectional_recovery command without any pre-configured scope."
+commands.deny = ["preview_bidirectional_recovery"]

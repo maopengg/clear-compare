@@ -304,3 +304,167 @@ mod tests {
         assert!(get(&state, &id).is_err());
     }
 }
+
+pub(super) enum BidirectionalWork {
+    Apply(Box<clear_core::bidirectional::Plan>),
+    Recover(Box<clear_core::bidirectional::RecoveryPlan>),
+}
+pub(super) fn launch_bidirectional(
+    state: Arc<Backend>,
+    guard: Busy,
+    work: BidirectionalWork,
+) -> Result<TaskHandle, String> {
+    let (kind, total) = match &work {
+        BidirectionalWork::Apply(plan) => (OperationKind::File, plan.view.actions + 1),
+        BidirectionalWork::Recover(plan) => (OperationKind::Recovery, plan.view.total + 1),
+    };
+    let task = start(&state, kind, total, guard)?;
+    let handle = task.control.handle();
+    tauri::async_runtime::spawn(async move {
+        enum Completed {
+            Apply(Box<BidirectionalResult>, Vec<PathBuf>),
+            Recover(BidirectionalRecoveryResult, Vec<PathBuf>),
+        }
+        let cancel = state.cancel.clone();
+        let controller = task.control.clone();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            controller.run(|| -> clear_core::Result<Completed> {
+                match work {
+                    BidirectionalWork::Apply(plan) => {
+                        let affected = plan.affected_paths()?;
+                        Ok(Completed::Apply(
+                            Box::new(clear_core::bidirectional::execute(&plan, &cancel)?),
+                            affected,
+                        ))
+                    }
+                    BidirectionalWork::Recover(plan) => {
+                        let affected = plan.affected_paths();
+                        Ok(Completed::Recover(
+                            clear_core::bidirectional::execute_recovery(&plan, &cancel)?,
+                            affected,
+                        ))
+                    }
+                }
+            })
+        })
+        .await;
+        let (outcome, phase, error) = match result {
+            Ok(Ok(done)) => {
+                let (affected, error, complete) = match &done {
+                    Completed::Apply(r, p) => (
+                        p.clone(),
+                        r.error.clone(),
+                        r.baseline_updated && r.error.is_none(),
+                    ),
+                    Completed::Recover(r, p) => (
+                        p.clone(),
+                        r.error.clone(),
+                        r.baseline_restored && r.error.is_none(),
+                    ),
+                };
+                let phase = if complete {
+                    TaskPhase::Completed
+                } else if state.cancel.load(Ordering::Relaxed) {
+                    TaskPhase::Cancelled
+                } else {
+                    TaskPhase::Failed
+                };
+                let (locations, stale_documents, warnings) =
+                    super::refresh_editor_locations(&state, Vec::new(), affected)
+                        .await
+                        .unwrap_or_else(|e| {
+                            (
+                                Vec::new(),
+                                Vec::new(),
+                                vec![format!(
+                                    "Operation finished; review retained editor buffers: {e}"
+                                )],
+                            )
+                        });
+                let outcome = match done {
+                    Completed::Apply(mut result, _) => {
+                        compact_bidirectional(&mut result);
+                        OperationOutcome::Bidirectional(BidirectionalApplyReply {
+                            result: *result,
+                            locations,
+                            stale_documents,
+                            warnings,
+                        })
+                    }
+                    Completed::Recover(mut result, _) => {
+                        result.details_in_journal = true;
+                        for child in &mut result.operations {
+                            child.actions.clear();
+                            child.plan.actions.clear();
+                        }
+                        OperationOutcome::BidirectionalRecovery(BidirectionalRecoveryReply {
+                            result,
+                            locations,
+                            stale_documents,
+                            warnings,
+                        })
+                    }
+                };
+                (outcome, phase, error)
+            }
+            Ok(Err(e)) => {
+                let phase = if matches!(e, clear_core::Error::Cancelled) {
+                    TaskPhase::Cancelled
+                } else {
+                    TaskPhase::Failed
+                };
+                let error = e.to_string();
+                (OperationOutcome::Error(error.clone()), phase, Some(error))
+            }
+            Err(e) => {
+                let error = format!("Bidirectional worker failed: {e}");
+                (
+                    OperationOutcome::Error(error.clone()),
+                    TaskPhase::Failed,
+                    Some(error),
+                )
+            }
+        };
+        task.publish(outcome, phase, error.as_deref());
+    });
+    Ok(handle)
+}
+
+fn compact_bidirectional(result: &mut BidirectionalResult) {
+    result.details_in_journal = true;
+    for child in &mut result.operations {
+        child.actions.clear();
+        child.plan.actions.clear();
+    }
+}
+
+#[cfg(test)]
+mod bidirectional_wire_tests {
+    use super::*;
+    #[test]
+    fn terminal_bidirectional_replies_are_small_but_keep_failure_and_journal_evidence() {
+        let actions=(0..5000).map(|i|serde_json::json!({"row_id":i.to_string(),"path":format!("file-{i:04}-{}","x".repeat(120)),"target_existed":false,"bytes":"1","source_digest":"a".repeat(64),"target_digest":null})).collect::<Vec<_>>();
+        let states = actions
+            .iter()
+            .map(|a| serde_json::json!({"path":a["path"],"state":"completed","error":null}))
+            .collect::<Vec<_>>();
+        let mut result:BidirectionalResult=serde_json::from_value(serde_json::json!({"baseline_info":{"path":"/example/common.ccbase","id":"a-b","revision":"1","entries":5000},"started_journals":["/example/child/journal.json"],"intent_digest":"a".repeat(64),"id":"a-b","journal":"/example/run.json","baseline":"/example/common.ccbase","baseline_updated":false,"phase":"failed","planned_journals":["/example/child/journal.json"],"operations":[{"plan":{"id":"child","session":"session","target":"/example/right","actions":actions,"backup_root":"/example/child"},"actions":states,"journal":"/example/child/journal.json"}],"error":"Source changed; baseline was not advanced"})).unwrap();
+        assert!(serde_json::to_vec(&result).unwrap().len() > 1024 * 1024);
+        compact_bidirectional(&mut result);
+        let packet = serde_json::to_vec(&result).unwrap();
+        assert!(packet.len() < 8192);
+        let received: BidirectionalResult = serde_json::from_slice(&packet).unwrap();
+        assert!(received.details_in_journal);
+        assert!(!received.baseline_updated);
+        assert_eq!(received.phase, "failed");
+        assert_eq!(
+            received.error.as_deref(),
+            Some("Source changed; baseline was not advanced")
+        );
+        assert_eq!(
+            received.operations[0].journal,
+            "/example/child/journal.json"
+        );
+        assert_eq!(received.baseline_info.entries, 5000);
+    }
+}

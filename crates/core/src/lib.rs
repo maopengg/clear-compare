@@ -1,5 +1,6 @@
 //! Comparison and synchronization domain. Shared by the desktop app and CLI.
 pub mod archive;
+pub mod bidirectional;
 pub mod binary;
 pub mod compare;
 pub mod editing;

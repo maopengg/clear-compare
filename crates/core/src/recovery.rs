@@ -57,6 +57,14 @@ fn root_valid(root: &Path) -> Result<()> {
 }
 
 pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Result<Plan> {
+    preview_optional(journal, backup_base, cancel)?
+        .ok_or_else(|| Error::Invalid("No applied file operations to recover".into()))
+}
+pub(crate) fn preview_optional(
+    journal: &Path,
+    backup_base: &Path,
+    cancel: &AtomicBool,
+) -> Result<Option<Plan>> {
     check_cancel(cancel)?;
     if !fs::symlink_metadata(journal)?.is_file()
         || fs::symlink_metadata(journal)?.file_type().is_symlink()
@@ -270,9 +278,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         }));
     }
     if actions.is_empty() {
-        return Err(Error::Invalid(
-            "No applied file operations to recover".into(),
-        ));
+        return Ok(None);
     }
     if report.plan.version >= 5 {
         actions.reverse();
@@ -280,7 +286,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         directory::validate_cleanup(&target, &actions, cancel)?;
     }
     let id = unique_id();
-    Ok(Plan {
+    Ok(Some(Plan {
         view: RecoveryPreview {
             id: id.clone(),
             source_journal: source.to_string_lossy().into(),
@@ -292,7 +298,7 @@ pub fn preview(journal: &Path, backup_base: &Path, cancel: &AtomicBool) -> Resul
         original_root: old_root.to_path_buf(),
         source_digest,
         actions,
-    })
+    }))
 }
 fn copy_to(source: &Path, destination: &mut File, cancel: &AtomicBool) -> Result<()> {
     let mut reader = File::open(source)?;

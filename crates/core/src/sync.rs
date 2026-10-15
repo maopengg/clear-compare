@@ -50,7 +50,14 @@ fn initial_result(plan: &SyncPlan) -> SyncResult {
     }
 }
 pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
-    if !matches!(plan.version, 1..=5)
+    if let FilePlanPolicy::Reconcile { target_side } = &plan.policy
+        && *target_side == plan.source_side
+    {
+        return Err(Error::Invalid(
+            "Reconciliation direction contradicts its target".into(),
+        ));
+    }
+    if !matches!(plan.version, 1..=6)
         || plan.actions.is_empty()
         || plan.actions.len() > crate::compare::MAX_ENTRIES
     {
@@ -80,23 +87,29 @@ pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
             (
                 FilePlanPolicy::SelectedCopy
                 | FilePlanPolicy::MirrorFiles
-                | FilePlanPolicy::MirrorTree,
+                | FilePlanPolicy::MirrorTree
+                | FilePlanPolicy::Reconcile { .. },
                 FileOperation::Copy,
             ) if (plan.policy == FilePlanPolicy::SelectedCopy && matches!(plan.version, 1 | 2)
                 || plan.policy == FilePlanPolicy::MirrorFiles && plan.version == 4
-                || plan.policy == FilePlanPolicy::MirrorTree && plan.version == 5)
+                || plan.policy == FilePlanPolicy::MirrorTree && plan.version == 5
+                || matches!(plan.policy, FilePlanPolicy::Reconcile { .. })
+                    && plan.version == 6)
                 && action.source_digest.as_deref().is_some_and(digest)
                 && action.target_permissions.is_none()
                 && action.rename_to.is_none() => {}
             (
                 FilePlanPolicy::DeleteSelected { .. }
                 | FilePlanPolicy::MirrorFiles
-                | FilePlanPolicy::MirrorTree,
+                | FilePlanPolicy::MirrorTree
+                | FilePlanPolicy::Reconcile { .. },
                 FileOperation::Delete,
             ) if (plan.version == 2
                 && matches!(plan.policy, FilePlanPolicy::DeleteSelected { .. })
                 || plan.version == 4 && plan.policy == FilePlanPolicy::MirrorFiles
-                || plan.version == 5 && plan.policy == FilePlanPolicy::MirrorTree)
+                || plan.version == 5 && plan.policy == FilePlanPolicy::MirrorTree
+                || plan.version == 6
+                    && matches!(plan.policy, FilePlanPolicy::Reconcile { .. }))
                 && action.source_digest.is_none()
                 && action.target_existed
                 && action.target_permissions.is_some()
@@ -113,9 +126,11 @@ pub(crate) fn validate_plan_metadata(plan: &SyncPlan) -> Result<()> {
                 rename::validated_paths(plan, action)?;
             }
             (
-                FilePlanPolicy::MirrorTree,
+                FilePlanPolicy::MirrorTree | FilePlanPolicy::Reconcile { .. },
                 FileOperation::CreateDirectory | FileOperation::RemoveDirectory,
-            ) if plan.version == 5
+            ) if (plan.version == 5 && plan.policy == FilePlanPolicy::MirrorTree
+                || plan.version == 6
+                    && matches!(plan.policy, FilePlanPolicy::Reconcile { .. }))
                 && action.rename_to.is_none()
                 && action.source_digest.is_none()
                 && action.target_digest.is_none()
@@ -181,7 +196,8 @@ fn target_root<'a>(snapshot: &'a Snapshot, plan: &SyncPlan) -> &'a Path {
             }
         }
         FilePlanPolicy::DeleteSelected { target_side }
-        | FilePlanPolicy::RenameSelected { target_side } => {
+        | FilePlanPolicy::RenameSelected { target_side }
+        | FilePlanPolicy::Reconcile { target_side } => {
             if *target_side == Side::Left {
                 &snapshot.left
             } else {
@@ -701,4 +717,110 @@ pub fn relocations(
         }
     }
     Ok(changes)
+}
+
+/// Complete captured-scope revalidation for multi-root coordination.
+pub(crate) fn revalidate_scope(snapshot: &Snapshot, cancel: &AtomicBool) -> Result<()> {
+    roots_unchanged(snapshot)?;
+    mirror::revalidate_inventory(snapshot, cancel)
+}
+
+/// Mixed reviewed actions for one target of a baseline-coordinated reconciliation.
+pub(crate) fn plan_reconcile(
+    snapshot: &Snapshot,
+    items: &[(String, FileOperation)],
+    backup: &Path,
+    target_side: Side,
+    cancel: &AtomicBool,
+) -> Result<SyncPlan> {
+    let source_side = if target_side == Side::Left {
+        Side::Right
+    } else {
+        Side::Left
+    };
+    let ids = |operation| {
+        items
+            .iter()
+            .filter(|(_, op)| *op == operation)
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>()
+    };
+    let mut files = BTreeMap::new();
+    let copies = ids(FileOperation::Copy);
+    if !copies.is_empty() {
+        for action in
+            plan_direction(snapshot, &copies, backup, cancel, source_side.clone())?.actions
+        {
+            files.insert(action.row_id.clone(), action);
+        }
+    }
+    let deletes = ids(FileOperation::Delete);
+    if !deletes.is_empty() {
+        for action in plan_delete(snapshot, &deletes, backup, cancel, target_side.clone())?.actions
+        {
+            files.insert(action.row_id.clone(), action);
+        }
+    }
+    let root = if target_side == Side::Left {
+        &snapshot.left
+    } else {
+        &snapshot.right
+    };
+    let base = fs::canonicalize(backup)?;
+    reject_overlap(&base, &snapshot.left)?;
+    reject_overlap(&base, &snapshot.right)?;
+    let mut actions = Vec::new();
+    for (id, operation) in items {
+        if let Some(action) = files.remove(id) {
+            actions.push(action);
+            continue;
+        }
+        if !matches!(
+            operation,
+            FileOperation::CreateDirectory | FileOperation::RemoveDirectory
+        ) {
+            return Err(Error::Invalid("Unsupported reconciliation action".into()));
+        }
+        let relative = snapshot
+            .paths
+            .get(id)
+            .ok_or_else(|| Error::Invalid("Unknown reconciliation directory".into()))?;
+        let observed = directory::observe(root, relative)?;
+        if (*operation == FileOperation::CreateDirectory && observed.is_some())
+            || (*operation == FileOperation::RemoveDirectory && observed.is_none())
+        {
+            return Err(Error::Invalid(
+                "Reconciliation directory changed or aliases an existing name".into(),
+            ));
+        }
+        actions.push(FileAction {
+            backup_namespace: None,
+            directory_identity: observed.as_ref().map(|r| r.identity.clone()),
+            rename_to: None,
+            operation: *operation,
+            target_permissions: observed.map(|r| r.permissions),
+            row_id: id.clone(),
+            relative_native: Some(crate::native_path::encode(relative)),
+            path: crate::tree::display_path(relative),
+            target_existed: *operation == FileOperation::RemoveDirectory,
+            bytes: "0".into(),
+            source_digest: None,
+            target_digest: None,
+        });
+    }
+    let id = unique_id();
+    let plan = SyncPlan {
+        warnings: Vec::new(),
+        target: root.to_string_lossy().into(),
+        version: 6,
+        policy: FilePlanPolicy::Reconcile { target_side },
+        id: id.clone(),
+        target_native: Some(crate::native_path::encode(root)),
+        source_side,
+        session: snapshot.report.session.clone(),
+        actions,
+        backup_root: base.join(id).to_string_lossy().into(),
+    };
+    validate_plan(&plan)?;
+    Ok(plan)
 }

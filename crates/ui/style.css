@@ -54,3 +54,5 @@ select{font:inherit}
 button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary),var(--ink) 12%)}
 
 .filterbar{flex-wrap:wrap}.filterbar select{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px}.filterbar select:focus-visible{outline:2px solid var(--primary);outline-offset:3px}.sync-dialog.deletion-plan h2{color:var(--red)}button.primary.danger{background:var(--red)}button.primary.danger:hover:not(:disabled){background:color-mix(in oklch,var(--red),var(--ink) 12%)}
+
+.bidirectional-panel .sync-dialog{width:100%;max-height:none;box-shadow:none;margin:16px 0}.bidirectional-panel .plan-actions>div>span:first-child{min-width:0;flex:1}.bidirectional-panel small{display:block;overflow-wrap:anywhere;color:var(--muted)}.bidirectional-panel .pagination{flex-wrap:wrap}

@@ -203,6 +203,9 @@ pub enum FilePlanPolicy {
     },
     MirrorFiles,
     MirrorTree,
+    Reconcile {
+        target_side: Side,
+    },
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "platform", rename_all = "snake_case")]
@@ -878,6 +881,8 @@ pub struct TaskProgress {
 pub enum OperationOutcome {
     File(FileApplyReply),
     Recovery(RecoveryApplyReply),
+    Bidirectional(BidirectionalApplyReply),
+    BidirectionalRecovery(BidirectionalRecoveryReply),
     Error(String),
 }
 
@@ -886,4 +891,102 @@ pub struct WorksheetInfo {
     pub index: usize,
     pub name: String,
     pub hidden: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaselineInfo {
+    pub path: String,
+    pub id: String,
+    pub revision: String,
+    pub entries: usize,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BidirectionalRow {
+    pub baseline: Option<BidirectionalValue>,
+    pub left: Option<BidirectionalValue>,
+    pub right: Option<BidirectionalValue>,
+    pub id: String,
+    pub path: String,
+    pub state: String,
+    pub action: String,
+    pub winner: Option<Side>,
+    pub can_left: bool,
+    pub can_right: bool,
+    pub subtree: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BidirectionalPreview {
+    pub can_prefer_left: bool,
+    pub can_prefer_right: bool,
+    pub id: String,
+    pub baseline: BaselineInfo,
+    pub backup_root: String,
+    pub rows: Vec<BidirectionalRow>,
+    pub total: usize,
+    pub conflicts: usize,
+    pub blocked: usize,
+    pub actions: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BidirectionalResult {
+    #[serde(default)]
+    pub details_in_journal: bool,
+    pub baseline_info: BaselineInfo,
+    pub started_journals: Vec<String>,
+    pub intent_digest: String,
+    pub id: String,
+    pub journal: String,
+    pub baseline: String,
+    pub baseline_updated: bool,
+    pub phase: String,
+    pub planned_journals: Vec<String>,
+    pub operations: Vec<SyncResult>,
+    pub error: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BidirectionalRecoveryPreview {
+    pub total: usize,
+    pub rows: Vec<BidirectionalRecoveryRow>,
+    pub id: String,
+    pub journal: String,
+    pub baseline: String,
+    pub restore_baseline: bool,
+    pub operations: Vec<RecoveryPreview>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BidirectionalRecoveryResult {
+    #[serde(default)]
+    pub details_in_journal: bool,
+    pub journal: String,
+    pub baseline_restored: bool,
+    pub operations: Vec<RecoveryResult>,
+    pub error: Option<String>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BidirectionalApplyReply {
+    pub result: BidirectionalResult,
+    pub locations: Vec<DocumentLocation>,
+    pub stale_documents: Vec<String>,
+    pub warnings: Vec<String>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BidirectionalRecoveryReply {
+    pub result: BidirectionalRecoveryResult,
+    pub locations: Vec<DocumentLocation>,
+    pub stale_documents: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BidirectionalRecoveryRow {
+    pub path: String,
+    pub operation: String,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BidirectionalValue {
+    pub kind: String,
+    pub digest: Option<String>,
 }

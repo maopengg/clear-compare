@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apply-bidirectional-recovery"
+description = "Enables the apply_bidirectional_recovery command without any pre-configured scope."
+commands.allow = ["apply_bidirectional_recovery"]
+
+[[permission]]
+identifier = "deny-apply-bidirectional-recovery"
+description = "Denies the apply_bidirectional_recovery command without any pre-configured scope."
+commands.deny = ["apply_bidirectional_recovery"]

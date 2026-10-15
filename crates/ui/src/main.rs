@@ -70,6 +70,7 @@ fn size(entry: Option<&Entry>) -> String {
 #[component]
 fn App() -> impl IntoView {
     let operation_progress = RwSignal::new(None::<TaskProgress>);
+    let bidi = panels::bidirectional::Signals::new();
     let restart = RwSignal::new(None::<ResumePreview>);
     let restart_offset = RwSignal::new(0usize);
     let git_visible = RwSignal::new(false);
@@ -537,6 +538,8 @@ fn App() -> impl IntoView {
         load_folder(0);
     };
     let reset = move || {
+        bidi.preview.set(None);
+        bidi.recovery.set(None);
         file_operation.set("copy".into());
         comparison.set(None);
         rows.set(Vec::new());
@@ -1095,6 +1098,46 @@ fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let complete_bidi = move |reply: BidirectionalApplyReply| {
+        update_editor_locations(reply.locations, reply.stale_documents);
+        reset();
+        if let Some(e) = &reply.result.error {
+            error.set(e.clone());
+        } else if !reply.warnings.is_empty() {
+            error.set(reply.warnings.join(" · "));
+        }
+        message.set(format!(
+            "{} · {}",
+            tr(
+                english.get_untracked(),
+                "双向同步结果",
+                "Bidirectional result"
+            ),
+            reply.result.journal
+        ));
+        bidi.baseline.set(Some(reply.result.baseline_info.clone()));
+        bidi.run.set(Some(reply.result));
+    };
+    let recover_bidi = move |reply: BidirectionalRecoveryReply| {
+        update_editor_locations(reply.locations, reply.stale_documents);
+        reset();
+        if let Some(e) = &reply.result.error {
+            error.set(e.clone());
+        } else if !reply.warnings.is_empty() {
+            error.set(reply.warnings.join(" · "));
+        }
+        bidi.baseline.set(None);
+        message.set(format!(
+            "{} · {}",
+            tr(
+                english.get_untracked(),
+                "协调回退结果",
+                "Coordinated rollback result"
+            ),
+            reply.result.journal
+        ));
+        bidi.undo.set(Some(reply.result));
+    };
     let reconnect_operation = move || {
         if busy.get_untracked() {
             return;
@@ -1107,6 +1150,8 @@ fn App() -> impl IntoView {
                     match operations::follow(handle, operation_progress).await {
                         Ok(OperationOutcome::File(reply)) => complete_file(reply),
                         Ok(OperationOutcome::Recovery(reply)) => complete_recovery(reply),
+                        Ok(OperationOutcome::Bidirectional(reply)) => complete_bidi(reply),
+                        Ok(OperationOutcome::BidirectionalRecovery(reply)) => recover_bidi(reply),
                         Ok(OperationOutcome::Error(e)) | Err(e) => {
                             error.set(e);
                             reset();
@@ -1320,6 +1365,7 @@ fn App() -> impl IntoView {
             <Show when=move || !error.get().is_empty()><div class="notice error-notice" role="alert">{move || error.get()}</div></Show>
             <Show when=move || !message.get().is_empty()><div class="notice" role="status">{move || message.get()}<br/>{move || tr(english.get(),"请重新比较以查看最新状态。备份与操作日志已保留。","Compare again to refresh. Backups and operation journal are retained.")}</div></Show>
             {panels::tasks::panel(english,busy,error,operation_progress,reconnect_operation)}
+            {panels::bidirectional::panel(english,busy,error,comparison,operation_progress,bidi,complete_bidi,recover_bidi,reset)}
             <Show when=move || busy.get()><div class="progress" role="status"><span class="pulse"></span>{move || tr(english.get(),"正在处理，请稍候…","Working, please wait…")}<button class="quiet" on:click=move |_| spawn_local(async move { let _ = invoke::<()>("cancel",serde_json::json!({})).await; })>{move || tr(english.get(),"取消任务","Cancel task")}</button></div></Show>
             <Show when=move || comparison.get().is_some() fallback=move || view! {
                 <section class="empty"><div class="empty-symbol" aria-hidden="true">"⇄"</div><h1>{move || tr(english.get(),"看清差异，再同步","See the difference. Then sync.")}</h1><p>{move || tr(english.get(),"选择两个独立的文件夹，比较内容，检查计划，然后复制你选择的文件。","Choose two separate directories, compare their contents, review a plan, then copy selected files.")}</p><div class="empty-notes"><span>{move || tr(english.get(),"目标独有文件保留","Destination-only files retained")}</span><span>{move || tr(english.get(),"覆盖前验证备份","Backups verified before overwrite")}</span></div></section>

@@ -138,3 +138,12 @@ New file operations persist immutable bounded context and its journal digest bef
 ## Excel table extraction
 
 Frozen table documents retain bounded native byte buffers. Text formats share the existing decoder; table::xlsx validates package expansion/XML allocation hints before a pinned calamine streaming cell reader extracts saved values. Declared dimensions never allocate a dense library range. Actual positions/grid/text are bounded; missing formula caches/cell errors remain distinct from values. Worksheet catalogs and date-system normalization feed existing string-based key/name alignment and tolerance. CLI and desktop share the adapter and contracts; UI receives indices and paged results without filesystem access. See the [format policies](table-formats.md).
+
+
+## Common-baseline reconciliation
+
+`bidirectional::{baseline,planner,execute,recovery}` coordinates two target-specific version-six sync plans. Content-only native inventories and subtree fingerprints distinguish independent changes from delete/modify conflicts; explicit branch winners preserve dependency consistency. The common profile is advanced only after both actual trees match the reviewed final inventory, with a profile-sidecar lock, immutable run intent and retained before/after baselines. Existing file/directory journals remain the mutation/backup authority. Coordinated rollback validates original run/profile evidence, reverses each target and restores the previous profile bytes only after recovery succeeds. Newer profile revisions block old rollback.
+
+`task::with_mutation_guard` composes scoped root-identity validators with inner native commit boundaries. Its thread-local stack is synchronous, token-specific, nestable and restored on scope exit/unwind; it creates no service or thread. Both ordinary and paused inner actions recheck the coordinated roots before writes. Desktop typed IPC caches native selections/plans, pages review rows and runs apply/rollback through the existing operation registry. CLI calls the same core. See [workflow, formats and failure limits](bidirectional-sync.md).
+
+Bidirectional desktop terminal outcomes retain status, profile metadata and child journal references, marking full action details as journal-resident. The bridge omits the large action arrays; CLI/core journals retain complete evidence. Native serialization tests exercise large input results and verify a compact reply preserves failure state and references.

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-resolve-bidirectional"
+description = "Enables the resolve_bidirectional command without any pre-configured scope."
+commands.allow = ["resolve_bidirectional"]
+
+[[permission]]
+identifier = "deny-resolve-bidirectional"
+description = "Denies the resolve_bidirectional command without any pre-configured scope."
+commands.deny = ["resolve_bidirectional"]

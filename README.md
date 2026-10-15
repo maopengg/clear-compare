@@ -8,9 +8,9 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview with byte differences, offset navigation and bounded overlapping byte search, pixel picture comparison with overlay/difference views, CSV/TSV/static-HTML table comparison with independent source formats and frozen native inputs, file selection, reviewed directional copy and selected regular-file deletion with recovery, verified backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit/index/raw-working-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview with byte differences, offset navigation and bounded overlapping byte search, pixel picture comparison with overlay/difference views, CSV/TSV/static-HTML/Excel-OOXML table comparison with independent source formats and frozen native inputs, file selection, reviewed directional copy and selected regular-file deletion with recovery, common-baseline bidirectional file/tree reconciliation with explicit conflict winners and coordinated baseline rollback, reviewed forward restart, verified backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit/index/raw-working-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
 
-Planned: advanced merge workflows, Excel table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
+Planned: advanced merge workflows, legacy Excel formats and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
 ## Download
 
@@ -44,7 +44,7 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 在操作下拉框选择“删除左侧文件”或“删除右侧文件”，选择可读普通文件后预览。计划显示目标目录、文件名、大小及备份位置；执行时先创建并验证备份，再重新校验并移除。可从操作历史预览恢复，原路径若已被重新创建则拒绝覆盖。目录、链接及未选择文件不会移除；需要查看相同文件时先关闭“仅差异”。操作切换会清空选择，删除模式不随会话保存。
 
-删除恢复保留原始字节和基本权限，不是完整 ACL/时间戳备份；也不使用系统废纸篓。独立目录删除、跨目录移动、批量重命名、类型替换、完整元数据复制和双向同步仍在计划中。详细格式、兼容性与中断恢复规则见 [文件操作说明](docs/file-operations.md)。
+删除恢复保留原始字节和基本权限，不是完整 ACL/时间戳备份；也不使用系统废纸篓。独立目录删除、跨目录移动、批量重命名、类型替换、完整元数据复制和高级双向同步策略仍在计划中。详细格式、兼容性与中断恢复规则见 [文件操作说明](docs/file-operations.md)。
 
 在操作菜单选择“重命名左侧文件”或“重命名右侧文件”，恰好选择一个普通文件并输入同目录的新文件名，然后预览执行。支持仅大小写变化，拒绝覆盖任何已有名称；执行前验证备份，再通过日志中记录的临时名称完成原生重命名。操作历史可预览改回原名，也可恢复中断后仍位于临时名称的文件。已打开的编辑器跟随路径，保留未保存内容和撤销记录；外部变更仍会阻止保存。
 
@@ -58,13 +58,19 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 
 目录元数据和创建身份记录保存在备份集内，回退按依赖逆序恢复，拒绝覆盖重建路径或清理含外部内容的目录。目录权限可恢复，原属主、ACL、时间戳不属于完整备份；中断和部分回退的限制见 [目录镜像说明](docs/tree-mirror.md)。
 
+### 基于共同基线的双向同步
+
+先开启内容校验并比较目录，在“双向同步与共同基线”中建立或选择 `.ccbase`。首次基线要求两侧已一致（包括空目录），保存位置必须在两侧之外。后续同步会按上次共同的 SHA-256 状态区分独立修改、新增和删除，而非按时间戳猜测。
+
+预览会列出两个方向的写入及基线/左右状态。双方修改、删除与修改冲突需明确选择保留侧；目录选择作用于整个分支，含排除项的目录禁止选择清空。只有两侧都达到预览结果后，基线才会更新。基线提交前取消或失败不会推进基线，并保留已完成动作的备份；可选择返回的 `run.json` 预览协调回退，同时恢复两侧动作与原基线。已有更新修订时拒绝回退旧运行。类型替换、完整元数据同步和部分回退续跑仍待实现。详见 [双向同步说明](docs/bidirectional-sync.md)。
+
 ### 任务暂停、进度与重连
 
 执行已预览的文件操作或回退时，可查看动作进度及读取/写入计数，并暂停、继续或取消。界面区分“等待安全暂停点”和“已暂停”；替换、删除前的最终校验及日志写入不会被暂停打断。恢复执行前会重新校验暂停期间可能变化的文件。
 
 “连接文件任务”可找回同一原生进程中仍在运行或尚未领取结果的任务，界面重新加载时也会自动尝试连接。程序重启后可在原操作历史选择“预览续跑”，核对已完成、待重试和临时文件保留动作，再继续原同步；也可预览回退。新操作保留原始意图及每次重试的独立备份，外部变更会阻止不安全续跑。旧日志没有续跑上下文时仍使用回退。见 [重启续跑说明](docs/operation-resume.md)。详细状态、结果领取与限制见 [任务说明](docs/operation-tasks.md)。
 
-### HTML / CSV / TSV 表格
+### Excel / HTML / CSV / TSV 表格
 
 点击文件行中的“表”按钮，默认识别 Excel OOXML 工作簿（XLSX / XLSM / XLTX / XLTM）、HTML / HTM、TSV，其余使用 CSV。两侧格式和表序号可独立指定，支持 Excel、HTML 与分隔文本对照。原始文件只在原生端读取一次，之后改主键列、容差或表序号都复用同一份内容；重新点击文件列表中的表按钮可刷新。开启目录内容校验时，文件已变更会要求先重新比较目录。
 

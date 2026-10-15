@@ -73,6 +73,42 @@ struct MirrorArgs {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Capture a common SHA-256 baseline, only from equal trees; preview by default.
+    Baseline {
+        left: String,
+        right: String,
+        output: PathBuf,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Reconcile both roots against their last common baseline.
+    Bidirectional {
+        left: String,
+        right: String,
+        #[arg(long)]
+        baseline: PathBuf,
+        #[arg(long)]
+        backup_dir: PathBuf,
+        #[arg(long, default_value = "")]
+        exclude: String,
+        #[arg(long, value_enum)]
+        prefer: Option<FileSide>,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long)]
+        apply: bool,
+    },
+    RecoverBidirectional {
+        journal: PathBuf,
+        #[arg(long)]
+        backup_dir: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long)]
+        apply: bool,
+    },
     /// Mirror included regular files across the whole comparison, retaining empty directories.
     MirrorFiles(MirrorArgs),
     /// Mirror included files and directories, with reviewed empty-directory removal.
@@ -879,6 +915,96 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
             )?;
             println!("{}", serde_json::to_string_pretty(&result.summary)?);
             Ok(i32::from(result.summary.changed_pixels != "0"))
+        }
+        Command::Baseline {
+            left,
+            right,
+            output,
+            exclude,
+            apply,
+        } => {
+            let cancel = AtomicBool::new(false);
+            let snapshot = clear_core::compare::compare(
+                &CompareRequest {
+                    left,
+                    right,
+                    exclusions: exclude,
+                    content: true,
+                },
+                &cancel,
+            )?;
+            let result = clear_core::bidirectional::capture(&snapshot, &output, apply, &cancel)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(0)
+        }
+        Command::Bidirectional {
+            left,
+            right,
+            baseline,
+            backup_dir,
+            exclude,
+            prefer,
+            offset,
+            apply,
+        } => {
+            if apply && offset != 0 {
+                return Err(clear_core::Error::Invalid("Offset is preview-only".into()));
+            }
+            let cancel = AtomicBool::new(false);
+            let snapshot = std::sync::Arc::new(clear_core::compare::compare(
+                &CompareRequest {
+                    left,
+                    right,
+                    exclusions: exclude,
+                    content: true,
+                },
+                &cancel,
+            )?);
+            let mut plan =
+                clear_core::bidirectional::prepare(snapshot, &baseline, &backup_dir, &cancel)?;
+            if let Some(prefer) = prefer {
+                plan.prefer(prefer.into(), &cancel)?;
+            }
+            if apply {
+                let result = clear_core::bidirectional::execute(&plan, &cancel)?;
+                let complete = result.error.is_none() && result.baseline_updated;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(if complete { 0 } else { 2 })
+            } else {
+                let blocked = plan.view.blocked + plan.view.conflicts > 0;
+                let mut view = plan.view.clone();
+                view.rows = plan.page(offset);
+                println!("{}", serde_json::to_string_pretty(&view)?);
+                Ok(if blocked { 2 } else { 0 })
+            }
+        }
+        Command::RecoverBidirectional {
+            journal,
+            backup_dir,
+            apply,
+            offset,
+        } => {
+            if apply && offset != 0 {
+                return Err(clear_core::Error::Invalid("Offset is preview-only".into()));
+            }
+            let cancel = AtomicBool::new(false);
+            let plan = clear_core::bidirectional::preview_recovery(&journal, &backup_dir, &cancel)?;
+            if apply {
+                let result = clear_core::bidirectional::execute_recovery(&plan, &cancel)?;
+                let complete = result.error.is_none() && result.baseline_restored;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(if complete { 0 } else { 2 })
+            } else {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&{
+                        let mut view = plan.view.clone();
+                        view.rows = plan.page(offset);
+                        view
+                    })?
+                );
+                Ok(0)
+            }
         }
         Command::ResumeSync {
             journal,
