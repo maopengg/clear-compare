@@ -8,7 +8,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 **0.1 preview, under active development.** This is the first local-file implementation, not full Beyond Compare parity. See the [feature matrix](docs/feature-matrix.md), [complete plan](docs/development-plan.md) and [validation log](docs/roadmap.md).
 
-Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings and a JSON CLI.
+Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview, pixel picture comparison with overlay/difference views, CSV/TSV key/position table comparison, file selection, reviewed directional copy, verified overwrite backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit-tree comparison, persisted view settings and a JSON CLI.
 
 Planned: advanced merge workflows, Excel/HTML table viewers and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
@@ -39,6 +39,14 @@ Previews are unsigned unless release notes explicitly state otherwise. Read rele
 勾选“右 → 左”可切换同步方向；切换后需重新选择文件并预览。
 
 目标独有文件保留，符号链接不跟随或复制。取消任务不会撤销已完成动作。目录状态会聚合按当前规则扫描到的子项；目录大小是已列出的常规文件大小之和，不是实际磁盘占用。子项有差异、错误或未验证内容时，目录不会标为内容一致。
+
+### 文本差异导航
+
+文本预览按修改组中的行序对齐两侧，左右面板的垂直及水平滚动联动；这不是语义最佳行匹配，也尚不支持手动对齐。行内下划线遵循大小写、空白和换行比较规则，原文不变。行尾标签显示 LF、CRLF、CR 或 ∅（无末尾换行）。
+
+“上一/下一差异”跨全部结果跳转，预览区聚焦时也可使用 F7 / Shift+F7。逐行字面查找区分大小写，搜索全部左右原文，每个匹配行计一次，可跨页定位。每页最多 500 个对齐行；每行最多显示前 8192 个 Unicode 字符，并显示截断标签。匹配可能位于截断部分；载入合并和 CLI JSON 仍使用完整原文。
+
+行内细分限制每对原始行合计 16 KiB、规范化后 4096 个 Unicode 标量，单次比较累计 100,000 个标量及 150 ms 计算预算。超预算或无法细分的行会显示“整行提示”，不表示其中每个字节都不同。标记偏移是原文 UTF-8 字节范围；不承诺按完整字素簇细分。完整文本读取/行数上限仍生效。
 
 ### 文本冲突处理
 

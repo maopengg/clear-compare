@@ -89,9 +89,10 @@ fn committed_trees_are_pinned_without_touching_dirty_worktree_or_index() {
         serde_json::to_string(
             &r.text_diff(&file.id, &TextOptions::default(), &cancel())
                 .unwrap()
+                .lines
         )
         .unwrap(),
-        serde_json::to_string(&diff).unwrap()
+        serde_json::to_string(&diff.lines).unwrap()
     );
     assert_eq!(fs::read(repo.join(".git/index")).unwrap(), index);
     assert_eq!(fs::read(repo.join(".git/HEAD")).unwrap(), head);

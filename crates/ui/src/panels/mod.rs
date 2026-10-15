@@ -9,3 +9,5 @@ pub mod merge;
 pub mod picture;
 pub mod sessions;
 pub mod table;
+
+pub mod text;

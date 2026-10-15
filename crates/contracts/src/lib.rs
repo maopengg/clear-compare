@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 pub mod edit_history;
 pub mod merge_edit;
+pub mod text_view;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -99,6 +100,10 @@ pub struct OpenedComparison {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiffLine {
+    #[serde(default)]
+    pub intraline_limited: bool,
+    #[serde(default)]
+    pub changes: Vec<TextRange>,
     pub tag: String,
     pub old_line: Option<usize>,
     pub new_line: Option<usize>,
@@ -117,6 +122,10 @@ pub struct TextOptions {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextDiff {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub intraline_limited: bool,
     pub path: String,
     pub lines: Vec<DiffLine>,
 }
@@ -501,4 +510,11 @@ pub struct MergeConflict {
     pub left: String,
     pub base: String,
     pub right: String,
+}
+
+/// UTF-8 byte range in an original, unnormalized line.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TextRange {
+    pub start: usize,
+    pub end: usize,
 }

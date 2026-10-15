@@ -149,3 +149,10 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Shared parsing rejects malformed, duplicated, nested or incomplete markers. Resolution rejects manually edited blocks, preserves exact original line endings/final-newline absence and does not discard surrounding text. DOM selection uses UTF-16 offsets.
 - Tests cover all version choices, Unicode offsets, shifted multi-group positions, malformed markers, manual-edit protection, undo restoring guarded tags, original no-final-newline fragments and oversize generated output. The existing native save/undo regression also exercises the new marker form.
 - Previous Git changes passed three-platform CI run 38673619729. Local automated checks and WASM/native builds are recorded with this commit; client GUI/installer acceptance stays deferred.
+
+## Intraline text differences and navigation
+
+- Text comparison now returns original-byte intraline spans for ordinal pairs in replacement groups, with explicit per-line/result budget fallbacks. The equal/delete/insert sequence and all original bytes remain available to the CLI and merge inputs.
+- A separate shared-scroll text panel provides 500-row aligned pages, change-group navigation (F7 / Shift+F7 while focused), case-sensitive literal row search across all results and visible original EOL markers. Long display lines are capped at 8192 characters with a truncation label.
+- Tests cover emoji/multibyte ranges, whitespace/case/EOL rules, contextual lowercase and expansions, CRLF-only changes, budget fallback, original-text reconstruction, cross-page alignment/search, invalid/overlapping spans and Unicode-safe clipping.
+- Structured-merge changes passed three-platform CI run 38674396092. New local tests/lints/builds are recorded with this commit; interactive client/installer validation remains deferred.

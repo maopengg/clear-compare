@@ -58,3 +58,125 @@ fn final_newline_and_cr_only_lines_remain_significant() {
             .is_empty()
     );
 }
+
+fn marked(line: &clear_contracts::DiffLine) -> String {
+    line.changes
+        .iter()
+        .map(|r| {
+            assert!(r.start <= r.end && r.end <= line.text.len());
+            assert!(line.text.is_char_boundary(r.start) && line.text.is_char_boundary(r.end));
+            &line.text[r.start..r.end]
+        })
+        .collect()
+}
+#[test]
+fn intraline_unicode_and_rules_preserve_original_byte_ranges() {
+    let r = compare_strings(
+        "x",
+        "\u{4e2d}\u{1f642}value\n",
+        "\u{4e2d}\u{1f643}value\n",
+        &TextOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(marked(&r.lines[0]), "\u{1f642}");
+    assert_eq!(marked(&r.lines[1]), "\u{1f643}");
+    let options = TextOptions {
+        ignore_case: true,
+        ignore_whitespace: true,
+        ignore_line_endings: true,
+    };
+    let r = compare_strings("x", "Key = value_old\r\n", "KEY= value_new\n", &options).unwrap();
+    assert_eq!(marked(&r.lines[0]), "old");
+    assert_eq!(marked(&r.lines[1]), "new");
+    assert!(!clear_contracts::text_view::significant_ending(
+        Some(&r.lines[0]),
+        Some(&r.lines[1])
+    ));
+    assert_eq!(r.lines[0].text, "Key = value_old\r\n");
+    let r = compare_strings(
+        "x",
+        "\u{039f}\u{03a3} x\n",
+        "\u{03bf}\u{03c2} y\n",
+        &TextOptions {
+            ignore_whitespace: false,
+            ..options.clone()
+        },
+    )
+    .unwrap();
+    assert_eq!(marked(&r.lines[0]), "x");
+    assert_eq!(marked(&r.lines[1]), "y");
+    let r = compare_strings("x", "\u{0130} x\n", "i\u{0307} y\n", &options).unwrap();
+    assert_eq!(marked(&r.lines[0]), "x");
+    assert_eq!(marked(&r.lines[1]), "y");
+}
+#[test]
+fn eol_only_changes_and_budget_fallbacks_remain_explicit() {
+    let r = compare_strings("x", "a\r\n", "a\n", &TextOptions::default()).unwrap();
+    assert_eq!(marked(&r.lines[0]), "\r");
+    assert!(clear_contracts::text_view::significant_ending(
+        Some(&r.lines[0]),
+        Some(&r.lines[1])
+    ));
+    assert!(marked(&r.lines[1]).is_empty());
+    let a = format!("{}a\n", "x".repeat(20000));
+    let b = format!("{}b\n", "x".repeat(20000));
+    let r = compare_strings("x", &a, &b, &TextOptions::default()).unwrap();
+    assert!(r.intraline_limited);
+    assert!(r.lines.iter().all(|l| l.intraline_limited));
+    assert_eq!(marked(&r.lines[0]), a);
+    assert_eq!(marked(&r.lines[1]), b);
+}
+
+#[test]
+fn annotations_and_alignment_never_alter_source_reconstruction() {
+    let samples = [
+        "",
+        "a",
+        "a\n",
+        "A \r\n\u{4e2d}\r",
+        "\u{1f642}\nnext\n",
+        "line\nline\nend",
+    ];
+    for left in samples {
+        for right in samples {
+            for ignore in [false, true] {
+                let options = TextOptions {
+                    ignore_case: ignore,
+                    ignore_whitespace: ignore,
+                    ignore_line_endings: ignore,
+                };
+                let r = compare_strings("x", left, right, &options).unwrap();
+                let restored_left = r
+                    .lines
+                    .iter()
+                    .filter(|l| l.old_line.is_some())
+                    .map(|l| l.text.as_str())
+                    .collect::<String>();
+                let restored_right = r
+                    .lines
+                    .iter()
+                    .filter(|l| l.new_line.is_some())
+                    .map(|l| l.right_text.as_deref().unwrap_or(&l.text))
+                    .collect::<String>();
+                assert_eq!(restored_left, left);
+                assert_eq!(restored_right, right);
+                for l in &r.lines {
+                    let _ = marked(l);
+                }
+                let rows = clear_contracts::text_view::align(&r.lines);
+                let aligned_left = rows
+                    .iter()
+                    .filter_map(|row| row.left)
+                    .map(|n| r.lines[n].text.as_str())
+                    .collect::<String>();
+                let aligned_right = rows
+                    .iter()
+                    .filter_map(|row| row.right)
+                    .map(|n| r.lines[n].right_text.as_deref().unwrap_or(&r.lines[n].text))
+                    .collect::<String>();
+                assert_eq!(aligned_left, left);
+                assert_eq!(aligned_right, right);
+            }
+        }
+    }
+}

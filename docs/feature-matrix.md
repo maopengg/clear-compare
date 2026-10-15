@@ -9,7 +9,7 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F03 Rules | Root-relative and any-level exclusions, semicolon/newline import | Inclusion priority, attributes, content filters |
 | F04 Operations | Verified regular-file copy with overwrite backups | Move, delete, rename, attribute/time preservation |
 | F05 Synchronization | Reviewed left-to-right or right-to-left copy, stop-on-error, journal, cancellation, persisted copy history and reviewed rollback | Mirror, baseline-aware bidirectional policies, pause, crash resume and recovery redo |
-| F06 Text compare | UTF-8/UTF-16 line diff, original-text paired view, bounded computation | Intraline differences, alignment controls and navigation |
+| F06 Text compare | UTF-8/UTF-16 line diff, rule-aware Unicode-scalar intraline hints with explicit fallbacks, original-text ordinal row alignment, shared scrolling, fixed paging, difference navigation and literal row search | Semantic/manual alignment, syntax highlighting and broader large-file/performance validation |
 | F07 Editing | Side-specific editor, encoding/BOM/newline retention or explicit conversion, digest-checked atomic save, verified backup, reviewed last-save restore and bounded UTF-8 splice undo/redo | Persistent backup browser, richer editing/selection and block-copy workflow |
 | F08 Text rules | Case, within-line whitespace and line-ending normalization | Syntax filters, regex rules and manual alignment |
 | F09 Text merge | Three-way merge buffers, tagged conflict provenance, native normal-save gate, conflict navigation/original-version choices, bounded undo/redo, editor loading and JSON CLI | Working-copy export and richer merge editing |

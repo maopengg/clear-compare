@@ -4,11 +4,12 @@ use crate::{
     compare::{Snapshot, checked_path},
     editing,
 };
-use clear_contracts::{DiffLine, Kind, TextDiff, TextOptions};
+use clear_contracts::{DiffLine, Kind, TextDiff, TextOptions, TextRange};
 use similar::{Algorithm, DiffTag, capture_diff_slices_deadline};
 use std::{
     fs::File,
     io::Read,
+    ops::Range,
     path::Path,
     time::{Duration, Instant},
 };
@@ -76,6 +77,99 @@ fn normalized(line: &str, options: &TextOptions) -> String {
     value
 }
 
+fn units(line: &str, options: &TextOptions) -> Option<(Vec<char>, Vec<Range<usize>>)> {
+    let body = line.trim_end_matches(['\r', '\n']);
+    let mut filtered = String::new();
+    let mut positions = Vec::new();
+    for (start, ch) in body.char_indices() {
+        if options.ignore_whitespace && ch.is_whitespace() {
+            continue;
+        }
+        filtered.push(ch);
+        let count = if options.ignore_case {
+            ch.to_lowercase().count()
+        } else {
+            1
+        };
+        positions.extend(std::iter::repeat_n(start..start + ch.len_utf8(), count));
+    }
+    let lower = if options.ignore_case {
+        filtered.to_lowercase()
+    } else {
+        filtered
+    };
+    let mut chars = lower.chars().collect::<Vec<_>>();
+    if chars.len() != positions.len() {
+        return None;
+    }
+    if options.ignore_line_endings {
+        if body.len() < line.len() {
+            chars.push('\n');
+            positions.push(body.len()..line.len());
+        }
+    } else {
+        for (n, ch) in line[body.len()..].char_indices() {
+            chars.push(ch);
+            positions.push(body.len() + n..body.len() + n + ch.len_utf8());
+        }
+    }
+    Some((chars, positions))
+}
+fn full(line: &str) -> Vec<TextRange> {
+    if line.is_empty() {
+        Vec::new()
+    } else {
+        vec![TextRange {
+            start: 0,
+            end: line.len(),
+        }]
+    }
+}
+fn ranges(positions: &[Range<usize>], range: Range<usize>) -> Vec<TextRange> {
+    let mut result: Vec<TextRange> = Vec::new();
+    for p in &positions[range] {
+        if let Some(last) = result.last_mut()
+            && p.start <= last.end
+        {
+            last.end = last.end.max(p.end);
+            continue;
+        }
+        result.push(TextRange {
+            start: p.start,
+            end: p.end,
+        });
+    }
+    result
+}
+fn intraline(
+    left: &str,
+    right: &str,
+    options: &TextOptions,
+    deadline: Instant,
+    budget: &mut usize,
+) -> (Vec<TextRange>, Vec<TextRange>, bool) {
+    if left.len() + right.len() > 16384 || Instant::now() >= deadline {
+        return (full(left), full(right), true);
+    }
+    let (Some((a, ap)), Some((b, bp))) = (units(left, options), units(right, options)) else {
+        return (full(left), full(right), true);
+    };
+    let cost = a.len() + b.len();
+    if cost > 4096 || cost > *budget {
+        return (full(left), full(right), true);
+    }
+    *budget -= cost;
+    let ops = capture_diff_slices_deadline(Algorithm::Myers, &a, &b, Some(deadline));
+    let mut l = Vec::new();
+    let mut r = Vec::new();
+    for op in ops {
+        if op.tag() != DiffTag::Equal {
+            l.extend(ranges(&ap, op.old_range()));
+            r.extend(ranges(&bp, op.new_range()));
+        }
+    }
+    (l, r, Instant::now() >= deadline)
+}
 pub fn compare_strings(
     path: &str,
     left: &str,
@@ -109,10 +203,15 @@ pub fn compare_strings(
         Some(Instant::now() + Duration::from_secs(2)),
     );
     let mut lines = Vec::new();
+    let mut intraline_limited = false;
+    let deadline = Instant::now() + Duration::from_millis(150);
+    let mut budget = 100000;
     for op in ops {
         if op.tag() == DiffTag::Equal {
             for (i, j) in op.old_range().zip(op.new_range()) {
                 lines.push(DiffLine {
+                    intraline_limited: false,
+                    changes: Vec::new(),
                     tag: "equal".into(),
                     old_line: Some(i + 1),
                     new_line: Some(j + 1),
@@ -121,8 +220,24 @@ pub fn compare_strings(
                 });
             }
         } else {
-            for i in op.old_range() {
+            let old_range = op.old_range();
+            let new_range = op.new_range();
+            let pairs = old_range
+                .clone()
+                .zip(new_range.clone())
+                .map(|(i, j)| {
+                    let (l, r, limited) = intraline(old[i], new[j], options, deadline, &mut budget);
+                    intraline_limited |= limited;
+                    (l, r, limited)
+                })
+                .collect::<Vec<_>>();
+            for (n, i) in old_range.enumerate() {
                 lines.push(DiffLine {
+                    intraline_limited: pairs.get(n).is_some_and(|p| p.2),
+                    changes: pairs
+                        .get(n)
+                        .map(|p| p.0.clone())
+                        .unwrap_or_else(|| full(old[i])),
                     tag: "delete".into(),
                     old_line: Some(i + 1),
                     new_line: None,
@@ -130,8 +245,13 @@ pub fn compare_strings(
                     right_text: None,
                 });
             }
-            for j in op.new_range() {
+            for (n, j) in new_range.enumerate() {
                 lines.push(DiffLine {
+                    intraline_limited: pairs.get(n).is_some_and(|p| p.2),
+                    changes: pairs
+                        .get(n)
+                        .map(|p| p.1.clone())
+                        .unwrap_or_else(|| full(new[j])),
                     tag: "insert".into(),
                     old_line: None,
                     new_line: Some(j + 1),
@@ -142,6 +262,8 @@ pub fn compare_strings(
         }
     }
     Ok(TextDiff {
+        id: crate::unique_id(),
+        intraline_limited,
         path: path.into(),
         lines,
     })

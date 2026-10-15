@@ -94,7 +94,6 @@ fn App() -> impl IntoView {
     let reverse_sync = RwSignal::new(false);
     let selected = RwSignal::new(BTreeSet::<String>::new());
     let diff = RwSignal::new(None::<TextDiff>);
-    let diff_limit = RwSignal::new(500usize);
     let ignore_case = RwSignal::new(false);
     let ignore_space = RwSignal::new(false);
     let ignore_endings = RwSignal::new(false);
@@ -984,8 +983,8 @@ fn App() -> impl IntoView {
                 </div>
                 <details class="rules"><summary>{move || tr(english.get(),"排除规则","Exclusion rules")}</summary><p>{move || tr(english.get(),"分号或换行分隔；./ 从根目录匹配，目录以 / 结尾。","Separate with semicolons or newlines; ./ anchors at root, / marks a directory.")}</p><textarea aria-label="Exclusion rules" prop:value=move || exclusions.get() disabled=move || busy.get() on:input=move |ev| {reset();exclusions.set(event_target_value(&ev));}/></details>
             </section>
-            {panels::git::panel(english,busy,git_visible,error,diff,diff_limit)}
-            {panels::archives::panel(english,busy,archive_visible,error,diff,diff_limit)}
+            {panels::git::panel(english,busy,git_visible,error,diff)}
+            {panels::archives::panel(english,busy,archive_visible,error,diff)}
             {panels::folder_merge::panel(english,busy,panels::folder_merge::Signals{visible:folder_merge_visible,preview:folder_merge_preview,left,right,exclusions,error,message})}
             <Show when=move || !error.get().is_empty()><div class="notice error-notice" role="alert">{move || error.get()}</div></Show>
             <Show when=move || !message.get().is_empty()><div class="notice" role="status">{move || message.get()}<br/>{move || tr(english.get(),"请重新比较以查看最新状态。备份与操作日志已保留。","Compare again to refresh. Backups and operation journal are retained.")}</div></Show>
@@ -1010,7 +1009,7 @@ fn App() -> impl IntoView {
                         view! {<div class="file-row" title=detail><input type="checkbox" aria-label=format!("Select {}",path) disabled=move || !(if reverse_sync.get(){eligible_right}else{eligible_left}) || busy.get() prop:checked=move || selected.get().contains(&check_id) on:change=move |ev| { let checked=event_target_checked(&ev);selected.update(|s| {if checked {s.insert(select_id.clone());} else {s.remove(&select_id);}});plan.set(None); }/>
                             <button class="file-name" disabled=move || busy.get() on:click=move |_| {
                                 if can_directory{browse_folder(Some(open_id.clone()));return;}
-                                let Some(c)=comparison.get_untracked() else {return;}; let id=open_id.clone();busy.set(true);error.set(String::new());diff.set(None);diff_limit.set(500);
+                                let Some(c)=comparison.get_untracked() else {return;}; let id=open_id.clone();busy.set(true);error.set(String::new());diff.set(None);
                                 spawn_local(async move {match invoke::<TextDiff>("text_diff",serde_json::json!({"session":c.session,"rowId":id,"options":{"ignore_case":ignore_case.get_untracked(),"ignore_whitespace":ignore_space.get_untracked(),"ignore_line_endings":ignore_endings.get_untracked()}})).await {Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)} busy.set(false);});
                             }>{if can_directory{format!("▸ {path}")}else{path}}</button><span class="file-size">{left_size}</span><span class="file-size">{right_size}</span><span class=format!("status {css}")>{move || label(&state,english.get())}</span><span class="row-edits"><button class="quiet" disabled=move ||busy.get() || !(can_left ||can_right) on:click=move |_|open_picture(picture_row_id.clone())>{move ||tr(english.get(),"图","Pic")}</button><button class="quiet" disabled=move ||busy.get() || !(can_left || can_right) on:click=move |_|open_table(table_row_id.clone())>{move ||tr(english.get(),"表","CSV")}</button><button class="quiet" disabled=move || busy.get() || !(can_left || can_right) on:click=move |_|open_binary(hex_id.clone(),"0".into())>"Hex"</button><button class="quiet" disabled=move || busy.get() || !can_left on:click=move |_| open_editor(edit_left.clone(),Side::Left)>{move || tr(english.get(),"左","L")}</button><button class="quiet" disabled=move || busy.get() || !can_right on:click=move |_| open_editor(edit_right.clone(),Side::Right)>{move || tr(english.get(),"右","R")}</button></span></div>}
                     }/></div>
@@ -1018,10 +1017,7 @@ fn App() -> impl IntoView {
                 <div class="pagination"><span>{move || format!("{}–{} / {}",offset.get()+usize::from(visible_total.get()>0),(offset.get()+500).min(visible_total.get()),visible_total.get())}</span><button class="quiet" disabled=move || offset.get()==0 || busy.get() on:click=move |_| paginate(false)>{move || tr(english.get(),"上一页","Previous")}</button><button class="quiet" disabled=move || busy.get() || (offset.get()+500>=visible_total.get()) on:click=move |_| paginate(true)>{move || tr(english.get(),"下一页","Next")}</button></div>
                 <Show when=move || comparison.get().is_some_and(|c| !c.warnings.is_empty())><p class="warnings">{move || comparison.get().map(|c| c.warnings.join(" · "))}</p></Show>
             </Show>
-            <Show when=move || diff.get().is_some()><section class="diff-panel"><header><button class="quiet" on:click=move |_|{if let Some(d)=diff.get_untracked(){merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);}}>{move || tr(english.get(),"载入合并面板","Load into merge panel")}</button><strong>{move || diff.get().map(|d|d.path)}</strong><button class="quiet" on:click=move |_| diff.set(None)>{move || tr(english.get(),"关闭预览","Close preview")}</button></header><div class="diff-headings"><span>{move || tr(english.get(),"左侧 · 来源","Left · Source")}</span><span>{move || tr(english.get(),"右侧 · 目标","Right · Destination")}</span></div><div class="diff-scroll"><For each=move || diff.get().map(|d|d.lines.into_iter().take(diff_limit.get()).enumerate().collect::<Vec<_>>()).unwrap_or_default() key=|(i,_)| *i children=move |(_,line)| {
-                let left_text=if line.tag=="insert" {String::new()} else {line.text.clone()};let right_text=if line.tag=="delete" {String::new()} else {line.right_text.unwrap_or(line.text)};
-                view! {<div class=format!("diff-line {}",line.tag)><div class="diff-cell"><span class="line-number">{line.old_line.map(|n|n.to_string())}</span><pre>{left_text}</pre></div><div class="diff-cell"><span class="line-number">{line.new_line.map(|n|n.to_string())}</span><pre>{right_text}</pre></div></div>}
-            }/></div><Show when=move || diff.get().is_some_and(|d|d.lines.len()>diff_limit.get())><button class="quiet" on:click=move |_| diff_limit.update(|n|*n+=500)>{move || tr(english.get(),"再显示 500 行","Show 500 more lines")}</button></Show></section></Show>
+            {panels::text::panel(english,diff,move |d|{merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);})}
             {panels::picture::panel(english,busy,panels::picture::Signals{picture,picture_id,picture_tolerance,picture_ignore_alpha},open_picture)}
             {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_id, table_tsv, table_headers, table_key, table_tolerance, table_offset}, open_table, paginate_table)}
             {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id}, open_binary)}
