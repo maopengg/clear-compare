@@ -39,3 +39,5 @@ Optional density regression uses 94 synthetic entries and a 160-line text diff. 
 ```sh
 NODE_PATH=./target/work/ui-qa/node_modules node scripts/check-workspace-density.cjs
 ```
+
+Ordinary LF/CRLF/CR and missing-final-newline labels are hidden by default. Significant paired line-ending differences remain visible; ignored EOL differences retain the existing rule semantics. Display / legend contains a Show all line endings option for inspecting every original ending. This changes presentation only and never rewrites line endings.

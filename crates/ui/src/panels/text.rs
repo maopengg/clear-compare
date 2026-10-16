@@ -7,6 +7,7 @@ fn cell(
     line: Option<&DiffLine>,
     right: bool,
     ending_changed: bool,
+    show_endings: bool,
     focused: bool,
     english: bool,
 ) -> impl IntoView + use<> {
@@ -32,13 +33,14 @@ fn cell(
         "diff-cell"
     };
     let limited = line.is_some_and(|l| l.intraline_limited);
-    view! {<div class=if focused{format!("{css} diff-focus")}else{css.to_owned()}><span class="line-number">{number.map(|n|n.to_string())}</span><pre>{pieces.into_iter().map(|(text,changed)|if changed{view!{<mark>{text}</mark>}.into_any()}else{view!{<span>{text}</span>}.into_any()}).collect_view()}</pre><small class="intraline-limit">{truncated.then_some(tr(english,"8192 字后截断","Truncated after 8192 chars"))}</small><small class="intraline-limit">{limited.then_some(tr(english,"整行提示","Whole-line hint"))}</small><span class=if ending_changed{"line-ending changed"}else{"line-ending"}>{line.map(|_|text_view::ending(text))}</span></div>}
+    view! {<div class=if focused{format!("{css} diff-focus")}else{css.to_owned()}><span class="line-number">{number.map(|n|n.to_string())}</span><pre>{pieces.into_iter().map(|(text,changed)|if changed{view!{<mark>{text}</mark>}.into_any()}else{view!{<span>{text}</span>}.into_any()}).collect_view()}</pre><small class="intraline-limit">{truncated.then_some(tr(english,"8192 字后截断","Truncated after 8192 chars"))}</small><small class="intraline-limit">{limited.then_some(tr(english,"整行提示","Whole-line hint"))}</small>{(line.is_some() && (show_endings || ending_changed)).then(||view!{<span class=if ending_changed{"line-ending changed"}else{"line-ending"}>{text_view::ending(text)}</span>})}</div>}
 }
 pub fn panel(
     english: RwSignal<bool>,
     diff: RwSignal<Option<TextDiff>>,
     load: impl Fn(TextDiff) + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
+    let show_endings = RwSignal::new(false);
     let offset = RwSignal::new(0usize);
     let current = RwSignal::new(None::<usize>);
     let query = RwSignal::new(String::new());
@@ -152,7 +154,14 @@ pub fn panel(
         }
     };
     Effect::watch(
-        move || (rows.with(|r| r.len()), offset.get(), english.get()),
+        move || {
+            (
+                rows.with(|r| r.len()),
+                offset.get(),
+                english.get(),
+                show_endings.get(),
+            )
+        },
         move |_, _, _| {
             width.set(0);
             let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
@@ -169,13 +178,13 @@ pub fn panel(
             <div node_ref=if right{other_scroll}else{scroll} class="diff-scroll shared-diff" on:scroll=move |_|sync(right)><div class="text-pane-content" style:min-width=move ||format!("{}px",width.get())><div class="diff-column-head">{move ||if right{tr(english.get(),"右侧 · 目标","Right · Destination")}else{tr(english.get(),"左侧 · 来源","Left · Source")}}</div>
             <For each=move ||diff.with(|d|d.as_ref().map(|d|rows.with(|r|r.iter().enumerate().skip(offset.get()).take(500).map(|(i,r)|(d.id.clone(),i,r.clone())).collect::<Vec<_>>())).unwrap_or_default()) key=|(id,i,_)|(id.clone(),*i) children=move |(_,i,row)|{
                 let (line,ending_changed)=diff.with_untracked(|d|d.as_ref().map(|d|{let l=row.left.map(|n|&d.lines[n]);let r=row.right.map(|n|&d.lines[n]);(if right{r.cloned()}else{l.cloned()},text_view::significant_ending(l,r))})).unwrap_or_default();
-                view!{<div>{move ||cell(line.as_ref(),right,ending_changed,current.get()==Some(i),english.get())}</div>}
+                view!{<div>{move ||cell(line.as_ref(),right,ending_changed,show_endings.get(),current.get()==Some(i),english.get())}</div>}
             }/></div></div>
         }
     };
     view! {<Show when=move ||diff.with(|d|d.is_some())>{move ||untrack(move ||view!{<section id="text-comparison" class="diff-panel" tabindex="0" aria-label="Text comparison" on:keydown=move |ev|{if !ev.is_composing() && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() && ev.key()=="F7"{ev.prevent_default();navigate(!ev.shift_key());}}><header><button class="quiet" on:click=move |_|{if let Some(d)=diff.get_untracked(){load(d);}}>{move ||tr(english.get(),"载入合并面板","Load into merge panel")}</button><strong>{move ||diff.with(|d|d.as_ref().map(|d|d.path.clone()))}</strong><button class="quiet" on:click=move |_|diff.set(None)>{move ||tr(english.get(),"返回目录","Back to folders")}</button></header>
         <div class="text-navigation"><button class="quiet" disabled=move ||!hunks.with(|h|h.iter().any(|n|current.get().is_some_and(|c|*n<c))) on:click=move |_|navigate(false)>{move ||tr(english.get(),"上一差异","Previous change")}</button><button class="quiet" disabled=move ||!hunks.with(|h|h.iter().any(|n|current.get().is_none_or(|c|*n>c))) on:click=move |_|navigate(true)>{move ||tr(english.get(),"下一差异","Next change")}</button><span>{move ||format!("{} {}",hunks.with(|h|h.len()),tr(english.get(),"组差异","change groups"))}</span><input aria-label="Find literal text" prop:value=move ||query.get() on:input=move |ev|{query.set(event_target_value(&ev));hits.set(Vec::new());hit.set(None);} on:keydown=move |ev|{if ev.key()=="Enter" && !ev.is_composing(){search();}}/><button class="quiet" on:click=move |_|search()>{move ||tr(english.get(),"查找原文","Find literal text")}</button><button class="quiet" disabled=move ||hit.get().is_none_or(|i|i==0) on:click=move |_|{let i=hit.get_untracked().unwrap_or_default().saturating_sub(1);if let Some(row)=hits.with_untracked(|h|h.get(i).copied()){hit.set(Some(i));jump(row);}}>{move ||tr(english.get(),"上一匹配","Previous match")}</button><button class="quiet" disabled=move ||hit.get().is_none_or(|i|i+1>=hits.with(|h|h.len())) on:click=move |_|{let i=hit.get_untracked().unwrap_or_default()+1;if let Some(row)=hits.with_untracked(|h|h.get(i).copied()){hit.set(Some(i));jump(row);}}>{move ||tr(english.get(),"下一匹配","Next match")}</button><span>{move ||format!("{} / {}",hit.get().map(|i|i+1).unwrap_or_default(),hits.with(|h|h.len()))}</span></div>
-        <details class="text-legend"><summary>{move ||tr(english.get(),"标记说明","Legend")}</summary><p class="text-view-note">{move ||tr(english.get(),"修改组按行序对齐；下划线标记行内变化。LF / CRLF / CR 为行尾，∅ 表示无末尾换行。查找区分大小写，覆盖全部原文。","Changed groups align by line order; underlines mark intraline changes. LF / CRLF / CR identify endings; ∅ means no final newline. Search is case-sensitive across all original text.")}</p></details><Show when=move ||diff.with(|d|d.as_ref().is_some_and(|d|d.intraline_limited))><p class="text-view-note">{move ||tr(english.get(),"部分行内比较超出预算，已降级为整行提示；原始行差异仍保留。","Some intraline comparisons exceeded their budget and use whole-line hints; original line differences remain.")}</p></Show><Show when=move ||!notice.get().is_empty()><p role="alert">{move ||notice.get()}</p></Show>
+        <details class="text-legend"><summary>{move ||tr(english.get(),"显示 / 说明","Display / legend")}</summary><p class="text-view-note"><label class="line-ending-option"><input type="checkbox" prop:checked=move ||show_endings.get() on:change=move |ev|show_endings.set(event_target_checked(&ev))/>{move ||tr(english.get(),"显示所有行尾标记","Show all line endings")}</label>{move ||tr(english.get(),"修改组按行序对齐；下划线标记行内变化。默认只提示换行格式差异。LF / CRLF / CR 为行尾，∅ 表示无末尾换行。查找区分大小写，覆盖全部原文。","Changed groups align by line order; underlines mark intraline changes. Only differing endings are shown by default. LF / CRLF / CR identify endings; ∅ means no final newline. Search is case-sensitive across all original text.")}</p></details><Show when=move ||diff.with(|d|d.as_ref().is_some_and(|d|d.intraline_limited))><p class="text-view-note">{move ||tr(english.get(),"部分行内比较超出预算，已降级为整行提示；原始行差异仍保留。","Some intraline comparisons exceeded their budget and use whole-line hints; original line differences remain.")}</p></Show><Show when=move ||!notice.get().is_empty()><p role="alert">{move ||notice.get()}</p></Show>
         <div class="text-panes">{pane(false)}{pane(true)}</div><footer class="text-pagination"><button class="quiet" disabled=move ||offset.get()==0 on:click=move |_|{offset.update(|n|*n=n.saturating_sub(500));if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"上一页","Previous page")}</button><span>{move ||format!("{}–{} / {}",offset.get()+usize::from(rows.with(|r|!r.is_empty())),(offset.get()+500).min(rows.with(|r|r.len())),rows.with(|r|r.len()))}</span><button class="quiet" disabled=move ||{offset.get()+500>=rows.with(|r|r.len())} on:click=move |_|{offset.update(|n|*n+=500);if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"下一页","Next page")}</button></footer>
     </section>})}</Show>}
 }

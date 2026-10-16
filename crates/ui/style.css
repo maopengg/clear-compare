@@ -166,3 +166,5 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 @media(max-width:1050px){.compact-workspace .filterbar>input{width:110px}.compact-workspace .filterbar .check-label:has(select){font-size:0}.compact-workspace .filterbar select{font-size:12px}}
 
 .compact-workspace .directory-table td:first-child input{margin:0;vertical-align:middle}
+
+.line-ending-option{display:flex;align-items:center;gap:6px;margin-bottom:10px;color:var(--ink)}
