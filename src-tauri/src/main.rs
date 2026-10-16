@@ -3,6 +3,7 @@
 mod bidirectional;
 mod native_menu;
 mod operations;
+mod workbench;
 use clear_contracts::*;
 use clear_core::compare::Snapshot;
 use std::{
@@ -18,6 +19,7 @@ use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 struct Backend {
+    workspace: Mutex<Option<clear_core::workbench::Workspace>>,
     text_merge_dirty: AtomicBool,
     baseline: Mutex<Option<(String, PathBuf)>>,
     bidirectional: Mutex<Option<clear_core::bidirectional::Plan>>,
@@ -1573,6 +1575,13 @@ fn main() {
         .setup(|app|{native_menu::set(app.handle(),false)?;Ok(())})
         .invoke_handler(tauri::generate_handler![
             set_native_language,
+            workbench::workspace_catalog,
+            workbench::workspace_scan,
+            workbench::workspace_open,
+            workbench::workspace_favorite,
+            workbench::workspace_remove,
+            workbench::workspace_prepare,
+            workbench::workspace_apply,
             compare,
             bidirectional::choose_baseline,
             bidirectional::prepare_bidirectional,

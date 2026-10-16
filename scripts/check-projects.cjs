@@ -31,6 +31,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
   window.__TAURI__={core:{invoke:async(command,args)=>{
    args=JSON.parse(JSON.stringify(args,(_,v)=>v instanceof Map?Object.fromEntries(v):v));
    window.__qa.calls.push({command,args});
+   if(command==='workspace_catalog')return {settings:{roots:[],exclusions:[]},projects:[],repositories:[],warnings:[],scanned_directories:0,truncated:false};
    if(command==='load_active_project')return profiles.entries.find(e=>e.id===profiles.active)||null;
    if(command==='load_session')return {request:{left:'/sample/project-left',right:'/sample/project-right',exclusions:'-node_modules/',content:false},english:false};
    if(command==='save_session'||command==='set_native_language')return null;
@@ -66,6 +67,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
   }}};
  });
  await page.goto('https://clear-compare.test/',{waitUntil:'domcontentloaded',timeout:15000});
+ await page.getByRole('button',{name:'文件夹比较',exact:true}).click();
  await page.waitForTimeout(1500);
  await page.getByLabel('左侧 · 来源',{exact:true}).waitFor();
  await page.getByRole('button',{name:'比较文件夹',exact:true}).click();
@@ -109,7 +111,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  // Right-clicking a folder excludes its whole captured subtree in this project.
  await page.getByRole('button',{name:'比较文件夹',exact:true}).click();await page.getByRole('button',{name:'src',exact:true}).first().waitFor();await page.getByRole('button',{name:'src',exact:true}).first().click({button:'right'});await page.getByRole('menuitem',{name:'排除此项',exact:true}).click();await page.getByRole('button',{name:'src',exact:true}).first().waitFor({state:'detached'});assert((await store()).entries.find(e=>e.id==='a0').session.request.exclusions.includes('-./src/'));
  await openManager();await manager().getByRole('button',{name:'新建项目',exact:true}).click();await manager().getByRole('textbox',{name:'项目名称',exact:true}).fill('项目 C');await manager().getByRole('textbox',{name:'项目左侧文件夹',exact:true}).fill('/sample/c-left');await manager().getByRole('textbox',{name:'项目右侧文件夹',exact:true}).fill('/sample/c-right');await manager().getByRole('button',{name:'保存项目',exact:true}).click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('qa-projects')).entries.some(e=>e.name==='项目 C'));await manager().getByRole('button',{name:'关闭',exact:true}).click();await manager().waitFor({state:'hidden'});
- await page.reload();await page.waitForFunction(()=>document.querySelector('.project-picker')?.textContent.includes('项目 C'));assert.equal(await page.getByLabel('右侧 · 目标',{exact:true}).inputValue(),'/sample/c-right');
+ await page.reload();await page.getByRole('button',{name:'文件夹比较',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.project-picker')?.textContent.includes('项目 C'));assert.equal(await page.getByLabel('右侧 · 目标',{exact:true}).inputValue(),'/sample/c-right');
  await openManager();await switchTo('项目 A');await openManager();await manager().getByRole('textbox',{name:'项目名称',exact:true}).fill('项目 A 本地修改');
  await page.evaluate(()=>{const p=JSON.parse(localStorage.getItem('qa-projects'));p.entries.find(e=>e.id==='a0').revision='external';localStorage.setItem('qa-projects',JSON.stringify(p));});
  // The mock backend reads the shared persisted revision, like a second client.

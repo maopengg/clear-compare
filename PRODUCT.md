@@ -12,11 +12,11 @@ The interface is a desktop WebView, packaged for macOS, Windows and Linux.
 
 ## Users
 
-People comparing and synchronizing local project directories. The initial acceptance scenario is selective code synchronization with directory and filename exclusions.
+Developers managing multiple local Git repositories, inspecting and editing project files, and comparing or synchronizing local project directories. The initial acceptance scenario is selective code synchronization with directory and filename exclusions.
 
 ## Product Purpose
 
-A usable open-source desktop client for file comparison, merge and folder synchronization, with a long-term feature roadmap informed by Beyond Compare. Remote filesystem and cloud storage connections are outside the product scope.
+An open-source multi-project desktop workbench combining visual Git, file comparison and merge, and basic code editing. The full Git and editor scope is under development, tracked in docs/workbench-acceptance.md. Remote filesystem and cloud storage connections are outside the product scope.
 
 ## Positioning
 

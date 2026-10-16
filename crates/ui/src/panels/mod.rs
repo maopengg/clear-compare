@@ -35,3 +35,6 @@ pub mod entry_icon;
 pub mod projects;
 
 pub mod exclusions;
+
+pub mod git_actions;
+pub mod workbench;

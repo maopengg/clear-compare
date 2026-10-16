@@ -2,6 +2,13 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "set_native_language",
+            "workspace_catalog",
+            "workspace_scan",
+            "workspace_open",
+            "workspace_favorite",
+            "workspace_remove",
+            "workspace_prepare",
+            "workspace_apply",
             "compare",
             "choose_baseline",
             "prepare_bidirectional",

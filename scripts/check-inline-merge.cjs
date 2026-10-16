@@ -28,6 +28,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
   window.__TAURI__={core:{invoke:async(command,args)=>{
    args=JSON.parse(JSON.stringify(args,(_,v)=>v instanceof Map?Object.fromEntries(v):v));
    window.__qa.calls.push({command,args});
+   if(command==='workspace_catalog')return {settings:{roots:[],exclusions:[]},projects:[],repositories:[],warnings:[],scanned_directories:0,truncated:false};
    if(command==='load_active_project')return null;
    if(command==='load_session')return {request:{left:'/sample/project-left',right:'/sample/project-right',exclusions:'-node_modules/',content:false},english:false};
    if(command==='save_session'||command==='set_native_language')return null;
@@ -70,6 +71,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  });
  async function open(configure){
   await page.goto('https://clear-compare.test/',{waitUntil:'domcontentloaded'});
+ await page.getByRole('button',{name:'文件夹比较',exact:true}).click();
   if(configure)await page.evaluate(configure);
   await page.getByRole('button',{name:'比较文件夹',exact:true}).click();
   await page.locator('.outline-row').first().waitFor();
@@ -107,7 +109,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert.equal(await page.evaluate(()=>Object.keys(window.__qa.documents).length),0);
  assert.equal(await page.getByRole('button',{name:'返回目录',exact:true}).isEnabled(),true);
  // Reverse direction and a failed save must retain the buffer, without touching either file.
- await page.reload();await open();
+ await page.reload();await page.getByRole('button',{name:'文件夹比较',exact:true}).click();await open();
  await leftArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert((await page.locator('.shared-diff').first().innerText()).includes('rightA'));
  await page.evaluate(()=>{window.__qa.externalEdit=true});

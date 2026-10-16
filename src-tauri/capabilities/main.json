@@ -83,6 +83,13 @@
     "allow-apply-bidirectional",
     "allow-preview-bidirectional-recovery",
     "allow-apply-bidirectional-recovery",
-    "allow-bidirectional-recovery-page"
+    "allow-bidirectional-recovery-page",
+    "allow-workspace-catalog",
+    "allow-workspace-scan",
+    "allow-workspace-open",
+    "allow-workspace-favorite",
+    "allow-workspace-remove",
+    "allow-workspace-prepare",
+    "allow-workspace-apply"
   ]
 }

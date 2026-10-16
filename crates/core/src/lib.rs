@@ -49,3 +49,5 @@ pub fn unique_id() -> String {
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
     )
 }
+
+pub mod workbench;

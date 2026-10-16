@@ -1001,3 +1001,5 @@ pub struct BidirectionalValue {
     pub kind: String,
     pub digest: Option<String>,
 }
+
+pub mod workbench;
