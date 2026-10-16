@@ -16,7 +16,7 @@ People comparing and synchronizing local project directories. The initial accept
 
 ## Product Purpose
 
-A usable open-source desktop client for file comparison, merge and folder synchronization, with a long-term feature roadmap informed by Beyond Compare.
+A usable open-source desktop client for file comparison, merge and folder synchronization, with a long-term feature roadmap informed by Beyond Compare. Remote filesystem and cloud storage connections are outside the product scope.
 
 ## Positioning
 

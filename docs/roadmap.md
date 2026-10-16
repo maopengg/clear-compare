@@ -38,7 +38,7 @@ The optimized macOS application and DMG were built and exercised on synthetic fi
 
 ## Remaining long-term milestones
 
-P2: editing, encoding and large-directory performance. P3: durable synchronization policies, recovery and automation. P4: advanced merge and specialized viewers. P5: archives and remote adapters. P6: cloud, VCS and system integrations. P7: full platform release acceptance.
+P2: editing, encoding and large-directory performance. P3: durable synchronization policies, recovery and automation. P4: advanced merge and specialized viewers. P5: archives and snapshots. P6: VCS and system integrations. P7: full platform release acceptance.
 
 ## P2 text workflows and initial specialized viewer
 
@@ -283,3 +283,11 @@ P2: editing, encoding and large-directory performance. P3: durable synchronizati
 - Added version-six target-specific sync children, immutable coordinated run intent, exact before/after baseline artifacts and profile commit only after both trees match the reviewed inventory. Scoped mutation guards protect both roots at inner commit boundaries after pauses. Coordinated rollback restores both targets and exact previous baseline bytes; later profile revisions refuse older rollback.
 - Added baseline/bidirectional/recover-bidirectional CLI, eight validated desktop commands, opaque native selections/previews, bilingual review and existing background progress/pause/cancel/reconnect integration. Existing editor staleness rules cover both sides.
 - Core/CLI tests cover normal and conflicting paths, empty/excluded branches, type blockers, profile/root/rule expiry, locks, paging/bulk choices, exact baseline rollback and newer revision refusal. Thread tests exercise partial cancellation and Unix root replacement during paused forward/recovery streams. Full metadata/type replacement, advanced rename handling, partial-recovery resume/redo and remaining plan modules are still incomplete. Packaged-client installation/interaction acceptance remains deferred.
+
+## Local-only scope revision — 2026-10-16
+
+- Removed F17 remote filesystem and F18 cloud storage connections from the development plan and final acceptance scope at user request. Remaining module IDs stay stable.
+- Repository inspection found no implemented remote/cloud connection, authentication or transfer modules or UI entry points to remove. Removed their planned-feature/help text and architecture, milestone, dependency and cost commitments.
+- Local comparison, merge, synchronization, archives, converters and local VCS workflows remain in scope. Third-party license notices and framework dependency records remain intact.
+- Old total/P5/P6 estimates included the removed modules; the revised remaining effort requires a fresh estimate. Packaged-client installation/runtime acceptance remains deferred until the revised feature scope is implemented.
+- Validation: formatting/diff checks, strict UI WASM Clippy, Trunk WASM build and native macOS desktop build passed. No packaged client was launched or installed for this scope change.

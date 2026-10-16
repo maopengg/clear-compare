@@ -1,8 +1,8 @@
 # Clear Compare
 
-A local-first desktop file comparison and synchronization tool built with **Rust, Tauri 2 and Leptos**, licensed under **MIT**.
+A local desktop file comparison and synchronization tool built with **Rust, Tauri 2 and Leptos**, licensed under **MIT**.
 
-中文默认，可切换英文。比较、扫描和写入由原生Rust核心执行，Leptos界面以WebAssembly运行于系统WebView。
+中文默认，可切换英文。项目范围为本地文件比较与同步，不提供远程文件系统或云存储连接。比较、扫描和写入由原生Rust核心执行，Leptos界面以WebAssembly运行于系统WebView。
 
 ## Status
 
@@ -10,7 +10,7 @@ A local-first desktop file comparison and synchronization tool built with **Rust
 
 Implemented: bounded recursive local scans, metadata/SHA-256 comparison, exclusions, directory-subtree status/size aggregation, scoped global search/sorting and paged results, UTF-8/UTF-16 text comparison with intraline hints, aligned paging, change navigation/literal search and editing with bounded undo/redo, normalization rules, three-way text merge buffers with conflict navigation/version choices and undo/redo, two/three-way folder merge to independent output, paged hexadecimal preview with byte differences, offset navigation and bounded overlapping byte search, pixel picture comparison with overlay/difference views, CSV/TSV/static-HTML/Excel-OOXML table comparison with independent source formats and frozen native inputs, file selection, reviewed directional copy and selected regular-file deletion with recovery, common-baseline bidirectional file/tree reconciliation with explicit conflict winners and coordinated baseline rollback, reviewed forward restart, verified backups, operation journals, persistent copy history and reviewed rollback, native folder selection, named revision-aware session library, read-only ZIP/directory browsing and comparison, content-free directory snapshots, read-only local Git commit/index/raw-working-tree comparison, persisted view settings, HTML/JSON comparison reports and a JSON CLI.
 
-Planned: advanced merge workflows, legacy Excel formats and advanced picture workflows, archive updates/nested formats, remote/cloud storage and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
+Planned: advanced merge workflows, legacy Excel formats and advanced picture workflows, archive updates/nested formats and automatic recovery. A workflow definition is not evidence that all platforms or these features are validated.
 
 ## Download
 

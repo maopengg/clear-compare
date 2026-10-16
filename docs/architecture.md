@@ -40,7 +40,7 @@ The current comparison settings are kept under Tauri's application data director
 
 ## Remaining work
 
-Recovery-journal resume/redo, full metadata preservation, large-scale performance baselines, workspace restoration, broader encodings, further merge/viewer capabilities, remote adapters and converters remain on the roadmap. The initial architecture leaves these separate from the UI and desktop runtime.
+Recovery-journal resume/redo, full metadata preservation, large-scale performance baselines, workspace restoration, broader encodings, further merge/viewer capabilities and converters remain on the roadmap. The initial architecture leaves these separate from the UI and desktop runtime.
 
 ## Specialized workspace panels
 

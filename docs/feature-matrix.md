@@ -2,6 +2,8 @@
 
 Status is based on implemented behavior; platform/build validation is recorded separately in release notes.
 
+Scope revised on 2026-10-16: remote filesystem and cloud storage connections are excluded from development and final acceptance. Retired IDs F17/F18 remain unused so existing module references stay stable.
+
 | Plan module | Current implementation | Remaining scope |
 |---|---|---|
 | F01 Workspace | One window, versioned named session library, revision-aware updates/archive, restored path/rule/view settings | Tabs, comparison-result/workspace restore, archived-session browser |
@@ -20,8 +22,6 @@ Status is based on implemented behavior; platform/build validation is recorded s
 | F14 Conversion | Planned | Document converters and format policies |
 | F15 Other viewers | Planned | Patch, clipboard, media/version metadata |
 | F16 Archives/snapshots | Read-only classic ZIP Stored/Deflate browsing, ZIP/directory comparison, exclusions, member SHA-256, paged search and bounded text preview; content-free versioned tree export and historical metadata comparisons | Archive updates and nested/other formats |
-| F17 Remote filesystems | Planned | FTP/FTPS/SFTP/network adapters |
-| F18 Cloud storage | Planned | WebDAV/S3/Dropbox/OneDrive |
 | F19 Automation | JSON compare, copy/deletion/rename/file- and tree-mirror preview/apply, forward-restart and recovery CLI; self-contained HTML/versioned JSON reports for directory, ZIP, snapshot and Git comparisons | Scripts, specialized-viewer/operation reports and scheduled workflows |
 | F20 Version control | Read-only local Git commit/index/raw-working-tree comparison, explicit nonignored untracked inclusion, streaming blob identities and digest-checked working previews, pinned revisions/index object IDs, unmerged-stage errors, split/sparse and linked-worktree indexes, executable-mode differences, paged search, bounded blob text previews and JSON CLI | Git diff/merge-tool integration, SVN and traditional interfaces |
 | F21 System integration | Native folder dialog | Drag/drop, file associations, context menus |
