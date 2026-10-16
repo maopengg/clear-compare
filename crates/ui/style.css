@@ -68,3 +68,101 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .directory-name-content[hidden],.missing-entry[hidden]{display:none}
 
 .has-comparison .path-field>label,.has-comparison .compare-hint{display:none}.has-comparison .path-section{padding:8px 20px}.has-comparison .compare-options{margin-top:7px}.comparison-tools{margin:6px 20px;font-size:12px;color:var(--muted)}.comparison-tools>summary{padding:6px 0;cursor:pointer}.comparison-tools[open]{border:1px solid var(--line);padding:8px;border-radius:4px}.comparison-tools .bidirectional-panel{margin:8px 0}.directory-scroll{min-height:max(220px,calc(100vh - 570px));max-height:max(220px,calc(100vh - 570px))}.outline-toolbar select{padding:4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);font:inherit}
+
+/* Content-first desktop shell. Only the comparison surface scrolls. */
+.compact-workspace{height:100dvh;min-height:0;min-width:900px;overflow:hidden;font-size:12px;line-height:1.4}
+.compact-workspace>*{flex-shrink:0}
+.compact-workspace button,.compact-workspace input,.compact-workspace select{font-size:12px;border-radius:3px}
+.compact-workspace button.quiet,.compact-workspace button.primary{padding:4px 9px;min-height:26px;white-space:nowrap}
+.compact-workspace input[type=checkbox]{width:13px;height:13px;margin:0 3px 0 0}
+.compact-workspace .topbar{height:36px;min-height:36px;padding:3px 10px;flex-wrap:nowrap;gap:8px;background:var(--surface)}
+.compact-workspace .identity,.compact-workspace .top-actions{gap:10px;flex-wrap:nowrap;white-space:nowrap}
+.compact-workspace .identity strong{font-size:13px}.compact-workspace .mark{font-size:23px}.compact-workspace .version{font-size:10px}.compact-workspace .local-label{font-size:11px}
+.compact-workspace summary{cursor:pointer;white-space:nowrap}
+.compact-workspace :is(.app-menu,.comparison-settings,.view-settings,.comparison-tools)>summary{border:1px solid var(--line);border-radius:3px;padding:4px 8px;min-height:26px;color:var(--ink);background:var(--bg)}
+.compact-workspace :is(.app-menu,.comparison-settings,.view-settings,.comparison-tools)[open]>summary{background:var(--selected);border-color:var(--primary)}
+.compact-workspace :is(.app-menu,.comparison-settings,.view-settings,.comparison-tools){position:relative;margin:0;padding:0;border:0}
+.compact-workspace .menu-body,.compact-workspace .comparison-tools[open]{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;box-shadow:0 5px 20px #0002;padding:12px;z-index:15}
+.compact-workspace .menu-body{position:absolute;top:calc(100% + 5px);width:390px;max-height:70vh;overflow:auto;white-space:normal}
+.compact-workspace .app-menu .menu-body{right:0;width:210px;display:grid;gap:4px}
+.compact-workspace .app-menu .menu-body button{text-align:left}
+.compact-workspace .comparison-settings .menu-body{right:0;width:430px}
+.compact-workspace .path-section{padding:5px 10px;display:flex;align-items:center;gap:8px;background:var(--surface)}
+.compact-workspace .path-pair{flex:1;min-width:0;gap:8px;grid-template-columns:minmax(0,1fr) 16px minmax(0,1fr)}
+.compact-workspace .path-field{display:flex;align-items:center;gap:6px;min-width:0}
+.compact-workspace .path-field>label{display:block;white-space:nowrap;margin:0;font-size:11px;font-weight:500}
+.compact-workspace .path-input{flex:1;min-width:0;border-radius:3px;height:28px}
+.compact-workspace .path-input input{padding:3px 7px;font-size:12px}
+.compact-workspace .browse{width:27px;font-size:16px;border-radius:0 3px 3px 0}
+.compact-workspace .path-direction{height:28px;line-height:28px}
+.compact-workspace .compare-options{margin:0}.compact-workspace .compare-hint{display:block;margin:10px 0;font-size:11px}
+.compact-workspace .rules{margin-top:12px}.compact-workspace .rules textarea{height:110px}
+.compact-workspace .directory-host{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.compact-workspace.active-text .directory-host{display:none}
+.compact-workspace .filterbar{padding:4px 10px;gap:8px;flex-wrap:nowrap;border-bottom:1px solid var(--line);min-height:36px}
+.compact-workspace .filterbar>input{width:180px;min-width:80px;padding:4px 7px;height:26px}
+.compact-workspace .filterbar .check-label{gap:4px;white-space:nowrap}
+.compact-workspace .filterbar select{padding:3px;max-width:150px;height:26px}
+.compact-workspace .selection-count{white-space:nowrap;font-size:11px}
+.compact-workspace .comparison-tools[open]{position:absolute;top:36px;left:70px;width:min(650px,calc(100vw - 100px))}
+.compact-workspace .comparison-tools .text-options{padding:12px 0;gap:12px}
+.compact-workspace .comparison-tools .text-options>span{width:100%}
+.compact-workspace .comparison-tools .report-controls{margin:10px 0;gap:10px}
+.compact-workspace .outline-toolbar{margin:0;gap:10px;align-items:center}
+.compact-workspace .outline-toolbar>span{font-size:11px;line-height:1.6}
+.compact-workspace .folder-controls{padding:3px 10px;margin:0;gap:8px;border-bottom:1px solid var(--line)}
+.compact-workspace .directory-workspace{flex:1;min-height:0;display:flex;flex-direction:column;margin:0;border:0;border-radius:0}
+.compact-workspace .directory-roots{display:none}
+.compact-workspace .directory-scroll{flex:1;min-height:0;max-height:none;overflow:auto}
+.compact-workspace .directory-table{min-width:880px;font-size:12px}
+.compact-workspace .directory-table .selection-col{width:26px}.compact-workspace .directory-table .size-col{width:65px}.compact-workspace .directory-table .time-col{width:143px}.compact-workspace .directory-table .state-col{width:66px}
+.compact-workspace .directory-table th{height:25px;font-size:11px}
+.compact-workspace .directory-table td{height:23px;padding:0 6px}
+.compact-workspace .directory-name .entry-name{padding:1px 0;line-height:20px}
+.compact-workspace .directory-actions{padding:3px 10px;gap:5px;flex-wrap:nowrap;min-height:33px}
+.compact-workspace .directory-actions>span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.compact-workspace .pagination{padding:2px 10px;min-height:28px;gap:5px}
+.compact-workspace .comparison-basis{font-size:11px;margin:0;padding:2px 10px;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compact-workspace .summary-bar{padding:2px 10px;gap:14px;flex-wrap:nowrap;background:var(--surface);min-height:24px}
+.compact-workspace .summary-bar .stat{font-size:11px;font-weight:500}
+.compact-workspace .statusbar{height:23px;min-height:23px;padding:3px 10px;margin:0;font-size:10px}
+.compact-workspace .progress{margin:0;padding:3px 10px;min-height:30px;border-bottom:1px solid var(--line);background:var(--surface)}
+.compact-workspace .notice{margin:0;padding:5px 10px;border-radius:0;max-height:100px;overflow:auto;font-size:12px}
+.compact-workspace .warnings{margin:0;padding:4px 10px;max-height:70px;overflow:auto;font-size:11px}
+.compact-workspace .empty{padding:20px}.compact-workspace .empty h1{font-size:18px}
+/* File preview replaces the directory surface; both retain their own scroll positions. */
+.compact-workspace .diff-panel{flex:1;min-height:0;display:flex;flex-direction:column;position:relative;margin:0;border:0;border-radius:0}
+.compact-workspace .diff-panel>header{padding:4px 10px;min-height:34px}
+.compact-workspace .diff-panel>header strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compact-workspace .text-navigation{padding:4px 10px;gap:7px;flex-wrap:nowrap;min-height:35px;border-bottom:1px solid var(--line)}
+.compact-workspace .text-navigation input{height:26px;width:160px;padding:3px 6px}
+.compact-workspace .text-navigation>span{font-size:11px;white-space:nowrap}
+.compact-workspace .text-panes{flex:1;min-height:0}
+.compact-workspace .shared-diff{max-height:none;min-height:0;height:100%;border-right:1px solid var(--line)}
+.compact-workspace .diff-column-head{padding:4px 10px;height:26px}
+.compact-workspace .text-pagination{padding:3px 10px;min-height:32px;gap:8px}
+.compact-workspace .text-legend{position:absolute;right:12px;bottom:7px;z-index:3;font-size:11px}
+.compact-workspace .text-pagination{justify-content:flex-start}
+.compact-workspace .text-legend[open] p{position:absolute;right:0;bottom:18px;width:420px;padding:12px;margin:0;background:var(--bg);border:1px solid var(--line);box-shadow:0 4px 16px #0002}
+.compact-workspace .text-view-note{margin:0;padding:5px 10px;font-size:11px}
+/* Secondary workflows are explicitly opened tools, not permanent rows above results. */
+.compact-workspace>:is(.help-panel,.session-panel,.archive-panel,.folder-merge-panel,.picture-panel,.table-panel,.binary-panel,.merge-panel,.editor-panel,.history-panel){position:fixed;inset:85px 24px 30px;margin:0;z-index:20;background:var(--bg);overflow:auto;padding:14px;border:1px solid var(--line);border-radius:4px;box-shadow:0 8px 28px #0002}
+.compact-workspace .bidirectional-panel{position:relative;margin:0;padding:0;border:0;font-size:12px}
+.compact-workspace .bidirectional-panel>summary{padding:4px 8px;border:1px solid var(--line);border-radius:3px;background:var(--bg)}
+.compact-workspace .bidirectional-panel[open]{position:fixed;inset:36px 10px 30px;padding:14px;background:var(--bg);border:1px solid var(--line);z-index:19;overflow:auto;white-space:normal}
+.compact-workspace .bidirectional-panel[open]>summary{position:sticky;top:-14px;background:var(--surface);z-index:1;padding:8px}
+@media(max-width:1150px){.compact-workspace .local-label,.compact-workspace .version{display:none}.compact-workspace .path-field>label{font-size:0}.compact-workspace .filterbar{gap:5px}.compact-workspace .filterbar>input{width:130px}.compact-workspace .filterbar select{max-width:100px}.compact-workspace .selection-count{font-size:10px}.compact-workspace .text-navigation{gap:4px}.compact-workspace .text-navigation input{width:110px}.compact-workspace .text-navigation button.quiet{padding:4px 6px}}
+.compact-workspace .comparison-tools[open]{position:relative;top:auto;left:auto;width:auto;padding:0;border:0;box-shadow:none}
+.compact-workspace .comparison-tools .menu-body{width:620px;max-width:calc(100vw - 100px)}
+.compact-workspace .results-status{display:flex;align-items:center;min-height:29px;height:29px;gap:10px;background:var(--surface);border-top:1px solid var(--line);padding:0 10px;white-space:nowrap;overflow:auto}
+.compact-workspace .results-status .comparison-basis{padding:0;margin:0;border:0;flex-shrink:0}
+.compact-workspace .results-status .summary-bar{padding:0;min-height:0;gap:10px}
+.compact-workspace .results-status .pagination{margin-left:auto;padding:0;min-height:0}
+.compact-workspace.has-comparison>.statusbar,.compact-workspace.active-text>.statusbar{display:none}
+.compact-workspace.active-text>.path-section{display:none}
+@media(max-width:1050px){.compact-workspace .results-status{gap:6px}.compact-workspace .results-status .stat,.compact-workspace .results-status .comparison-basis{font-size:10px}.compact-workspace .results-status .summary-bar{gap:6px}}
+.compact-workspace.active-text>.archive-panel{display:none}
+.compact-workspace .modal-backdrop{z-index:40}
+@media(max-width:1050px){.compact-workspace .filterbar>input{width:110px}.compact-workspace .filterbar .check-label:has(select){font-size:0}.compact-workspace .filterbar select{font-size:12px}}
+
+.compact-workspace .directory-table td:first-child input{margin:0;vertical-align:middle}

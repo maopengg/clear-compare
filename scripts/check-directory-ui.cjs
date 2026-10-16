@@ -77,34 +77,45 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert.equal(await page.locator('#text-comparison .diff-focus').count(),2);
  await page.locator('#text-comparison').scrollIntoViewIfNeeded();
  await page.locator('#text-comparison').screenshot({path:'target/work/directory-text-qa.png'});
- await page.getByRole('button',{name:'关闭预览',exact:true}).click();
+ await page.getByRole('button',{name:'返回目录',exact:true}).click();
  // Empty previews and the legacy breadcrumb path previously escaped browser coverage.
  await page.evaluate(()=>{window.__qa.emptyText=true});
  await page.getByRole('button',{name:'main.rs',exact:true}).first().dblclick();
  await page.locator('#text-comparison').waitFor();
  await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert.equal(await page.locator('#text-comparison .diff-cell').count(),0);
- await page.getByRole('button',{name:'关闭预览',exact:true}).click();
+ await page.getByRole('button',{name:'返回目录',exact:true}).click();
+ await page.locator('.view-settings>summary').click();
  await page.getByRole('checkbox',{name:'目录树',exact:true}).uncheck();
+ await page.locator('.view-settings>summary').click();
  await page.getByRole('button',{name:'src',exact:true}).first().dblclick();
  await page.getByRole('button',{name:'src/main.rs',exact:true}).first().waitFor();
  assert.equal(await page.locator('.outline-row').count(),1);
  await page.getByRole('button',{name:'根目录',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('.outline-row').length===2);
+ await page.locator('.view-settings>summary').click();
  await page.getByRole('checkbox',{name:'目录树',exact:true}).check();
+ await page.locator('.view-settings>summary').click();
  await page.waitForFunction(()=>!document.querySelector('.progress'));
 
+ await page.locator('.view-settings>summary').click();
  await page.getByRole('button',{name:'全部折叠',exact:true}).click();
+ await page.locator('.view-settings>summary').click();
  await page.waitForFunction(()=>document.querySelectorAll('.outline-row').length===2);
+ await page.locator('.view-settings>summary').click();
  await page.getByRole('button',{name:'全部展开',exact:true}).click();
+ await page.locator('.view-settings>summary').click();
  await page.waitForFunction(()=>document.querySelectorAll('.outline-row').length===3);
  await page.getByRole('button',{name:'折叠目录',exact:true}).first().click();
  await page.waitForFunction(()=>document.querySelectorAll('.outline-row').length===2);
+ await page.locator('.view-settings>summary').click();
  await page.getByRole('button',{name:'全部展开',exact:true}).click();
+ await page.locator('.view-settings>summary').click();
  await page.getByRole('button',{name:'main.rs',exact:true}).first().click();
  await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:'target/work/directory-paired-qa.png',fullPage:true});
  // Exercise the earlier two-phase quick/full flow and cancellation using a delayed bridge reply.
+ await page.locator('.comparison-settings>summary').click();
  await page.getByRole('checkbox',{name:'列表显示后完整校验内容（SHA-256，较慢）',exact:true}).check();
  await page.getByRole('button',{name:'比较文件夹',exact:true}).click();
  await page.getByRole('button',{name:'停止校验，保留列表',exact:true}).waitFor();
@@ -114,7 +125,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.getByRole('button',{name:'比较文件夹',exact:true}).waitFor({state:'visible'});
  await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert.equal(await page.locator('.outline-row').count(),2);
- assert((await page.locator('.comparison-basis').innerText()).includes('未证明内容一致'));
+ assert((await page.locator('.comparison-basis').innerText()).includes('内容未校验'));
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify({passed:true,checks:['collapsed root','paired row positions','missing-side rendering','timestamps','expand/collapse/all exception','file selection','double-click text diff','line highlighting','quick-list-before-full-verification','stop-and-retain-quick-list'],pageErrors:errors}));
  }finally{await browser.close();}

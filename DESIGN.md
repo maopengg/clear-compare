@@ -6,7 +6,9 @@ A developer checks project changes on a desktop monitor in a normally lit worksp
 
 ## Structure
 
-One desktop window. A small application header, paired path inputs, rules, summary, aligned two-sided directory columns and an optional side-by-side text panel. The default outline expands native directory IDs in place, retains ancestors under search and shows missing counterparts explicitly. Name, size and modification time are separate for each side. Double-clicking a file opens its aligned content differences and scrolls the comparison panel into view. Text rules and reports sit in a collapsed secondary section; advanced baseline synchronization remains accessible below the comparison workspace so completed-run evidence survives comparison invalidation. The synchronization plan appears only after the user asks to preview selected files.
+One fixed-height desktop window. A 36 px application bar, one paired path row and one compact command row precede the main comparison surface. Rules, sorting and reports open in dismissible menus; secondary workflows open separately. They do not permanently consume list space. The aligned directory table fills the remaining height, with its own scrolling and sticky headings. Name, size and modification time remain separate for each side. The default outline expands native directory IDs in place, retains ancestors under search and shows missing counterparts explicitly.
+
+Double-clicking a file replaces the directory surface with a full-height synchronized text comparison. Returning to folders retains the directory DOM, expansion, selection and scroll position. Comparison basis, summary and paging share a compact footer. Advanced baseline synchronization remains available independently of the comparison snapshot so completed-run evidence survives invalidation. The synchronization plan appears only after the user asks to preview selected files.
 
 ## Tokens
 
@@ -14,7 +16,7 @@ CSS tokens live in `crates/ui/style.css`. The accent is `oklch(.45 .086 230)`. P
 
 ## Typography and controls
 
-System sans-serif for the workspace; system monospace for file sizes and source text. Compact controls share radii, spacing, disabled states and focus outlines. Paths are truncated in lists and exposed through titles; notices wrap long paths.
+System sans-serif for the workspace; system monospace for file sizes and source text. Normal UI and source text use 12 px; directory rows are 23 px and source lines 22 px. Compact controls share radii, spacing, disabled states and focus outlines. Paths are truncated in lists and exposed through titles; notices wrap long paths.
 
 ## Loading and empty states
 
