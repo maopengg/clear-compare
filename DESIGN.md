@@ -18,7 +18,7 @@ System sans-serif for the workspace; system monospace for file sizes and source 
 
 ## Loading and empty states
 
-Busy operations have a status line and cancellation affordance. The empty state explains directory selection and copy direction. Read and sync errors remain visible. The UI never labels all files equal when comparison has failed.
+Folder comparisons publish a metadata result before optional SHA-256 verification. New sessions use metadata mode, and saved sessions retain their choice. The result basis, scan/verification stage and stop-and-keep-list affordance stay explicit. Other busy operations have a status line and cancellation affordance. The empty state explains directory selection and copy direction. Read and sync errors remain visible. The UI never labels all files equal when comparison has failed.
 
 ## Responsiveness
 

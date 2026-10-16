@@ -15,8 +15,8 @@ const TOPICS: &[Topic] = &[
     Topic {
         zh: "文件夹比较",
         en: "Folder comparison",
-        body_zh: "选择两个独立文件夹后点击比较。勾选 SHA-256 才会按内容验证；仅大小和时间相同显示为未验证。链接、类型冲突和读取失败会单独标识。目录状态汇总子项，文件统计不计目录。\n搜索、排序、仅差异和递归设置作用于当前目录范围的全部结果，再分页显示；点击目录可进入，面包屑可返回。列表是扫描结果，外部修改后需重新比较。",
-        body_en: "Choose separate directories and compare. Enable SHA-256 for content verification; matching size/time alone remains unverified. Links, type conflicts and read errors remain distinct. Directory status aggregates descendants; file totals exclude directories.\nSearch, sorting, differences-only and recursion apply to the entire directory scope before paging. Enter folders and return through breadcrumbs. Results describe the scan; compare again after external changes.",
+        body_zh: "选择两个独立文件夹后点击比较。新会话默认快速比较大小和时间；已保存会话保留原校验选择。勾选 SHA-256 时先显示快速列表，再完整读取文件并更新结果；可停止校验并保留快速列表。仅大小和时间相同显示为未验证。链接、类型冲突和读取失败会单独标识。目录状态汇总子项，文件统计不计目录。\n搜索、排序、仅差异和递归设置作用于当前目录范围的全部结果，再分页显示；点击目录可进入，面包屑可返回。列表是扫描结果，外部修改后需重新比较。",
+        body_en: "Choose separate directories and compare. New sessions use quick size/time comparison; saved sessions retain their verification choice. SHA-256 first displays the quick list, then reads all included contents and updates the result. Stop verification to retain the quick list; matching size/time alone remains unverified. Links, type conflicts and read errors remain distinct. Directory status aggregates descendants; file totals exclude directories.\nSearch, sorting, differences-only and recursion apply to the entire directory scope before paging. Enter folders and return through breadcrumbs. Results describe the scan; compare again after external changes.",
     },
     Topic {
         zh: "排除规则",

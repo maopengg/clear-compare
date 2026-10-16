@@ -88,7 +88,10 @@ fn App() -> impl IntoView {
     let left = RwSignal::new(String::new());
     let right = RwSignal::new(String::new());
     let exclusions = RwSignal::new("-./.git/;-node_modules/;-__pycache__/;-.DS_Store".to_string());
-    let content = RwSignal::new(true);
+    let content = RwSignal::new(false);
+    let compare_stage = RwSignal::new(0u8);
+    let compare_cancelled = RwSignal::new(false);
+    let comparison_verified = RwSignal::new(false);
     let busy = RwSignal::new(false);
     let message = RwSignal::new(String::new());
     let error = RwSignal::new(String::new());
@@ -571,32 +574,65 @@ fn App() -> impl IntoView {
         busy.set(true);
         error.set(String::new());
         offset.set(0);
+        compare_cancelled.set(false);
+        compare_stage.set(1);
+        comparison_verified.set(false);
         spawn_local(async move {
-            match invoke::<OpenedComparison>("compare", serde_json::json!({ "request": request }))
-                .await
-            {
-                Ok(opened) => {
+            // Publish the metadata list before doing any full-content scan. Each
+            // phase has a fresh native snapshot; no metadata digest is reused.
+            let passes: &[bool] = if request.content {
+                &[false, true]
+            } else {
+                &[false]
+            };
+            for &verify in passes {
+                if compare_cancelled.get_untracked() {
+                    break;
+                }
+                compare_stage.set(if verify { 2 } else { 1 });
+                let mut phase_request = request.clone();
+                phase_request.content = verify;
+                let result = async {
+                    let opened = invoke::<OpenedComparison>(
+                        "compare",
+                        serde_json::json!({ "request": phase_request }),
+                    )
+                    .await?;
+                    let result = invoke::<FolderPage>(
+                        "query_folder",
+                        serde_json::json!({
+                            "session": opened.session, "query": build_query(), "offset": 0
+                        }),
+                    )
+                    .await?;
                     left.set(opened.left.clone());
                     right.set(opened.right.clone());
-                    let result=invoke::<FolderPage>("query_folder",serde_json::json!({"session":opened.session,"query":build_query(),"offset":0})).await;
-                    match result {
-                        Ok(result) => {
-                            rows.set(result.page.rows);
-                            visible_total.set(result.page.total);
-                            breadcrumbs.set(result.breadcrumbs);
-                        }
-                        Err(e) => error.set(e),
-                    }
+                    comparison_verified.set(verify);
                     comparison.set(Some(opened));
-                    let saved = current_session();
-                    if let Err(e) =
-                        invoke::<()>("save_session", serde_json::json!({ "session": saved })).await
-                    {
-                        error.set(e);
-                    }
+                    rows.set(result.page.rows);
+                    visible_total.set(result.page.total);
+                    breadcrumbs.set(result.breadcrumbs);
+                    Ok::<(), String>(())
                 }
-                Err(e) => error.set(e),
+                .await;
+                if let Err(e) = result {
+                    error.set(e);
+                    break;
+                }
+                if !verify && request.content {
+                    // Let the WebView paint the quick result before verification.
+                    let _ = wasm_bindgen_futures::JsFuture::from(operation_delay()).await;
+                }
             }
+            if comparison.get_untracked().is_some() {
+                let saved = current_session();
+                if let Err(e) =
+                    invoke::<()>("save_session", serde_json::json!({ "session": saved })).await
+                {
+                    error.set(e);
+                }
+            }
+            compare_stage.set(0);
             busy.set(false);
         });
     };
@@ -1354,9 +1390,10 @@ fn App() -> impl IntoView {
                     <div class="path-direction" aria-hidden="true">"→"</div>
                     <div class="path-field"><label for="right">{move || tr(english.get(),"右侧 · 目标","Right · Destination")}</label><div class="path-input"><input id="right" prop:value=move || right.get() disabled=move || busy.get() placeholder=move || tr(english.get(),"选择目标文件夹","Choose destination directory") on:input=move |ev| {reset();right.set(event_target_value(&ev));}/><button class="browse" aria-label="Choose destination directory" disabled=move || busy.get() on:click=move |_| pick(false)>"…"</button></div></div>
                 </div>
-                <div class="compare-options"><label class="check-label"><input type="checkbox" prop:checked=move || content.get() disabled=move || busy.get() on:change=move |ev| {reset();content.set(event_target_checked(&ev));}/>{move || tr(english.get(),"校验文件内容（SHA-256）","Verify contents (SHA-256)")}</label>
+                <div class="compare-options"><label class="check-label"><input type="checkbox" prop:checked=move || content.get() disabled=move || busy.get() on:change=move |ev| {reset();content.set(event_target_checked(&ev));}/>{move || tr(english.get(),"列表显示后完整校验内容（SHA-256，较慢）","Verify all contents after listing (SHA-256, slower)")}</label>
                     <button class="primary" disabled=move || busy.get() || left.get().trim().is_empty() || right.get().trim().is_empty() on:click=move |_| run_compare()>{move || tr(english.get(),"比较文件夹","Compare directories")}</button>
                 </div>
+                <p class="compare-hint">{move ||tr(english.get(),"先按大小和修改时间列出结果；元数据匹配仍标为未验证内容。完整校验需读取所有未排除文件。","List results using size and modification time first; metadata matches remain unverified. Full verification reads every included file.")}</p>
                 <details class="rules"><summary>{move || tr(english.get(),"排除规则","Exclusion rules")}</summary><p>{move || tr(english.get(),"分号或换行分隔；./ 从根目录匹配，目录以 / 结尾。","Separate with semicolons or newlines; ./ anchors at root, / marks a directory.")}</p><textarea aria-label="Exclusion rules" prop:value=move || exclusions.get() disabled=move || busy.get() on:input=move |ev| {reset();exclusions.set(event_target_value(&ev));}/></details>
             </section>
             {panels::git::panel(english,busy,git_visible,error,diff)}
@@ -1366,17 +1403,26 @@ fn App() -> impl IntoView {
             <Show when=move || !message.get().is_empty()><div class="notice" role="status">{move || message.get()}<br/>{move || tr(english.get(),"请重新比较以查看最新状态。备份与操作日志已保留。","Compare again to refresh. Backups and operation journal are retained.")}</div></Show>
             {panels::tasks::panel(english,busy,error,operation_progress,reconnect_operation)}
             {panels::bidirectional::panel(english,busy,error,comparison,operation_progress,bidi,complete_bidi,recover_bidi,reset)}
-            <Show when=move || busy.get()><div class="progress" role="status"><span class="pulse"></span>{move || tr(english.get(),"正在处理，请稍候…","Working, please wait…")}<button class="quiet" on:click=move |_| spawn_local(async move { let _ = invoke::<()>("cancel",serde_json::json!({})).await; })>{move || tr(english.get(),"取消任务","Cancel task")}</button></div></Show>
+            <Show when=move || busy.get()><div class="progress" role="status"><span class="pulse"></span>{move || match compare_stage.get() {
+                1 => tr(english.get(),"正在快速扫描目录（大小和修改时间）…","Scanning directory metadata (size and modification time)…"),
+                2 => tr(english.get(),"列表已显示，正在完整校验文件内容；耗时取决于文件总量…","List available; verifying all file contents. Time depends on total file data…"),
+                _ => tr(english.get(),"正在处理，请稍候…","Working, please wait…"),
+            }}<button class="quiet" on:click=move |_| {compare_cancelled.set(true);spawn_local(async move { let _ = invoke::<()>("cancel",serde_json::json!({})).await; });}>{move ||if compare_stage.get() == 2 {tr(english.get(),"停止校验，保留列表","Stop verification, keep list")} else {tr(english.get(),"取消任务","Cancel task")}}</button></div></Show>
             <Show when=move || comparison.get().is_some() fallback=move || view! {
                 <section class="empty"><div class="empty-symbol" aria-hidden="true">"⇄"</div><h1>{move || tr(english.get(),"看清差异，再同步","See the difference. Then sync.")}</h1><p>{move || tr(english.get(),"选择两个独立的文件夹，比较内容，检查计划，然后复制你选择的文件。","Choose two separate directories, compare their contents, review a plan, then copy selected files.")}</p><div class="empty-notes"><span>{move || tr(english.get(),"目标独有文件保留","Destination-only files retained")}</span><span>{move || tr(english.get(),"覆盖前验证备份","Backups verified before overwrite")}</span></div></section>
             }>
+                <p class="comparison-basis">{move ||if comparison_verified.get() {
+                    tr(english.get(),"内容校验结果 · SHA-256（读取错误与链接仍单独标记）","Content verification results · SHA-256 (errors and links remain distinct)")
+                } else {
+                    tr(english.get(),"快速扫描结果 · 仅比较大小和修改时间，未证明内容一致","Quick scan results · size and modification time; content equality is unverified")
+                }}</p>
                 <div class="summary-bar"><span class="stat">{move ||tr(english.get(),"全部比较统计","Entire comparison summary")}</span>{move || comparison.get().map(|c| { let s=c.summary; view! {<span class="stat changed">{format!("{} {}",tr(english.get(),"修改","Changed"),s.changed)}</span><span class="stat left">{format!("{} {}",tr(english.get(),"仅左","Left only"),s.left_only)}</span><span class="stat right">{format!("{} {}",tr(english.get(),"仅右","Right only"),s.right_only)}</span><span class="stat same">{format!("{} {}",tr(english.get(),"一致","Same"),s.same)}</span><span class="stat">{format!("{} {} · {} {}",tr(english.get(),"未验证","Unverified"),s.unverified,tr(english.get(),"错误","Errors"),s.errors)}</span>} })}</div>
                 <div class="text-options"><button class="quiet" on:click=move |_|merge_visible.set(!merge_visible.get_untracked())>{move || tr(english.get(),"三方文本合并","Three-way text merge")}</button><span>{move || tr(english.get(),"文本比较规则（打开文件时应用）","Text rules (applied when opening a file)")}</span><label><input type="checkbox" prop:checked=move || ignore_case.get() on:change=move |ev|ignore_case.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略大小写","Ignore case")}</label><label><input type="checkbox" prop:checked=move || ignore_space.get() on:change=move |ev|ignore_space.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略空白","Ignore whitespace")}</label><label><input type="checkbox" prop:checked=move || ignore_endings.get() on:change=move |ev|ignore_endings.set(event_target_checked(&ev))/>{move || tr(english.get(),"忽略换行风格","Ignore line ending style")}</label></div><div class="filterbar"><input aria-label="Search comparison paths" disabled=move ||busy.get() placeholder=move || tr(english.get(),"搜索当前范围的全部路径…","Search all paths in this scope…") prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev)) on:keydown=move |ev|{if ev.key()=="Enter"{load_folder(0);}}/><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_folder(0)>{move ||tr(english.get(),"搜索","Search")}</button><label class="check-label"><input type="checkbox" prop:checked=move || differences.get() disabled=move ||busy.get() on:change=move |ev|{differences.set(event_target_checked(&ev));load_folder(0);}/>{move || tr(english.get(),"只看差异","Differences only")}</label><label class="check-label"><input type="checkbox" prop:checked=move ||reverse_sync.get() disabled=move ||busy.get() ||file_operation.get()!="copy" on:change=move |ev|{reverse_sync.set(event_target_checked(&ev));selected.set(BTreeSet::new());plan.set(None);}/>{move ||tr(english.get(),"右 → 左","Right → left")}</label><label class="check-label">{move ||tr(english.get(),"操作","Operation")}<select aria-label="File operation" disabled=move ||busy.get() prop:value=move ||file_operation.get() on:change=move |e|{file_operation.set(event_target_value(&e));rename_name.set(String::new());selected.set(BTreeSet::new());plan.set(None);}><option value="copy">{move ||tr(english.get(),"复制","Copy")}</option><option value="delete_left">{move ||tr(english.get(),"删除左侧文件","Delete left files")}</option><option value="delete_right">{move ||tr(english.get(),"删除右侧文件","Delete right files")}</option><option value="mirror_left_to_right">{move ||tr(english.get(),"文件镜像：左 → 右","File mirror: left → right")}</option><option value="mirror_right_to_left">{move ||tr(english.get(),"文件镜像：右 → 左","File mirror: right → left")}</option><option value="mirror_tree_left_to_right">{move ||tr(english.get(),"目录镜像：左 → 右","Tree mirror: left → right")}</option><option value="mirror_tree_right_to_left">{move ||tr(english.get(),"目录镜像：右 → 左","Tree mirror: right → left")}</option><option value="rename_left">{move ||tr(english.get(),"重命名左侧文件","Rename left file")}</option><option value="rename_right">{move ||tr(english.get(),"重命名右侧文件","Rename right file")}</option></select></label><Show when=move ||file_operation.get().starts_with("rename_")><label class="check-label">{move ||tr(english.get(),"新文件名","New file name")}<input aria-label="New file name" prop:value=move ||rename_name.get() disabled=move ||busy.get() on:input=move |e|{rename_name.set(event_target_value(&e));plan.set(None);}/></label></Show><span class="selection-count">{move || format!("{} {}",selected.get().len(),tr(english.get(),"个文件已选","files selected"))}</span><button class="primary" disabled=move || (!file_operation.get().starts_with("mirror_") && selected.get().is_empty()) || busy.get() on:click=move |_| preview()>{move || tr(english.get(),if file_operation.get().starts_with("mirror_") {"预览整个比较的镜像…"}else if file_operation.get()=="copy" {"预览复制 →"}else if file_operation.get().starts_with("rename_"){"预览重命名…"}else{"预览删除…"},if file_operation.get().starts_with("mirror_") {"Preview whole-comparison mirror…"}else if file_operation.get()=="copy" {"Preview copy →"}else if file_operation.get().starts_with("rename_"){"Preview rename…"}else{"Preview deletion…"})}</button></div>
                 <Show when=move ||file_operation.get().starts_with("mirror_")><p class="warnings">{move ||tr(english.get(),"镜像覆盖整个比较根目录，使用本次比较记录的排除规则，不受搜索、分页或勾选影响。目标独有普通文件会先备份再删除；目录镜像会创建缺失目录、移除清空后的多余目录，含排除项的目录保留。文件镜像保留空目录。需要内容校验。","Mirror mode covers the entire comparison roots under captured exclusions, regardless of search, pages or selection. Destination-only regular files are backed up and deleted. Tree mirror creates missing directories and removes emptied extras, preserving excluded-entry ancestors; file mirror retains empty directories. Requires content verification.")}</p></Show>
                 {panels::folders::controls(english,busy,panels::folders::Signals{parent_id,breadcrumbs,recursive,sort:folder_sort,descending},browse_folder,load_folder)}
                 {panels::reports::controls(english,busy,error,move ||comparison.with(|c|c.as_ref().map(|c|(ReportSource::Local,c.session.clone()))))}
                 <section class="file-list" aria-label="Comparison results"><div class="file-header"><span></span><span>{move || tr(english.get(),"相对路径","Relative path")}</span><span>{move || tr(english.get(),"左侧大小","Left size")}</span><span>{move || tr(english.get(),"右侧大小","Right size")}</span><span>{move || tr(english.get(),"状态","Status")}</span><span>{move || tr(english.get(),"编辑","Edit")}</span></div>
-                    <div class="file-scroll"><For each=move ||rows.get() key=|r| r.id.clone() children=move |row| {
+                    <div class="file-scroll"><For each=move ||rows.get() key=move |r| (comparison.with_untracked(|c|c.as_ref().map(|c|c.session.clone())),r.id.clone()) children=move |row| {
                         let id=row.id.clone(); let select_id=id.clone(); let check_id=id.clone(); let open_id=id.clone();
                         let eligible_left=matches!(row.status,Status::Changed|Status::LeftOnly) && row.left.as_ref().is_some_and(|e| e.kind==Kind::File);let eligible_right=matches!(row.status,Status::Changed|Status::RightOnly) && row.right.as_ref().is_some_and(|e|e.kind==Kind::File);
                         let can_directory=row.left.as_ref().is_some_and(|e|e.kind==Kind::Directory) ||row.right.as_ref().is_some_and(|e|e.kind==Kind::Directory);
