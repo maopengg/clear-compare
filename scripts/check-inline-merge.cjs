@@ -66,8 +66,9 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
    throw new Error('Unexpected mock command '+command);
   }}};
  });
- async function open(){
+ async function open(configure){
   await page.goto('https://clear-compare.test/',{waitUntil:'domcontentloaded'});
+  if(configure)await page.evaluate(configure);
   await page.getByRole('button',{name:'比较文件夹',exact:true}).click();
   await page.locator('.outline-row').first().waitFor();
   await page.getByRole('button',{name:'展开目录',exact:true}).first().click();
@@ -130,7 +131,16 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert((await page.getByRole('alert').innerText()).includes('文件在比较后发生变化'));
  assert.equal(await page.getByRole('button',{name:'返回目录',exact:true}).isEnabled(),true);
  assert.equal(await page.evaluate(()=>Object.keys(window.__qa.documents).length),0);
+ // A hunk continued on page 2 can shrink the file below the old page offset.
+ await open(()=>{window.__qa.files.left=Array.from({length:10},(_,i)=>'L'+i+'\n').join('')+'end\n';window.__qa.files.right=Array.from({length:600},(_,i)=>'R'+i+'\n').join('')+'end\n';});
+ await page.locator('.text-pagination').getByRole('button',{name:'下一页',exact:true}).click();
+ assert((await page.locator('.text-pagination').innerText()).includes('501–601'));
+ await rightArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ assert((await page.locator('.text-pagination').innerText()).includes('1–11 / 11'));
+ assert.equal(await page.locator('.shared-diff').first().locator('.diff-cell').count(),11);
+ assert.equal(await page.getByRole('button',{name:'下一差异',exact:true}).isDisabled(),true);
+ await page.getByRole('button',{name:'放弃合并',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({passed:true,checks:['per-hunk left-to-right','unrelated hunk retained','undo and redo','dirty target and navigation guard','explicit save only','right-to-left','failed-save buffer retained','discard','external source change rejected','stale target rejected'],pageErrors:errors}));
+ console.log(JSON.stringify({passed:true,checks:['per-hunk left-to-right','unrelated hunk retained','undo and redo','dirty target and navigation guard','explicit save only','right-to-left','failed-save buffer retained','discard','external source change rejected','stale target rejected','continued hunk and shrinking-page recovery'],pageErrors:errors}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

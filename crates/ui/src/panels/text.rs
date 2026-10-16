@@ -188,6 +188,17 @@ pub fn panel(
         },
         true,
     );
+    Effect::watch(
+        move || diff.with(|d| d.as_ref().map(|d| d.id.clone())),
+        move |_, _, _| {
+            current.set(None);
+            hits.set(Vec::new());
+            hit.set(None);
+            let last_page = rows.with_untracked(|r| r.len().saturating_sub(1) / 500 * 500);
+            offset.update(|page| *page = (*page).min(last_page));
+        },
+        false,
+    );
     let pane = move |right: bool| {
         view! {
             <div node_ref=if right{other_scroll}else{scroll} class="diff-scroll shared-diff" on:scroll=move |_|sync(right)><div class="text-pane-content" style:min-width=move ||format!("{}px",width.get())><div class="diff-column-head">{move ||if right{tr(english.get(),"右侧 · 目标","Right · Destination")}else{tr(english.get(),"左侧 · 来源","Left · Source")}}<strong>{move ||(merge.dirty.get() && merge.target()==if right{Side::Right}else{Side::Left}).then_some(tr(english.get()," · 未保存"," · Unsaved"))}</strong></div>
