@@ -67,7 +67,7 @@ fn side(
         .and_then(|e| e.error.clone())
         .unwrap_or_else(|| row.path.clone());
     view! {
-        <td class=if exists {"directory-name"} else {"directory-name absent"} title=error>
+        <td data-side=if right{"right"}else{"left"} class=if exists {"directory-name"} else {"directory-name absent"} title=error>
             <span hidden=exists class="missing-entry">{move ||tr(s.english.get(),"— 缺失","— Missing")}</span>
                 <div hidden=!exists class="directory-name-content" style:padding-left=format!("{}px",depth*16)>
                     <button class="tree-toggle" disabled=move ||s.busy.get() || !expandable aria-label=move ||if expanded {tr(s.english.get(),"折叠目录","Collapse folder")} else {tr(s.english.get(),"展开目录","Expand folder")} aria-expanded=directory.then_some(expanded.to_string()) on:click=move |_|toggle(id.clone())>{if directory {if expanded {"▾"} else {"▸"}} else {""}}</button>
@@ -75,8 +75,8 @@ fn side(
                     <button class="entry-name" disabled=move ||s.busy.get() on:click=move |_|s.focused.set(Some(click_id.clone())) on:dblclick=move |_|{if directory {toggle(double_id.clone())} else {open(double_id.clone())}} on:keydown=move |ev|{if ev.key()=="Enter" {ev.prevent_default();if directory {toggle(key_id.clone())} else {open(key_id.clone())}}}>{name.clone()}</button>
                 </div>
         </td>
-        <td class="directory-size">{bytes}</td>
-        <td class="directory-time">{move ||if exists {modified(entry.as_ref(),s.english.get())} else {String::new()}}</td>
+        <td data-side=if right{"right"}else{"left"} class="directory-size">{bytes}</td>
+        <td data-side=if right{"right"}else{"left"} class="directory-time">{move ||if exists {modified(entry.as_ref(),s.english.get())} else {String::new()}}</td>
     }
 }
 pub fn panel(
@@ -114,7 +114,7 @@ pub fn panel(
     view! {
         <section class="directory-workspace" aria-label="Side-by-side directory comparison">
             <div class="directory-roots"><span title=move ||s.comparison.with(|c|c.as_ref().map(|c|c.left.clone()))>{move ||s.comparison.with(|c|c.as_ref().map(|c|c.left.clone()))}</span><span title=move ||s.comparison.with(|c|c.as_ref().map(|c|c.right.clone()))>{move ||s.comparison.with(|c|c.as_ref().map(|c|c.right.clone()))}</span></div>
-            <div class="directory-scroll" on:contextmenu=move |ev|ev.prevent_default() on:scroll=move |_|menu.set(None)><table class="directory-table"><colgroup><col class="selection-col"/><col class="name-col"/><col class="size-col"/><col class="time-col"/><col class="state-col"/><col class="name-col"/><col class="size-col"/><col class="time-col"/></colgroup><thead><tr><th aria-label="Selection"></th><th>{move ||tr(s.english.get(),"左侧名称","Left name")}</th><th>{move ||tr(s.english.get(),"大小","Size")}</th><th>{move ||tr(s.english.get(),"修改时间","Modified")}</th><th>{move ||tr(s.english.get(),"比较","Compare")}</th><th>{move ||tr(s.english.get(),"右侧名称","Right name")}</th><th>{move ||tr(s.english.get(),"大小","Size")}</th><th>{move ||tr(s.english.get(),"修改时间","Modified")}</th></tr></thead>
+            <div class="directory-scroll" on:contextmenu=move |ev|ev.prevent_default() on:scroll=move |_|menu.set(None)><table class="directory-table"><colgroup><col class="selection-col"/><col class="name-col"/><col class="size-col"/><col class="time-col"/><col class="quick-col"/><col class="state-col"/><col class="quick-col"/><col class="name-col"/><col class="size-col"/><col class="time-col"/></colgroup><thead><tr><th aria-label="Selection"></th><th>{move ||tr(s.english.get(),"左侧名称","Left name")}</th><th>{move ||tr(s.english.get(),"大小","Size")}</th><th>{move ||tr(s.english.get(),"修改时间","Modified")}</th><th class="directory-quick" title=move ||tr(s.english.get(),"往左合并整个文件（先预览）","Merge whole file into left (preview first)")>"←"</th><th class="directory-state">{move ||tr(s.english.get(),"比较","Compare")}</th><th class="directory-quick" title=move ||tr(s.english.get(),"往右合并整个文件（先预览）","Merge whole file into right (preview first)")>"→"</th><th>{move ||tr(s.english.get(),"右侧名称","Right name")}</th><th>{move ||tr(s.english.get(),"大小","Size")}</th><th>{move ||tr(s.english.get(),"修改时间","Modified")}</th></tr></thead>
             <tbody><For each=move ||s.rows.get() key=move |r|(s.comparison.with_untracked(|c|c.as_ref().map(|c|c.session.clone())),r.id.clone(),s.outline.with_untracked(|o|o.get(&r.id).map(|n|(n.expanded,n.depth,n.has_children,n.context_only)))) children=move |row|{
                 let node=s.outline.with_untracked(|nodes|nodes.get(&row.id).cloned());
                 let title=row.path.clone(); let state=row.status.clone(); let title_state=state.clone(); let focus_id=row.id.clone(); let select_id=row.id.clone();let checked_id=row.id.clone();
@@ -122,11 +122,13 @@ pub fn panel(
                 let can_left=row.left.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());let can_right=row.right.as_ref().is_some_and(|e|e.kind==Kind::File && e.error.is_none());
                 let eligible_left=can_left && matches!(row.status,Status::Changed|Status::LeftOnly);let eligible_right=can_right && matches!(row.status,Status::Changed|Status::RightOnly);
                 let state_class=crate::status_class(&state);
-                let context_row=row.clone();let keyboard_row=row.clone(); let left=row.clone(); let right=row;
+                let merge_left=row.id.clone();let merge_right=row.id.clone();let context_row=row.clone();let keyboard_row=row.clone(); let left=row.clone(); let right=row;
                 view! {<tr on:contextmenu=move |ev|{ev.prevent_default();if !s.busy.get_untracked(){s.focused.set(Some(context_row.id.clone()));menu.set(Some(Target::mouse(context_row.clone(),&ev)));directory_menu::focus_menu();}} on:keydown=move |ev|{if ev.key()=="ContextMenu" || (ev.key()=="F10" && ev.shift_key()){ev.prevent_default();if !s.busy.get_untracked(){s.focused.set(Some(keyboard_row.id.clone()));menu.set(Some(Target::keyboard(keyboard_row.clone(),&ev)));directory_menu::focus_menu();}}} class=move ||format!("outline-row {} {}",state_class,if s.focused.get().as_ref()==Some(&focus_id){"focused"}else{""}) title=title>
                     <td><input type="checkbox" aria-label=move ||tr(s.english.get(),"选择文件","Select file") disabled=move ||s.busy.get() || !(match s.operation.get().as_str(){"delete_left"|"rename_left"=>can_left,"delete_right"|"rename_right"=>can_right,"mirror_left_to_right"|"mirror_right_to_left"|"mirror_tree_left_to_right"|"mirror_tree_right_to_left"=>false,_=>if s.reverse.get(){eligible_right}else{eligible_left}}) prop:checked=move ||s.selected.with(|ids|ids.contains(&checked_id)) on:change=move |ev|{let checked=event_target_checked(&ev);s.selected.update(|ids|{if checked{ids.insert(select_id.clone());}else{ids.remove(&select_id);}});selection_changed();}/></td>
                     {side(left,node.clone(),false,s,toggle,open)}
+                    <td class="directory-quick" data-side="left"><button class="directory-merge-arrow" disabled=move ||s.busy.get() ||!eligible_right aria-label=move ||tr(s.english.get(),"往左合并文件","Merge file into left") title=move ||tr(s.english.get(),"右 → 左：复制整个文件，先预览覆盖；目录请展开后选择文件。","Right → left: preview copying the whole file; expand folders to select files.") on:click=move |_|{s.focused.set(Some(merge_left.clone()));file_action(merge_left.clone(),Side::Right,"copy",String::new());}>"←"</button></td>
                     <td class="directory-state"><span class=format!("pair-state {state_class}") title=move ||label(&title_state,s.english.get())>{move ||if directory {label(&state,s.english.get())} else {match state {Status::Same=>"=",Status::Changed=>"≠",Status::LeftOnly=>"←",Status::RightOnly=>"→",Status::MetadataMatch=>"?",_=>"!"}}}</span></td>
+                    <td class="directory-quick" data-side="right"><button class="directory-merge-arrow" disabled=move ||s.busy.get() ||!eligible_left aria-label=move ||tr(s.english.get(),"往右合并文件","Merge file into right") title=move ||tr(s.english.get(),"左 → 右：复制整个文件，先预览覆盖；目录请展开后选择文件。","Left → right: preview copying the whole file; expand folders to select files.") on:click=move |_|{s.focused.set(Some(merge_right.clone()));file_action(merge_right.clone(),Side::Left,"copy",String::new());}>"→"</button></td>
                     {side(right,node,true,s,toggle,open)}
                 </tr>}
             }/></tbody></table></div>

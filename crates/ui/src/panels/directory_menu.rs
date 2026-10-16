@@ -9,8 +9,8 @@ use wasm_bindgen::prelude::*;
 let previous;
 export function directoryAnchor(event,keyboard){
  const cell=event.target.closest('td');const rect=event.target.getBoundingClientRect();
- previous=cell?.parentElement.querySelectorAll('.entry-name')[cell.cellIndex>=5?1:0]||event.target;
- return [cell&&cell.cellIndex>=5?1:0,keyboard?rect.left:event.clientX,keyboard?rect.bottom:event.clientY];
+ previous=cell?.parentElement.querySelectorAll('.entry-name')[cell.dataset.side==='right'?1:0]||event.target;
+ return [cell&&cell.dataset.side==='right'?1:0,keyboard?rect.left:event.clientX,keyboard?rect.bottom:event.clientY];
 }
 export function focusDirectoryMenu(){
  requestAnimationFrame(()=>{const menu=document.querySelector('.file-context-menu');if(!menu)return;

@@ -61,3 +61,8 @@ Context copy/delete/rename target the clicked file only, replacing previous chec
 `NODE_PATH=./target/work/ui-qa/node_modules node scripts/check-directory-context.cjs` checks both languages and copy directions, native ID routing, preview-only mutation, stale checkbox isolation, properties, clipboard, disabled actions, dismissal, keyboard focus, viewport clamping and failed previews. It uses synthetic IPC replies; native file-write safeguards remain covered by the core integration tests.
 
 Both merge directions remain together between the text panes while horizontal text scrolling stays independent of the gutter. Vertical scrolling, difference navigation and paging keep the center controls aligned with their changed block. Scrolling over the gutter scrolls the synchronized text panes.
+
+
+## Quick whole-file merge columns
+
+Two narrow arrow columns flank the directory comparison status. ← previews copying the right file to the left; → previews copying the left file to the right. Each shortcut selects only its own native file ID and opens the existing reviewed copy plan, irrespective of the previous operation mode or checkbox selection. This copies the whole file; partial text merging stays in the text comparator. Buttons are disabled while busy, for an absent source, unchanged or unverified pairs, links, errors, type conflicts and directories. Expand a directory to operate on its files. No recursive directory merge is added by these shortcuts, and no write occurs before explicitly executing the preview.
