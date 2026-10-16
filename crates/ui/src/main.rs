@@ -1696,6 +1696,7 @@ fn App() -> impl IntoView {
                     {panels::folder_merge::panel(english,busy,panels::folder_merge::Signals{visible:folder_merge_visible,preview:folder_merge_preview,left,right,exclusions,error,message})}
                     <Show when=move || !error.get().is_empty()><div class="notice error-notice" role="alert">{move || error.get()}</div></Show>
                     <Show when=move || !message.get().is_empty()><div class="notice" role="status">{move || message.get()}<br/>{move || tr(english.get(),"请重新比较以查看最新状态。备份与操作日志已保留。","Compare again to refresh. Backups and operation journal are retained.")}</div></Show>
+                    <div class="workspace-progress" class:bottom-progress=move ||comparison.with(|c|c.is_some()) ||diff.with(|d|d.is_some()) ||editor.with(|d|d.is_some()) ||picture.with(|p|p.is_some()) ||binary.with(|b|b.is_some()) ||table.with(|t|t.is_some())>
                     {panels::tasks::panel(english,busy,error,operation_progress,reconnect_operation)}
 
                     <Show when=move || busy.get()><div class="progress" role="status"><span class="pulse"></span>{move || match compare_stage.get() {
@@ -1703,6 +1704,7 @@ fn App() -> impl IntoView {
                         2 => tr(english.get(),"列表已显示，正在完整校验文件内容；耗时取决于文件总量…","List available; verifying all file contents. Time depends on total file data…"),
                         _ => tr(english.get(),"正在处理，请稍候…","Working, please wait…"),
                     }}<button class="quiet" disabled=move ||text_merge_dirty.get() on:click=move |_| {compare_cancelled.set(true);spawn_local(async move { let _ = invoke::<()>("cancel",serde_json::json!({})).await; });}>{move ||if compare_stage.get() == 2 {tr(english.get(),"停止校验，保留列表","Stop verification, keep list")} else {tr(english.get(),"取消任务","Cancel task")}}</button></div></Show>
+                    </div>
                     <div class="directory-host"><Show when=move || comparison.get().is_some() fallback=move || view! {
                         <section class="empty"><div class="empty-symbol" aria-hidden="true">"⇄"</div><h1>{move || tr(english.get(),"看清差异，再同步","See the difference. Then sync.")}</h1><p>{move || tr(english.get(),"选择两个独立的文件夹，比较内容，检查计划，然后复制你选择的文件。","Choose two separate directories, compare their contents, review a plan, then copy selected files.")}</p><div class="empty-notes"><span>{move || tr(english.get(),"目标独有文件保留","Destination-only files retained")}</span><span>{move || tr(english.get(),"覆盖前验证备份","Backups verified before overwrite")}</span></div></section>
                     }>
@@ -1725,7 +1727,7 @@ fn App() -> impl IntoView {
                             preview();
                         })}
 
-                        <Show when=move || comparison.get().is_some_and(|c| !c.warnings.is_empty())><p class="warnings">{move || comparison.get().map(|c| c.warnings.iter().map(|note|if note=="Symbolic links are listed but not followed, compared or synchronized."{tr(english.get(),"符号链接仅列出，不跟随、比较或同步。","Symbolic links are listed but not followed, compared or synchronized.")}else{note.as_str()}).collect::<Vec<_>>().join(" · "))}</p></Show>
+                        <Show when=move || comparison.with(|c|c.as_ref().is_some_and(|c|c.warnings.iter().any(|note|note!="Symbolic links are listed but not followed, compared or synchronized.")))><p class="warnings">{move || comparison.with(|c|c.as_ref().map(|c|c.warnings.iter().filter(|note|note.as_str()!="Symbolic links are listed but not followed, compared or synchronized.").cloned().collect::<Vec<_>>().join(" · ")))}</p></Show>
     <div class="results-status">                    <p class="comparison-basis" title=move ||tr(english.get(),"快速扫描仅比较大小和修改时间；只有完整内容校验能证明内容一致。错误和符号链接单独标记。","Quick scans compare size and timestamps only; content equality requires full verification. Errors and symbolic links remain distinct.")>{move ||if comparison_verified.get() {
                             tr(english.get(),"内容校验 · SHA-256","Content check · SHA-256")
                         } else {

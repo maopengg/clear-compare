@@ -245,3 +245,9 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .exclusions-dialog>header,.exclusions-dialog>footer,.exclusion-add,.exclusion-item{display:flex;align-items:center;gap:8px}.exclusions-dialog>header>strong{margin-right:auto}.exclusions-dialog>p,.exclusions-dialog>footer>span{font-size:11px;color:var(--muted);line-height:1.6}.exclusions-dialog>footer{margin-top:12px}.exclusions-dialog>footer>span{flex:1}
 .exclusion-add{margin:10px 0}.exclusion-add>input{flex:1;min-width:0;padding:6px 8px}.exclusion-list{max-height:280px;overflow:auto;border:1px solid var(--line)}.exclusion-item{padding:4px 8px;border-bottom:1px solid var(--line)}.exclusion-item>code{flex:1;font-size:11px;overflow-wrap:anywhere}.exclusions-dialog details{margin-top:10px}.exclusions-dialog textarea{width:100%;height:120px;margin-top:6px;padding:8px;font:11px/1.6 ui-monospace,monospace}
 @media(max-width:1050px){.compact-workspace .project-picker{max-width:130px}.project-manager-body{grid-template-columns:225px minmax(0,1fr)}}
+
+/* Keep existing results above task feedback while work continues. */
+.compact-workspace>.workspace-progress{flex-shrink:0}
+.compact-workspace>.workspace-progress.bottom-progress{order:1}
+.compact-workspace>.workspace-progress.bottom-progress .progress{border-bottom:0;border-top:1px solid var(--line);font-size:11px}
+.compact-workspace>.statusbar{order:2}

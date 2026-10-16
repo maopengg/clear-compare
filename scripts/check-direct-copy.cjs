@@ -33,6 +33,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
    if(command==='save_session'||command==='set_native_language')return null;
    if(command==='active_operation')return null;
    if(command==='compare'){
+    if(window.__qa.delayCompare)await new Promise(resolve=>{window.__qa.compareResolve=resolve});
     if(args.request.content)await new Promise((resolve,reject)=>{window.__qa.verifyResolve=resolve;window.__qa.verifyReject=reject});
     return {session:'s'+ ++session,left:'/sample/project-left',right:'/sample/project-right',summary,warnings:['Symbolic links are listed but not followed, compared or synchronized.'],page:{rows:[],total:3}};
    }
@@ -68,7 +69,12 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.goto('https://clear-compare.test/',{waitUntil:'domcontentloaded',timeout:15000});
  await page.waitForTimeout(1500);
  await page.getByLabel('左侧 · 来源',{exact:true}).waitFor();
+ await page.evaluate(()=>window.__qa.delayCompare=true);
  await page.getByRole('button',{name:'比较文件夹',exact:true}).click();
+ await page.waitForFunction(()=>typeof window.__qa.compareResolve==='function');
+ await page.locator('.workspace-progress:not(.bottom-progress) .progress').waitFor();
+ assert.equal(await page.locator('.workspace-progress.bottom-progress').count(),0);
+ await page.evaluate(()=>{window.__qa.delayCompare=false;window.__qa.compareResolve();});
  await page.locator('.outline-row').first().waitFor();
  assert.equal(await page.locator('.outline-row').count(),2);
  assert.equal(await page.locator('.directory-time').first().innerText()==='',false);
@@ -98,6 +104,11 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert.equal(await page.getByRole('button',{name:'十六进制',exact:true}).count(),1);
  await page.getByRole('checkbox',{name:'只看差异',exact:true}).uncheck();
  await page.evaluate(()=>window.__qa.delayPreview=true);await arrow(true).click();await page.waitForFunction(()=>typeof window.__qa.previewResolve==='function');
+ assert.equal(await page.locator('.warnings').count(),0);
+ const loading=page.locator('.workspace-progress.bottom-progress .progress').last();await loading.waitFor();
+ const loadingBounds=await loading.boundingBox(), contentBounds=await page.locator('.directory-scroll').boundingBox();
+ assert(loadingBounds.y>=contentBounds.y+contentBounds.height,'Loading belongs below existing directory contents');
+ assert(loadingBounds.height<=35,'Loading remains compact');
  assert.equal(await arrow(false).isDisabled(),true);assert.equal(await arrow(true).isDisabled(),true);assert.equal(await page.getByRole('button',{name:'执行已预览的复制',exact:true}).count(),0);
  await page.evaluate(()=>{window.__qa.delayPreview=false;window.__qa.previewResolve();});await page.getByText(/文件已合并，来源文件保留/).waitFor();
  assert.deepEqual((await count('preview_sync')).at(-1).args,{session:'s1',rowIds:['f1'],sourceSide:'left'});assert.equal((await count('apply_sync')).length,1);assert.equal((await count('compare')).length,1);
