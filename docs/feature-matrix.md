@@ -34,4 +34,6 @@ The long-term project remains the complete plan, not only this preview. A green 
 
 Implemented foundation: persisted multi-root discovery, repository/worktree/submodule/bare recognition, normalized remote identities, home search/favorites/recent entries, status/references/remotes, typed one-use mutation plans, whole-file stage/unstage, commit/amend, branch/revision actions, fetch/pull/push, stash save, operation continue/skip/abort and recovery references. Advanced core operations are not all exposed in the interface.
 
-Not complete: graph history, hunk/line staging, interactive rebase, integrated three-way conflict resolution, stash/worktree/submodule management, full remote management, global source search/replace and multi-tab code editing. Track all requirements in [workbench acceptance](workbench-acceptance.md); do not equate this foundation with the complete Git client.
+History foundation: paged commit graph and reference/author/date/path/message/hash filters, pinned commit details and merge-parent selection, captured file IDs for bounded/paged read-only patches, parent navigation and contextual copy/cherry-pick/revert/checkout/reset/branch/tag actions.
+
+Not complete: full history tree browsing, patch export/apply, hunk/line staging, interactive rebase, integrated three-way conflict resolution, stash/worktree/submodule management, full remote management, global source search/replace and multi-tab code editing. Track all requirements in [workbench acceptance](workbench-acceptance.md); do not equate this foundation with the complete Git client.

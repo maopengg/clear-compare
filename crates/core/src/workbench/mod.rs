@@ -1,5 +1,6 @@
 //! Persistent multi-repository workspace. Discovery and inspection never fetch or mutate Git.
 mod actions;
+mod history;
 mod runner;
 mod status;
 use crate::{
@@ -33,6 +34,7 @@ pub struct Workspace {
     pub repositories: BTreeMap<String, Captured>,
     ignored: BTreeSet<String>,
     pending: Option<actions::Prepared>,
+    history_details: BTreeMap<String, history::CapturedDetail>,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -126,6 +128,7 @@ impl Workspace {
             repositories: BTreeMap::new(),
             ignored: stored.ignored,
             pending: None,
+            history_details: BTreeMap::new(),
         })
     }
     pub fn save(&self, base: &Path) -> Result<()> {

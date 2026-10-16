@@ -1708,7 +1708,7 @@ fn App() -> impl IntoView {
                     {panels::folder_merge::panel(english,busy,panels::folder_merge::Signals{visible:folder_merge_visible,preview:folder_merge_preview,left,right,exclusions,error,message})}
                     <Show when=move || !error.get().is_empty()><div class="notice error-notice" role="alert">{move || error.get()}</div></Show>
                     <Show when=move || !message.get().is_empty()><div class="notice" role="status">{move || message.get()}<br/>{move || tr(english.get(),"请重新比较以查看最新状态。备份与操作日志已保留。","Compare again to refresh. Backups and operation journal are retained.")}</div></Show>
-                    <div class="workspace-progress" class:bottom-progress=move ||comparison.with(|c|c.is_some()) ||diff.with(|d|d.is_some()) ||editor.with(|d|d.is_some()) ||picture.with(|p|p.is_some()) ||binary.with(|b|b.is_some()) ||table.with(|t|t.is_some())>
+                    <div class="workspace-progress" class:bottom-progress=move ||home_visible.get()||comparison.with(|c|c.is_some()) ||diff.with(|d|d.is_some()) ||editor.with(|d|d.is_some()) ||picture.with(|p|p.is_some()) ||binary.with(|b|b.is_some()) ||table.with(|t|t.is_some())>
                     {panels::tasks::panel(english,busy,error,operation_progress,reconnect_operation)}
 
                     <Show when=move || busy.get()><div class="progress" role="status"><span class="pulse"></span>{move || match compare_stage.get() {

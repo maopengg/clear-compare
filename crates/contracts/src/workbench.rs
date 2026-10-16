@@ -90,6 +90,55 @@ pub struct HistoryQuery {
     pub until: String,
     pub path: Option<String>,
     pub offset: usize,
+    #[serde(default)]
+    pub snapshot: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GraphEdge {
+    pub from: usize,
+    pub to: usize,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GraphCommit {
+    pub commit: Commit,
+    pub column: usize,
+    pub width: usize,
+    pub edges: Vec<GraphEdge>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HistoryPage {
+    pub snapshot: String,
+    pub offset: usize,
+    pub has_more: bool,
+    pub commits: Vec<GraphCommit>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommitFile {
+    pub id: String,
+    pub path: String,
+    pub original_path: Option<String>,
+    pub status: String,
+    pub old_mode: String,
+    pub new_mode: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommitDetail {
+    pub id: String,
+    pub commit: Commit,
+    pub message: String,
+    pub parent: Option<String>,
+    pub files: Vec<CommitFile>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GitPatch {
+    pub path: String,
+    pub text: String,
+    pub binary: bool,
+    pub offset: usize,
+    pub total_lines: usize,
+    pub next_offset: Option<usize>,
+    pub long_lines: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

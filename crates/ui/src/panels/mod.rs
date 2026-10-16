@@ -37,4 +37,5 @@ pub mod projects;
 pub mod exclusions;
 
 pub mod git_actions;
+pub mod git_history;
 pub mod workbench;

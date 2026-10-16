@@ -43,6 +43,7 @@ fn run_mode(
         "--no-optional-locks",
         "--no-replace-objects",
         "--no-lazy-fetch",
+        "--literal-pathspecs",
         "-c",
         "core.fsmonitor=false",
         "-c",

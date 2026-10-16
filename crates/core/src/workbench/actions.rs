@@ -23,8 +23,8 @@ fn atom(value: &str) -> Result<String> {
 }
 fn branch(root: &Path, name: &str, cancel: &AtomicBool) -> Result<String> {
     let name = atom(name)?;
-    runner::run(root, &["check-ref-format", "--branch", &name], cancel)?;
-    Ok(name)
+    // Git expands @{-n}; freeze the expanded name in the reviewed command.
+    runner::text(root, &["check-ref-format", "--branch", &name], cancel)
 }
 fn commit(root: &Path, reference: &str, cancel: &AtomicBool) -> Result<String> {
     let reference = atom(reference)?;

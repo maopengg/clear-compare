@@ -1,6 +1,7 @@
 use super::*;
 use clear_contracts::workbench::{
-    Action, ActionPlan, ActionResult, Catalog, RepositoryState, ScanSettings,
+    Action, ActionPlan, ActionResult, Catalog, CommitDetail, GitPatch, HistoryPage, HistoryQuery,
+    RepositoryState, ScanSettings,
 };
 fn workspace<'a>(
     state: &'a Backend,
@@ -14,6 +15,75 @@ fn workspace<'a>(
         *workspace = Some(clear_core::workbench::Workspace::load(base).map_err(|e| e.to_string())?);
     }
     Ok(workspace)
+}
+#[tauri::command]
+pub async fn workspace_history(
+    repository_id: String,
+    query: HistoryQuery,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<HistoryPage, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .history(&repository_id, &query, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_commit_detail(
+    repository_id: String,
+    reference: String,
+    parent_index: usize,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<CommitDetail, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .commit_detail(&repository_id, &reference, parent_index, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_commit_patch(
+    repository_id: String,
+    detail_id: String,
+    file_id: String,
+    offset: Option<usize>,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<GitPatch, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let w = workspace(&state, &base)?;
+        w.as_ref()
+            .ok_or("Workspace unavailable")?
+            .commit_patch_page(
+                &repository_id,
+                &detail_id,
+                &file_id,
+                offset.unwrap_or(0),
+                &state.cancel,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 pub async fn workspace_prepare(

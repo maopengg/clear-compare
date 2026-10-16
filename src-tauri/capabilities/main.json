@@ -90,6 +90,9 @@
     "allow-workspace-favorite",
     "allow-workspace-remove",
     "allow-workspace-prepare",
-    "allow-workspace-apply"
+    "allow-workspace-apply",
+    "allow-workspace-history",
+    "allow-workspace-commit-detail",
+    "allow-workspace-commit-patch"
   ]
 }

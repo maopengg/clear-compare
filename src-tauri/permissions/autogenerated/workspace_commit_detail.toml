@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-commit-detail"
+description = "Enables the workspace_commit_detail command without any pre-configured scope."
+commands.allow = ["workspace_commit_detail"]
+
+[[permission]]
+identifier = "deny-workspace-commit-detail"
+description = "Denies the workspace_commit_detail command without any pre-configured scope."
+commands.deny = ["workspace_commit_detail"]

@@ -484,3 +484,27 @@ fn hard_reset_refuses_untracked_data_until_it_can_be_preserved() {
         "keep me\n"
     );
 }
+
+#[test]
+fn previous_branch_shorthand_is_expanded_before_execution() {
+    let (dir, mut w, id) = fixture();
+    git(dir.path(), &["switch", "-c", "feature"]);
+    git(dir.path(), &["switch", "main"]);
+    let s = w.open(&id, &CANCEL).unwrap();
+    let p = w
+        .prepare(
+            &id,
+            &s.revision,
+            Action::Switch {
+                reference: "@{-1}".into(),
+                detach: false,
+            },
+            &CANCEL,
+        )
+        .unwrap();
+    assert_eq!(p.arguments, vec!["switch", "feature"]);
+    assert_eq!(
+        w.apply(&p.id, &CANCEL).unwrap().state.repository.branch,
+        "feature"
+    );
+}
