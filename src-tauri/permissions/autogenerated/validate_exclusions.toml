@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-validate-exclusions"
+description = "Enables the validate_exclusions command without any pre-configured scope."
+commands.allow = ["validate_exclusions"]
+
+[[permission]]
+identifier = "deny-validate-exclusions"
+description = "Denies the validate_exclusions command without any pre-configured scope."
+commands.deny = ["validate_exclusions"]

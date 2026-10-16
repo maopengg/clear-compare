@@ -6,7 +6,7 @@ Scope revised on 2026-10-16: remote filesystem and cloud storage connections are
 
 | Plan module | Current implementation | Remaining scope |
 |---|---|---|
-| F01 Workspace | One window, versioned named session library, revision-aware updates/archive, restored path/rule/view settings | Tabs, comparison-result/workspace restore, archived-session browser |
+| F01 Workspace | One window, named projects on the compatible session library, independent path/rule/view settings, switch-time saves, active-project restore, revision-aware updates/archive, right-click exact exclusions and a pattern editor | Tabs, comparison-result/workspace restore, archived-session browser |
 | F02 Folder comparison | Recursive bounded scan, quick metadata results before optional full SHA-256 verification, subtree status/size aggregation, native directory navigation, paired expandable outline with per-side name/size/time, ancestor-preserving search/sort and paged file list | Live refresh, broader criteria and performance baselines |
 | F03 Rules | Root-relative and any-level exclusions, semicolon/newline import | Inclusion priority, attributes, content filters |
 | F04 Operations | Verified regular-file copy, explicit selected deletion and single-file same-directory native rename (including case-only) with verified backups/basic-permission recovery; directory creation/emptied-directory removal within tree mirror with identity records | Cross-directory move, bulk/directory rename, standalone directory operations, OS trash and full attribute/time preservation |

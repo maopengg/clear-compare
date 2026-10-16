@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-exclusion-for-entry"
+description = "Enables the exclusion_for_entry command without any pre-configured scope."
+commands.allow = ["exclusion_for_entry"]
+
+[[permission]]
+identifier = "deny-exclusion-for-entry"
+description = "Denies the exclusion_for_entry command without any pre-configured scope."
+commands.deny = ["exclusion_for_entry"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-activate-project"
+description = "Enables the activate_project command without any pre-configured scope."
+commands.allow = ["activate_project"]
+
+[[permission]]
+identifier = "deny-activate-project"
+description = "Denies the activate_project command without any pre-configured scope."
+commands.deny = ["activate_project"]

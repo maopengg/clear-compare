@@ -232,6 +232,12 @@ pub fn archive(base: &Path, id: &str, revision: &str) -> Result<()> {
         return Err(Error::Invalid("Invalid session archive directory".into()));
     }
     fs::rename(path, trash.join(format!("{id}-{}.json", unique_id())))?;
+    let pointer = base.join("active-project.json");
+    if pointer.exists()
+        && serde_json::from_slice::<Option<String>>(&read_bytes(&pointer)?)?.as_deref() == Some(id)
+    {
+        crate::sync::atomic_json(&pointer, &Option::<String>::None)?;
+    }
     Ok(())
 }
 pub fn load_last(base: &Path) -> Result<Option<SavedSession>> {
@@ -257,4 +263,62 @@ pub fn save_last(base: &Path, session: &SavedSession) -> Result<()> {
         read_bytes(&path)?;
     }
     crate::sync::atomic_json(&path, session)
+}
+
+/// A separate pointer preserves the existing session-file format and legacy library.
+pub fn set_active(base: &Path, id: Option<&str>) -> Result<()> {
+    let _guard = lock(base)?;
+    if let Some(id) = id {
+        load(base, id)?;
+    }
+    let path = base.join("active-project.json");
+    if path.exists() {
+        read_bytes(&path)?;
+    }
+    crate::sync::atomic_json(&path, &id)
+}
+pub fn active(base: &Path) -> Result<Option<LibraryEntry>> {
+    let pointer = base.join("active-project.json");
+    match fs::symlink_metadata(&pointer) {
+        Ok(_) => {
+            let id: Option<String> = serde_json::from_slice(&read_bytes(&pointer)?)?;
+            return id.map(|id| load(base, &id)).transpose();
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    let Some(last) = load_last(base)? else {
+        return Ok(None);
+    };
+    let signature = serde_json::to_vec(&last)?;
+    let existing = list(base)?
+        .into_iter()
+        .find(|entry| serde_json::to_vec(&entry.session).ok().as_ref() == Some(&signature));
+    let entry = if let Some(entry) = existing {
+        entry
+    } else {
+        let name = |path: &str| {
+            Path::new(path)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(24)
+                .collect::<String>()
+        };
+        save(
+            base,
+            None,
+            None,
+            &format!(
+                "{} ↔ {}",
+                name(&last.request.left),
+                name(&last.request.right)
+            ),
+            &last,
+        )?
+    };
+    set_active(base, Some(&entry.id))?;
+    Ok(Some(entry))
 }

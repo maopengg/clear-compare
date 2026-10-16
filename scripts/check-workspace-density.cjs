@@ -30,6 +30,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
   window.__TAURI__={core:{invoke:async(command,args)=>{
    args=JSON.parse(JSON.stringify(args,(_,v)=>v instanceof Map?Object.fromEntries(v):v));
    window.__qa.calls.push({command,args});
+   if(command==='load_active_project')return null;
    if(command==='load_session')return {request:{left:'/sample/project-left',right:'/sample/project-right',exclusions:'-node_modules/',content:false},english:false};
    if(command==='save_session'||command==='set_native_language')return null;
    if(command==='active_operation')return null;
@@ -83,7 +84,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('.directory-scroll').evaluate(n=>n.getBoundingClientRect().height),before.height);
  await page.locator('.comparison-settings>summary').click();
- await page.locator('.rules>summary').click();await page.getByRole('textbox',{name:'Exclusion rules',exact:true}).waitFor();
+ await page.getByRole('button',{name:'管理项目排除规则…',exact:true}).click();await page.getByRole('dialog',{name:'项目排除规则',exact:true}).waitFor();await page.getByRole('button',{name:'取消',exact:true}).click();
  await page.keyboard.press('Escape');
  await page.locator('.directory-scroll').evaluate(n=>{n.scrollTop=20});
  const retainedScroll=await page.locator('.directory-scroll').evaluate(n=>n.scrollTop);

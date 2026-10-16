@@ -97,6 +97,15 @@ fn App() -> impl IntoView {
     let library = RwSignal::new(None::<Vec<LibraryEntry>>);
     let session_name = RwSignal::new(String::new());
     let active_library = RwSignal::new(None::<(String, String)>);
+    let project_saved = RwSignal::new(String::new());
+    let project_store = panels::projects::Store {
+        active: active_library,
+        name: session_name,
+        saved: project_saved,
+        library,
+    };
+    let exclusions_visible = RwSignal::new(false);
+
     let english = RwSignal::new(false);
     let help_visible = RwSignal::new(false);
     let stored_theme = preferences::load();
@@ -196,33 +205,39 @@ fn App() -> impl IntoView {
             &draft.get_untracked(),
         ));
     };
-    let current_session = move || SavedSession {
+    let project_snapshot = Signal::derive(move || SavedSession {
         request: CompareRequest {
-            left: left.get_untracked(),
-            right: right.get_untracked(),
-            exclusions: exclusions.get_untracked(),
-            content: content.get_untracked(),
+            left: left.get(),
+            right: right.get(),
+            exclusions: exclusions.get(),
+            content: content.get(),
         },
-        english: english.get_untracked(),
+        english: english.get(),
         view: SessionView {
-            search: search.get_untracked(),
-            differences_only: differences.get_untracked(),
-            recursive: recursive.get_untracked(),
-            sort: match folder_sort.get_untracked().as_str() {
+            search: search.get(),
+            differences_only: differences.get(),
+            recursive: recursive.get(),
+            sort: match folder_sort.get().as_str() {
                 "status" => FolderSort::Status,
                 "left_size" => FolderSort::LeftSize,
                 "right_size" => FolderSort::RightSize,
                 _ => FolderSort::Path,
             },
-            descending: descending.get_untracked(),
-            reverse_sync: reverse_sync.get_untracked(),
+            descending: descending.get(),
+            reverse_sync: reverse_sync.get(),
             text_options: TextOptions {
-                ignore_case: ignore_case.get_untracked(),
-                ignore_whitespace: ignore_space.get_untracked(),
-                ignore_line_endings: ignore_endings.get_untracked(),
+                ignore_case: ignore_case.get(),
+                ignore_whitespace: ignore_space.get(),
+                ignore_line_endings: ignore_endings.get(),
             },
         },
-    };
+    });
+    let current_session = move || project_snapshot.get_untracked();
+    let project_dirty = Memo::new(move |_| {
+        active_library.get().is_some()
+            && panels::projects::signature(&session_name.get(), &project_snapshot.get())
+                != project_saved.get()
+    });
     let apply_session = move |saved: SavedSession| {
         left.set(saved.request.left);
         right.set(saved.request.right);
@@ -248,9 +263,18 @@ fn App() -> impl IntoView {
         ignore_endings.set(saved.view.text_options.ignore_line_endings);
     };
     spawn_local(async move {
-        match invoke::<Option<SavedSession>>("load_session", serde_json::json!({})).await {
-            Ok(Some(saved)) => apply_session(saved),
-            Ok(None) => {}
+        match invoke::<Option<LibraryEntry>>("load_active_project", serde_json::json!({})).await {
+            Ok(Some(entry)) => {
+                apply_session(entry.session.clone());
+                project_store.accept(&entry);
+            }
+            Ok(None) => {
+                match invoke::<Option<SavedSession>>("load_session", serde_json::json!({})).await {
+                    Ok(Some(saved)) => apply_session(saved),
+                    Ok(None) => {}
+                    Err(e) => error.set(e),
+                }
+            }
             Err(e) => error.set(e),
         }
     });
@@ -678,6 +702,12 @@ fn App() -> impl IntoView {
         compare_stage.set(1);
         comparison_verified.set(false);
         spawn_local(async move {
+            if let Err(e) = project_store.persist(current_session()).await {
+                error.set(e);
+                compare_stage.set(0);
+                busy.set(false);
+                return;
+            }
             // Publish the metadata list before doing any full-content scan. Each
             // phase has a fresh native snapshot; no metadata digest is reused.
             let passes: &[bool] = if request.content {
@@ -736,6 +766,69 @@ fn App() -> impl IntoView {
             }
             compare_stage.set(0);
             busy.set(false);
+        });
+    };
+    let change_exclusions = move |rules: String| {
+        if busy.get_untracked() {
+            return;
+        }
+        let rescan = comparison.get_untracked().is_some();
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            let result = async {
+                invoke::<()>("validate_exclusions", serde_json::json!({"rules":rules})).await?;
+                let mut candidate = current_session();
+                candidate.request.exclusions = rules.clone();
+                project_store.persist(candidate.clone()).await?;
+                if active_library.get_untracked().is_none()
+                    && !candidate.request.left.trim().is_empty()
+                    && !candidate.request.right.trim().is_empty()
+                {
+                    invoke::<()>("save_session", serde_json::json!({"session":candidate})).await?;
+                }
+                reset();
+                exclusions.set(rules);
+                exclusions_visible.set(false);
+                Ok::<(), String>(())
+            }
+            .await;
+            busy.set(false);
+            match result {
+                Ok(()) => {
+                    if rescan {
+                        run_compare();
+                    } else {
+                        message.set(
+                            tr(
+                                english.get_untracked(),
+                                "排除规则已应用；未命名项目请保存为项目。",
+                                "Exclusions applied; save unnamed work as a project.",
+                            )
+                            .into(),
+                        );
+                    }
+                }
+                Err(e) => error.set(e),
+            }
+        });
+    };
+    let exclude_entry = move |id: String| {
+        if busy.get_untracked() {
+            return;
+        }
+        let Some(c) = comparison.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            let result=invoke::<String>("exclusion_for_entry",serde_json::json!({"session":c.session,"rowId":id,"current":exclusions.get_untracked()})).await;
+            busy.set(false);
+            match result {
+                Ok(rules) => change_exclusions(rules),
+                Err(e) => error.set(e),
+            }
         });
     };
     let pick = move |is_left: bool| {
@@ -1380,13 +1473,15 @@ fn App() -> impl IntoView {
         spawn_local(async move {
             match invoke::<LibraryEntry>("save_library_session", args).await {
                 Ok(entry) => {
-                    active_library.set(Some((entry.id.clone(), entry.revision.clone())));
-                    session_name.set(entry.name.clone());
-                    library.update(|entries| {
-                        let entries = entries.get_or_insert_with(Vec::new);
-                        entries.retain(|e| e.id != entry.id);
-                        entries.insert(0, entry);
-                    });
+                    project_store.accept(&entry);
+                    message.set(
+                        tr(
+                            english.get_untracked(),
+                            "项目配置已保存。",
+                            "Project settings saved.",
+                        )
+                        .into(),
+                    );
                 }
                 Err(e) => error.set(e),
             }
@@ -1398,8 +1493,8 @@ fn App() -> impl IntoView {
             error.set(
                 tr(
                     english.get_untracked(),
-                    "先保存或重置编辑内容，再打开会话。",
-                    "Save or reset the editor before opening a session.",
+                    "先保存或重置编辑内容，再切换项目。",
+                    "Save or reset the editor before switching projects.",
                 )
                 .into(),
             );
@@ -1408,20 +1503,19 @@ fn App() -> impl IntoView {
         busy.set(true);
         error.set(String::new());
         spawn_local(async move {
-            match invoke::<LibraryEntry>("load_library_session", serde_json::json!({"id":entry.id}))
+            if let Err(e) = project_store.persist(current_session()).await {
+                error.set(e);
+                busy.set(false);
+                return;
+            }
+            match invoke::<LibraryEntry>("activate_project", serde_json::json!({"id":entry.id}))
                 .await
             {
                 Ok(entry) => {
                     reset();
                     apply_session(entry.session.clone());
-                    session_name.set(entry.name.clone());
-                    active_library.set(Some((entry.id.clone(), entry.revision.clone())));
-                    library.update(|entries| {
-                        if let Some(entries) = entries {
-                            entries.retain(|e| e.id != entry.id);
-                            entries.insert(0, entry);
-                        }
-                    });
+                    project_store.accept(&entry);
+                    library.set(None);
                     if let Some(d) = editor.get_untracked() {
                         let _ =
                             invoke::<()>("close_document", serde_json::json!({"documentId":d.id}))
@@ -1430,6 +1524,54 @@ fn App() -> impl IntoView {
                     editor.set(None);
                     reset_draft(String::new());
                     can_restore.set(false);
+                }
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let close_projects = move || {
+        if busy.get_untracked() {
+            return;
+        }
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match project_store.persist(current_session()).await {
+                Ok(()) => library.set(None),
+                Err(e) => error.set(e),
+            }
+            busy.set(false);
+        });
+    };
+    let new_project = move || {
+        if busy.get_untracked() {
+            return;
+        }
+        if editor_dirty() {
+            error.set(
+                tr(
+                    english.get_untracked(),
+                    "请先保存或重置编辑内容，再新建项目。",
+                    "Save or reset edits before creating a project.",
+                )
+                .into(),
+            );
+            return;
+        }
+        busy.set(true);
+        error.set(String::new());
+        spawn_local(async move {
+            match project_store.persist(current_session()).await {
+                Ok(()) => {
+                    reset();
+                    active_library.set(None);
+                    session_name.set(String::new());
+                    project_saved.set(String::new());
+                    left.set(String::new());
+                    right.set(String::new());
+                    exclusions.set("-./.git/;-node_modules/;-__pycache__/;-.DS_Store".into());
+                    search.set(String::new());
                 }
                 Err(e) => error.set(e),
             }
@@ -1529,24 +1671,25 @@ fn App() -> impl IntoView {
     view! {
                 <main class=move ||if comparison.get().is_some(){if diff.get().is_some(){"workspace compact-workspace has-comparison active-text"}else{"workspace compact-workspace has-comparison"}}else{if diff.get().is_some(){"workspace compact-workspace active-text"}else{"workspace compact-workspace"}} data-theme=move ||theme.get().value()>
                     <header class="topbar">
-                        <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">{move ||tr(english.get(),"0.1 预览版","0.1 preview")}</span></div>
-                        <div class="top-actions" inert=move ||text_merge_dirty.get()><details name="workspace-menu" class="app-menu"><summary>{move ||tr(english.get(),"工具","Tools")}</summary><div class="menu-body"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);git_visible.set(true);}>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);archive_visible.set(true);}>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|reconnect_operation()>{move ||tr(english.get(),"连接文件任务","Connect file task")}</button></div></details>{panels::bidirectional::panel(english,busy,error,comparison,operation_progress,bidi,complete_bidi,recover_bidi,reset)}<span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
-                        <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
+                        <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><button class="quiet project-picker" disabled=move||busy.get()||text_merge_dirty.get() title=move||session_name.get() on:click=move|_|refresh_library()>{move||format!("{}：{}{} ▾",tr(english.get(),"项目","Project"),if active_library.get().is_some(){session_name.get()}else{tr(english.get(),"未保存项目","Unsaved project").into()},if project_dirty.get(){" •"}else{""})}</button><button class="quiet" disabled=move||busy.get()||text_merge_dirty.get() on:click=move|_|{if active_library.get_untracked().is_some(){save_library(true);}else{refresh_library();}}>{move||tr(english.get(),"保存项目","Save project")}</button><button class="quiet" disabled=move||busy.get()||text_merge_dirty.get() on:click=move|_|exclusions_visible.set(true)>{move||format!("{} {}",tr(english.get(),"排除","Exclude"),exclusions.get().split([';','\n']).filter(|r|!r.trim().is_empty()).count())}</button></div>
+                        <div class="top-actions" inert=move ||text_merge_dirty.get()><details name="workspace-menu" class="app-menu"><summary>{move ||tr(english.get(),"工具","Tools")}</summary><div class="menu-body"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);git_visible.set(true);}>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);archive_visible.set(true);}>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"项目管理","Projects")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|reconnect_operation()>{move ||tr(english.get(),"连接文件任务","Connect file task")}</button></div></details>{panels::bidirectional::panel(english,busy,error,comparison,operation_progress,bidi,complete_bidi,recover_bidi,reset)}<span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
+                        <button class="quiet" disabled=move||busy.get() on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
                     </header>
+                    {panels::exclusions::panel(english,busy,exclusions_visible,exclusions,change_exclusions)}
                     {panels::help::panel(english,help_visible,theme,theme_error)}
-                    {panels::sessions::panel(english,busy,panels::sessions::Signals{library,session_name,active_library},refresh_library,save_library,open_library,archive_library)}
+                    {panels::sessions::panel(english,busy,panels::sessions::Signals{library,session_name,active_library,left,right,exclusions,dirty:project_dirty},refresh_library,save_library,open_library,archive_library,new_project,close_projects,reset,move||exclusions_visible.set(true),pick)}
                     <section class="path-section" aria-label="Comparison directories">
                         <div class="path-pair">
-                            <div class="path-field"><label for="left">{move || tr(english.get(),"左侧 · 来源","Left · Source")}</label><div class="path-input"><input id="left" prop:value=move || left.get() disabled=move || busy.get() placeholder=move || tr(english.get(),"选择来源文件夹","Choose source directory") on:input=move |ev| {reset();left.set(event_target_value(&ev));}/><button class="browse" aria-label="Choose source directory" disabled=move || busy.get() on:click=move |_| pick(true)>"…"</button></div></div>
+                            <div class="path-field"><label for="left">{move || tr(english.get(),"左侧 · 来源","Left · Source")}</label><div class="path-input"><input id="left" prop:value=move || left.get() disabled=move || busy.get() placeholder=move || tr(english.get(),"选择来源文件夹","Choose source directory") on:input=move |ev| {reset();left.set(event_target_value(&ev));}/><button class="browse" aria-label=move||tr(english.get(),"选择左侧文件夹","Choose source directory") disabled=move || busy.get() on:click=move |_| pick(true)>"…"</button></div></div>
                             <div class="path-direction" aria-hidden="true">"→"</div>
-                            <div class="path-field"><label for="right">{move || tr(english.get(),"右侧 · 目标","Right · Destination")}</label><div class="path-input"><input id="right" prop:value=move || right.get() disabled=move || busy.get() placeholder=move || tr(english.get(),"选择目标文件夹","Choose destination directory") on:input=move |ev| {reset();right.set(event_target_value(&ev));}/><button class="browse" aria-label="Choose destination directory" disabled=move || busy.get() on:click=move |_| pick(false)>"…"</button></div></div>
+                            <div class="path-field"><label for="right">{move || tr(english.get(),"右侧 · 目标","Right · Destination")}</label><div class="path-input"><input id="right" prop:value=move || right.get() disabled=move || busy.get() placeholder=move || tr(english.get(),"选择目标文件夹","Choose destination directory") on:input=move |ev| {reset();right.set(event_target_value(&ev));}/><button class="browse" aria-label=move||tr(english.get(),"选择右侧文件夹","Choose destination directory") disabled=move || busy.get() on:click=move |_| pick(false)>"…"</button></div></div>
                         </div>
                         <button class="primary" disabled=move || busy.get() || left.get().trim().is_empty() || right.get().trim().is_empty() on:click=move |_| run_compare()>{move || tr(english.get(),"比较文件夹","Compare directories")}</button>
                         <details name="workspace-menu" class="comparison-settings"><summary>{move ||tr(english.get(),"比较设置","Compare settings")}</summary><div class="menu-body">                <div class="compare-options"><label class="check-label"><input type="checkbox" prop:checked=move || content.get() disabled=move || busy.get() on:change=move |ev| {reset();content.set(event_target_checked(&ev));}/>{move || tr(english.get(),"列表显示后完整校验内容（SHA-256，较慢）","Verify all contents after listing (SHA-256, slower)")}</label>
 
                         </div>
                         <p class="compare-hint">{move ||tr(english.get(),"先按大小和修改时间列出结果；元数据匹配仍标为未验证内容。完整校验需读取所有未排除文件。","List results using size and modification time first; metadata matches remain unverified. Full verification reads every included file.")}</p>
-                        <details class="rules"><summary>{move || tr(english.get(),"排除规则","Exclusion rules")}</summary><p>{move || tr(english.get(),"分号或换行分隔；./ 从根目录匹配，目录以 / 结尾。","Separate with semicolons or newlines; ./ anchors at root, / marks a directory.")}</p><textarea aria-label="Exclusion rules" prop:value=move || exclusions.get() disabled=move || busy.get() on:input=move |ev| {reset();exclusions.set(event_target_value(&ev));}/></details></div></details>
+                        <div class="rules"><button class="quiet" disabled=move||busy.get() on:click=move|_|exclusions_visible.set(true)>{move||tr(english.get(),"管理项目排除规则…","Manage project exclusions…")}</button></div></div></details>
                     </section>
                     {panels::git::panel(english,busy,git_visible,error,diff)}
                     {panels::archives::panel(english,busy,archive_visible,error,diff)}
@@ -1576,6 +1719,7 @@ fn App() -> impl IntoView {
                         {panels::directory::panel(panels::directory::Signals{english,busy,comparison,rows,outline,selected,focused:focused_row,operation:file_operation,reverse:reverse_sync},toggle_directory,open_text,open_editor,move |id,kind|match kind {"binary"=>open_binary(id,"0".into()),"table"=>open_table(id),_=>open_picture(id)},move ||plan.set(None),move |id,side,action,name|{
                             if busy.get_untracked(){return;}
                             if action=="quick_copy"{quick_copy(id,side);return;}
+                            if action=="exclude"{exclude_entry(id);return;}
                             selected.set(BTreeSet::from([id]));plan.set(None);
                             match action {"copy"=>{file_operation.set("copy".into());reverse_sync.set(side==Side::Right);},"rename"=>{file_operation.set(if side==Side::Left{"rename_left"}else{"rename_right"}.into());rename_name.set(name);},_=>file_operation.set(if side==Side::Left{"delete_left"}else{"delete_right"}.into())}
                             preview();

@@ -28,6 +28,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
   window.__TAURI__={core:{invoke:async(command,args)=>{
    args=JSON.parse(JSON.stringify(args,(_,v)=>v instanceof Map?Object.fromEntries(v):v));
    window.__qa.calls.push({command,args});
+   if(command==='load_active_project')return null;
    if(command==='load_session')return {request:{left:'/sample/project-left',right:'/sample/project-right',exclusions:'-node_modules/',content:false},english:false};
    if(command==='save_session'||command==='set_native_language')return null;
    if(command==='active_operation')return null;
@@ -84,7 +85,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert.equal(await action('复制到右侧…').isEnabled(),true);
  assert(!(await menu().innerText()).includes('Reload'));
  assert.equal(await page.locator('.outline-row.focused').getAttribute('title'),'src/main.rs');
- await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement.textContent),'属性');
+ await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement.textContent),'排除此项');
  await page.keyboard.press('Home');assert.equal(await page.evaluate(()=>document.activeElement.textContent),'比较内容');
  await dismiss();assert.equal(await left.evaluate(e=>e===document.activeElement),true);
  // A context mutation intentionally targets the clicked file, replacing stale checkbox selection.

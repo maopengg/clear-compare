@@ -81,6 +81,7 @@ enum Action {
     Delete,
     Name,
     Properties,
+    Exclude,
 }
 impl Action {
     fn title(self, en: bool, right: bool, directory: bool) -> &'static str {
@@ -119,6 +120,7 @@ impl Action {
             }
             Self::Name => tr(en, "复制文件名", "Copy file name"),
             Self::Properties => tr(en, "属性", "Properties"),
+            Self::Exclude => tr(en, "排除此项", "Exclude this item"),
         }
     }
 }
@@ -161,7 +163,7 @@ pub fn panel(
             <div class="file-context-backdrop" on:pointerdown=move |_|close() on:contextmenu=move |ev|{ev.prevent_default();close();}></div>
             <div class="file-context-menu" role="menu" aria-label=move ||tr(s.english.get(),"文件操作","File actions") style=format!("left:{}px;top:{}px",t.x,t.y) on:contextmenu=move |ev|ev.prevent_default() on:keydown=move |ev|{if ev.key()=="Escape" ||ev.key()=="Tab"{ev.prevent_default();close();}else{menu_key(ev.as_ref());}}>
                 <div class="file-context-heading">{if right {tr(s.english.get_untracked(),"右侧","Right")}else{tr(s.english.get_untracked(),"左侧","Left")}}" · "{filename.clone()}</div>
-                { [Action::Open,Action::Edit,Action::Binary,Action::Table,Action::Picture,Action::Copy,Action::Rename,Action::Delete,Action::Name,Action::Properties].into_iter().map(move |action|{
+                { [Action::Open,Action::Edit,Action::Binary,Action::Table,Action::Picture,Action::Copy,Action::Rename,Action::Delete,Action::Name,Action::Properties,Action::Exclude].into_iter().map(move |action|{
                     let disabled=match action {Action::Open=>!directory&&!paired_files,Action::Edit|Action::Rename|Action::Delete=>!file,Action::Binary|Action::Table|Action::Picture=>!paired_files,Action::Copy=>!copy,_=>false};
                     view!{<button role="menuitem" disabled=disabled class=if matches!(action,Action::Copy|Action::Name){"context-group-start"}else{""} on:click=move |_|{
                         let t=stored.get_value();let side=t.side();let id=t.row.id;
@@ -169,7 +171,7 @@ pub fn panel(
                             Action::Rename=>{name.set(t.row.path.rsplit('/').next().unwrap_or(&t.row.path).into());rename.set(true);properties.set(false);focus_menu();},
                             Action::Properties=>{properties.set(true);rename.set(false);focus_menu();},
                             Action::Name=>{let value=t.row.path.rsplit('/').next().unwrap_or(&t.row.path).to_string();spawn_local(async move {if wasm_bindgen_futures::JsFuture::from(copy_text(&value)).await.is_ok(){close();}else{clipboard_error.set(true);}});},
-                            _=>{close();match action {Action::Open=>if directory{toggle(id)}else{open(id)},Action::Edit=>edit(id,side),Action::Binary=>inspect(id,"binary"),Action::Table=>inspect(id,"table"),Action::Picture=>inspect(id,"picture"),Action::Copy=>file_action(id,side,"copy",String::new()),Action::Delete=>file_action(id,side,"delete",String::new()),_=>{}}}
+                            _=>{close();match action {Action::Open=>if directory{toggle(id)}else{open(id)},Action::Edit=>edit(id,side),Action::Binary=>inspect(id,"binary"),Action::Table=>inspect(id,"table"),Action::Picture=>inspect(id,"picture"),Action::Copy=>file_action(id,side,"copy",String::new()),Action::Delete=>file_action(id,side,"delete",String::new()),Action::Exclude=>file_action(id,side,"exclude",String::new()),_=>{}}}
                         }
                     }>{move ||action.title(s.english.get(),right,directory)}</button>}
                 }).collect_view()}

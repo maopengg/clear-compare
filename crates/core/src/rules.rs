@@ -75,6 +75,58 @@ impl Rules {
     }
 }
 
+/// Build an exact, root-anchored rule from captured native path components.
+pub fn exclude_entry(
+    snapshot: &crate::compare::Snapshot,
+    id: &str,
+    current: &str,
+) -> Result<String> {
+    let relative = snapshot
+        .paths
+        .get(id)
+        .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
+    let row = snapshot
+        .report
+        .rows
+        .iter()
+        .find(|r| r.id == id)
+        .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
+    let parts = relative
+        .components()
+        .map(|p| match p {
+            std::path::Component::Normal(name) => name.to_str().ok_or_else(|| {
+                Error::Invalid("Non-UTF-8 entry cannot be represented by a text exclusion".into())
+            }),
+            _ => Err(Error::Invalid("Invalid relative path".into())),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if parts.iter().any(|p| p.contains([';', '\n', '\r'])) {
+        return Err(Error::Invalid(
+            "This name contains an exclusion separator; add a custom pattern instead.".into(),
+        ));
+    }
+    let pattern = parts
+        .into_iter()
+        .map(|p| globset::escape(p).replace(' ', "[ ]"))
+        .collect::<Vec<_>>()
+        .join("/");
+    let directory =
+        crate::tree::is_directory(row) && row.status != clear_contracts::Status::TypeConflict;
+    let rule = format!("-./{pattern}{}", if directory { "/" } else { "" });
+    let mut rules = current
+        .split([';', '\n'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if !rules.contains(&rule) {
+        rules.push(rule);
+    }
+    let result = rules.join(";\n");
+    Rules::parse(&result)?;
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

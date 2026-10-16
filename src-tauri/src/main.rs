@@ -1447,6 +1447,53 @@ fn save_session(session: SavedSession, app: tauri::AppHandle) -> Result<(), Stri
     clear_core::sessions::save_last(&data_dir(&app)?, &session).map_err(|e| e.to_string())
 }
 #[tauri::command]
+async fn load_active_project(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<Option<LibraryEntry>, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || clear_core::sessions::active(&base))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn activate_project(
+    id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<LibraryEntry, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let entry = clear_core::sessions::load(&base, &id)?;
+        clear_core::sessions::set_active(&base, Some(&id))?;
+        Ok::<_, clear_core::Error>(entry)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn exclusion_for_entry(
+    session: String,
+    row_id: String,
+    current: String,
+    state: State<'_, Arc<Backend>>,
+) -> Result<String, String> {
+    let _guard = state.begin()?;
+    let snapshot = state.snapshot(&session)?;
+    clear_core::rules::exclude_entry(&snapshot, &row_id, &current).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn validate_exclusions(rules: String) -> Result<(), String> {
+    clear_core::rules::Rules::parse(&rules)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn list_sessions(
     app: tauri::AppHandle,
     state: State<'_, Arc<Backend>>,
@@ -1483,7 +1530,10 @@ async fn save_library_session(
     let _operation_guard = state.begin()?;
     let base = data_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        clear_core::sessions::save(&base, id.as_deref(), revision.as_deref(), &name, &session)
+        let entry =
+            clear_core::sessions::save(&base, id.as_deref(), revision.as_deref(), &name, &session)?;
+        clear_core::sessions::set_active(&base, Some(&entry.id))?;
+        Ok::<_, clear_core::Error>(entry)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1575,6 +1625,10 @@ fn main() {
             pick_directory,
             load_session,
             save_session,
+            load_active_project,
+            activate_project,
+            exclusion_for_entry,
+            validate_exclusions,
             list_sessions,
             load_library_session,
             save_library_session,

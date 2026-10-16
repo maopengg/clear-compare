@@ -31,3 +31,7 @@ pub mod text_merge;
 pub mod directory_menu;
 
 pub mod entry_icon;
+
+pub mod projects;
+
+pub mod exclusions;
