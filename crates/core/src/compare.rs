@@ -159,7 +159,7 @@ pub(crate) fn scan(
     Ok(entries)
 }
 
-fn status(left: Option<&Entry>, right: Option<&Entry>) -> Status {
+pub(crate) fn status(left: Option<&Entry>, right: Option<&Entry>) -> Status {
     if left.is_some_and(|e| e.error.is_some()) || right.is_some_and(|e| e.error.is_some()) {
         return Status::Error;
     }

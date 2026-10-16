@@ -29,3 +29,5 @@ pub mod directory;
 pub mod text_merge;
 
 pub mod directory_menu;
+
+pub mod entry_icon;

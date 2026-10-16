@@ -64,17 +64,22 @@ fn status_class(status: &Status) -> &'static str {
 fn size(entry: Option<&Entry>) -> String {
     match entry {
         None => "—".into(),
-        Some(e) if e.kind == Kind::Directory => "DIR".into(),
-        Some(e) if e.kind == Kind::Link => "LINK".into(),
+        Some(e) if e.kind != Kind::File => "—".into(),
         Some(e) => {
             let n = e.bytes.parse::<u64>().unwrap_or_default();
-            if n >= 1_048_576 {
-                format!("{:.1} MiB", n as f64 / 1_048_576.)
-            } else if n >= 1024 {
-                format!("{:.1} KiB", n as f64 / 1024.)
+            let unit = if n >= 1_000_000_000_000 {
+                Some((1_000_000_000_000_f64, "TB"))
+            } else if n >= 1_000_000_000 {
+                Some((1_000_000_000_f64, "GB"))
+            } else if n >= 1_000_000 {
+                Some((1_000_000_f64, "MB"))
+            } else if n >= 1000 {
+                Some((1000_f64, "KB"))
             } else {
-                format!("{n} B")
-            }
+                None
+            };
+            unit.map(|(divisor, unit)| format!("{:.1} {unit}", n as f64 / divisor))
+                .unwrap_or_else(|| format!("{n} B"))
         }
     }
 }
@@ -249,6 +254,21 @@ fn App() -> impl IntoView {
             Err(e) => error.set(e),
         }
     });
+
+    Effect::watch(
+        move || english.get(),
+        move |en, _, _| {
+            let en = *en;
+            spawn_local(async move {
+                if let Err(e) =
+                    invoke::<()>("set_native_language", serde_json::json!({"english":en})).await
+                {
+                    error.set(e);
+                }
+            });
+        },
+        true,
+    );
 
     let compare_table_document = move || {
         let Some(doc) = table_document.get_untracked() else {
@@ -892,6 +912,55 @@ fn App() -> impl IntoView {
         });
     };
 
+    let quick_copy = move |id: String, source: Side| {
+        if busy.get_untracked() {
+            return;
+        }
+        let Some(c) = comparison.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        error.set(String::new());
+        message.set(String::new());
+        plan.set(None);
+        selected.set(BTreeSet::new());
+        spawn_local(async move {
+            let mut attempted = false;
+            let result=async{
+                let p=invoke::<SyncPlan>("preview_sync",serde_json::json!({"session":c.session,"rowIds":[id.clone()],"sourceSide":source})).await?;
+                if p.session!=c.session ||p.source_side!=source ||p.policy!=FilePlanPolicy::SelectedCopy ||p.actions.len()!=1 ||p.actions[0].row_id!=id ||p.actions[0].operation!=FileOperation::Copy{return Err("Unexpected quick-copy plan".into());}
+                attempted=true;
+                let reply=operations::run::<FileApplyReply>("apply_sync",serde_json::json!({"planId":p.id}),operation_progress).await?;
+                update_editor_locations(reply.locations,reply.stale_documents);
+                if !reply.warnings.is_empty(){error.set(reply.warnings.join(" · "));}
+                let action=reply.result.actions.first();
+                let completed=reply.result.actions.len()==1&&action.is_some_and(|a|a.state=="completed"&&a.error.is_none());
+                let failure=action.and_then(|a|a.error.clone()).unwrap_or_else(||tr(english.get_untracked(),"合并未完成；请检查操作历史。","Merge did not complete; inspect operation history.").into());
+                let refreshed=invoke::<OpenedComparison>("refresh_compared_file",serde_json::json!({"session":c.session,"rowId":id})).await?;
+                let page=invoke::<FolderPage>("query_folder",serde_json::json!({"session":c.session,"query":build_query(),"offset":offset.get_untracked(),"expanded":if tree_mode.get_untracked(){Some(expanded_dirs.get_untracked().into_iter().collect::<Vec<_>>())}else{None},"expandAll":expand_all.get_untracked()})).await?;
+                comparison.set(Some(refreshed));outline.set(page.outline);rows.set(page.page.rows);visible_total.set(page.page.total);breadcrumbs.set(page.breadcrumbs);focused_row.set(None);
+                if completed{message.set(format!("{} · {}",tr(english.get_untracked(),"文件已合并，来源文件保留","File merged; source retained"),reply.result.journal));}else{error.set(failure);}
+                Ok::<(),String>(())
+            }.await;
+            if let Err(e) = result {
+                if attempted {
+                    reset();
+                    error.set(format!(
+                        "{} {e}",
+                        tr(
+                            english.get_untracked(),
+                            "合并或刷新未完成，请重新比较。",
+                            "Merge or refresh did not complete; compare again."
+                        )
+                    ));
+                } else {
+                    error.set(e);
+                }
+            }
+            busy.set(false);
+        });
+    };
+
     let editor_dirty = move || {
         draft.with_untracked(|t| saved_text.with_untracked(|saved| t != saved))
             || !format_encoding.get_untracked().is_empty()
@@ -1460,7 +1529,7 @@ fn App() -> impl IntoView {
     view! {
                 <main class=move ||if comparison.get().is_some(){if diff.get().is_some(){"workspace compact-workspace has-comparison active-text"}else{"workspace compact-workspace has-comparison"}}else{if diff.get().is_some(){"workspace compact-workspace active-text"}else{"workspace compact-workspace"}} data-theme=move ||theme.get().value()>
                     <header class="topbar">
-                        <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">"0.1 preview"</span></div>
+                        <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">{move ||tr(english.get(),"0.1 预览版","0.1 preview")}</span></div>
                         <div class="top-actions" inert=move ||text_merge_dirty.get()><details name="workspace-menu" class="app-menu"><summary>{move ||tr(english.get(),"工具","Tools")}</summary><div class="menu-body"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);git_visible.set(true);}>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);archive_visible.set(true);}>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|reconnect_operation()>{move ||tr(english.get(),"连接文件任务","Connect file task")}</button></div></details>{panels::bidirectional::panel(english,busy,error,comparison,operation_progress,bidi,complete_bidi,recover_bidi,reset)}<span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
                         <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
                     </header>
@@ -1506,6 +1575,7 @@ fn App() -> impl IntoView {
 
                         {panels::directory::panel(panels::directory::Signals{english,busy,comparison,rows,outline,selected,focused:focused_row,operation:file_operation,reverse:reverse_sync},toggle_directory,open_text,open_editor,move |id,kind|match kind {"binary"=>open_binary(id,"0".into()),"table"=>open_table(id),_=>open_picture(id)},move ||plan.set(None),move |id,side,action,name|{
                             if busy.get_untracked(){return;}
+                            if action=="quick_copy"{quick_copy(id,side);return;}
                             selected.set(BTreeSet::from([id]));plan.set(None);
                             match action {"copy"=>{file_operation.set("copy".into());reverse_sync.set(side==Side::Right);},"rename"=>{file_operation.set(if side==Side::Left{"rename_left"}else{"rename_right"}.into());rename_name.set(name);},_=>file_operation.set(if side==Side::Left{"delete_left"}else{"delete_right"}.into())}
                             preview();

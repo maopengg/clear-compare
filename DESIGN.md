@@ -25,3 +25,5 @@ Folder comparisons publish a metadata result before optional SHA-256 verificatio
 ## Responsiveness
 
 The desktop minimum width is 900 pixels. The file list is bounded and paged, and source text scrolls within the diff panel. Reduced-motion preferences disable animations.
+
+Directory rows use recognizable blue folder silhouettes (closed/open), folded document icons and extension cues for code, pictures and archives. The size column displays a dash for folders/links, decimal KB/MB/GB/TB for files, and exact-byte/type tooltips. Narrow ← / → columns execute a single-file copy immediately, without a preview dialog; the source remains. Native planning, revalidation, verified backups and journaling still apply. Only the affected pair is reread with SHA-256, then directory status/counts and the current query are refreshed while expansion and scrolling remain. Native application menu labels follow the interface language; the Mac bundle declares Simplified Chinese and English localization support.

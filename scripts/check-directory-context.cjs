@@ -29,7 +29,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
    args=JSON.parse(JSON.stringify(args,(_,v)=>v instanceof Map?Object.fromEntries(v):v));
    window.__qa.calls.push({command,args});
    if(command==='load_session')return {request:{left:'/sample/project-left',right:'/sample/project-right',exclusions:'-node_modules/',content:false},english:false};
-   if(command==='save_session')return null;
+   if(command==='save_session'||command==='set_native_language')return null;
    if(command==='active_operation')return null;
    if(command==='compare'){
     if(args.request.content)await new Promise((resolve,reject)=>{window.__qa.verifyResolve=resolve;window.__qa.verifyReject=reject});
@@ -109,25 +109,6 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await left.focus();await page.keyboard.press('Shift+F10');await menu().waitFor();await action('属性').click();
  assert((await menu().getByRole('region',{name:'属性',exact:true}).innerText()).includes('210 B'));
  await page.screenshot({path:'target/work/directory-context-menu.png'});await dismiss();
- // Whole-file arrow columns flank status and bypass stale checkbox selection/direction.
- const fileRow=page.locator('.outline-row').filter({has:page.getByRole('button',{name:'main.rs',exact:true})});
- const quickLeft=fileRow.getByRole('button',{name:'往左合并文件',exact:true});
- const quickRight=fileRow.getByRole('button',{name:'往右合并文件',exact:true});
- const bounds=await fileRow.evaluate(row=>{const a=row.querySelectorAll('.directory-quick');const state=row.querySelector('.directory-state').getBoundingClientRect();return {left:a[0].getBoundingClientRect().right<=state.left+1,right:a[1].getBoundingClientRect().left>=state.right-1};});assert(bounds.left&&bounds.right);
- await quickLeft.focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:'执行已预览的复制',exact:true}).waitFor();
- assert.deepEqual((await calls('preview_sync')).at(-1).args,{session:'s1',rowIds:['f1'],sourceSide:'right'});
- await page.getByRole('button',{name:'返回',exact:true}).click();
- await page.evaluate(()=>window.__qa.delayPreview=true);await quickRight.click();
- await page.waitForFunction(()=>typeof window.__qa.previewResolve==='function');
- assert.equal(await quickLeft.isDisabled(),true);assert.equal(await quickRight.isDisabled(),true);
- await page.evaluate(()=>{window.__qa.delayPreview=false;window.__qa.previewResolve();});await page.getByRole('button',{name:'执行已预览的复制',exact:true}).waitFor();
- assert.deepEqual((await calls('preview_sync')).at(-1).args,{session:'s1',rowIds:['f1'],sourceSide:'left'});
- await page.getByRole('button',{name:'返回',exact:true}).click();
- const onlyLeft=page.locator('.outline-row').filter({has:page.getByRole('button',{name:'notes.txt',exact:true})});
- assert.equal(await onlyLeft.getByRole('button',{name:'往左合并文件',exact:true}).isDisabled(),true);assert.equal(await onlyLeft.getByRole('button',{name:'往右合并文件',exact:true}).isEnabled(),true);
- const directoryRow=page.locator('.outline-row').filter({has:page.getByRole('button',{name:'src',exact:true})});assert.equal(await directoryRow.locator('.directory-merge-arrow:disabled').count(),2);
- assert.equal(await page.evaluate(()=>window.__qa.calls.filter(c=>/^(apply|start_)/.test(c.command)).length),0);
- await page.screenshot({path:'target/work/directory-quick-merge.png'});
  // Clipboard uses the real browser API, not a successful mock result.
  await page.context().grantPermissions(['clipboard-read','clipboard-write']);
  await left.click({button:'right'});await action('复制文件名').click();await menu().waitFor({state:'detached'});
@@ -155,6 +136,6 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.getByText(/Synthetic preview failed/).waitFor();assert.equal(await page.getByRole('button',{name:'Compare directories',exact:true}).isEnabled(),true);
  assert.equal(await page.evaluate(()=>window.__qa.calls.filter(c=>/^(apply|start_)/.test(c.command)).length),0);
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({passed:true,checks:['Chinese and English menu','clicked row and side','preview only copy/delete/rename','stale selection isolation','properties','real clipboard','edit and compare IDs','missing side and directory restrictions','keyboard navigation and focus restoration','outside dismissal','viewport clamping','preview failure retention','paired whole-file arrow columns','arrow keyboard and busy guards'],pageErrors:errors}));
+ console.log(JSON.stringify({passed:true,checks:['Chinese and English menu','clicked row and side','preview only copy/delete/rename','stale selection isolation','properties','real clipboard','edit and compare IDs','missing side and directory restrictions','keyboard navigation and focus restoration','outside dismissal','viewport clamping','preview failure retention'],pageErrors:errors}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

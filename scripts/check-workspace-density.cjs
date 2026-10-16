@@ -31,7 +31,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
    args=JSON.parse(JSON.stringify(args,(_,v)=>v instanceof Map?Object.fromEntries(v):v));
    window.__qa.calls.push({command,args});
    if(command==='load_session')return {request:{left:'/sample/project-left',right:'/sample/project-right',exclusions:'-node_modules/',content:false},english:false};
-   if(command==='save_session')return null;
+   if(command==='save_session'||command==='set_native_language')return null;
    if(command==='active_operation')return null;
    if(command==='compare'){
     if(args.request.content)await new Promise((resolve,reject)=>{window.__qa.verifyResolve=resolve;window.__qa.verifyReject=reject});

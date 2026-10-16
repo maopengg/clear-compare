@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-native-language"
+description = "Enables the set_native_language command without any pre-configured scope."
+commands.allow = ["set_native_language"]
+
+[[permission]]
+identifier = "deny-set-native-language"
+description = "Denies the set_native_language command without any pre-configured scope."
+commands.deny = ["set_native_language"]

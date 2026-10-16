@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
+    "allow-set-native-language",
     "allow-compare",
     "allow-compare-archives",
     "allow-compare-git",
@@ -40,6 +41,7 @@
     "allow-table-catalog",
     "allow-close-table-document",
     "allow-table-page",
+    "allow-refresh-compared-file",
     "allow-preview-sync",
     "allow-preview-delete",
     "allow-preview-rename",

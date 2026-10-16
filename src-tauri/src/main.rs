@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bidirectional;
+mod native_menu;
 mod operations;
 use clear_contracts::*;
 use clear_core::compare::Snapshot;
@@ -1010,6 +1011,42 @@ fn stage_merge_result(
 }
 
 #[tauri::command]
+async fn refresh_compared_file(
+    session: String,
+    row_id: String,
+    state: State<'_, Arc<Backend>>,
+) -> Result<OpenedComparison, String> {
+    let _guard = state.begin()?;
+    *state.plan.lock().map_err(|_| "State unavailable")? = None;
+    let backend = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut stored = backend.snapshot.lock().map_err(|_| "State unavailable")?;
+        let snapshot = stored
+            .as_mut()
+            .filter(|s| s.report.session == session)
+            .ok_or("Comparison expired. Compare again.")?;
+        let snapshot =
+            Arc::get_mut(snapshot).ok_or("Comparison is still in use. Compare again.")?;
+        clear_core::compare_refresh::file(snapshot, &row_id, &backend.cancel)
+            .map_err(|e| e.to_string())?;
+        let r = &snapshot.report;
+        Ok(OpenedComparison {
+            session: r.session.clone(),
+            left: r.left.clone(),
+            right: r.right.clone(),
+            summary: r.summary.clone(),
+            warnings: r.warnings.clone(),
+            page: Page {
+                total: r.rows.len(),
+                rows: Vec::new(),
+            },
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn preview_sync(
     session: String,
     row_ids: Vec<String>,
@@ -1469,11 +1506,18 @@ async fn archive_session(
     .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn set_native_language(english: bool, app: tauri::AppHandle) -> Result<(), String> {
+    native_menu::set(&app, english).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Backend::default()))
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app|{native_menu::set(app.handle(),false)?;Ok(())})
         .invoke_handler(tauri::generate_handler![
+            set_native_language,
             compare,
             bidirectional::choose_baseline,
             bidirectional::prepare_bidirectional,
@@ -1515,6 +1559,7 @@ fn main() {
             table_catalog,
             close_table_document,
             table_page,
+            refresh_compared_file,
             preview_sync,
             preview_delete,
             preview_rename,

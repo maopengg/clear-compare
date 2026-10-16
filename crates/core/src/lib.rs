@@ -3,6 +3,7 @@ pub mod archive;
 pub mod bidirectional;
 pub mod binary;
 pub mod compare;
+pub mod compare_refresh;
 pub mod editing;
 pub mod folder_merge;
 pub mod git;

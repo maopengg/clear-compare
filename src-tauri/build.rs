@@ -1,6 +1,7 @@
 fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "set_native_language",
             "compare",
             "choose_baseline",
             "prepare_bidirectional",
@@ -42,6 +43,7 @@ fn main() {
             "table_catalog",
             "close_table_document",
             "table_page",
+            "refresh_compared_file",
             "preview_sync",
             "preview_delete",
             "preview_rename",

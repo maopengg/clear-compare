@@ -214,3 +214,13 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .compact-workspace button.directory-merge-arrow{display:inline-block;vertical-align:middle;width:22px;height:21px;min-height:0;padding:0;border:0;border-radius:2px;line-height:20px;font-size:16px;color:var(--primary);background:transparent}
 .compact-workspace button.directory-merge-arrow:hover:not(:disabled),.compact-workspace button.directory-merge-arrow:focus-visible{background:var(--selected);outline:1px solid var(--primary);outline-offset:-1px}
 .compact-workspace button.directory-merge-arrow:disabled{opacity:.2}
+
+/* Familiar desktop silhouettes with a real folder tab and folded document corner. */
+.directory-name .entry-icon{display:block;flex:0 0 16px;width:16px;height:16px;overflow:visible}
+.entry-icon .folder-back{fill:#78b9eb;stroke:#4789b8;stroke-width:.65;stroke-linejoin:round}
+.entry-icon .folder-front{fill:#9bcff3;stroke:#4789b8;stroke-width:.65;stroke-linejoin:round}
+.entry-icon .file-paper{fill:var(--bg);stroke:var(--muted);stroke-width:.8;stroke-linejoin:round}
+.entry-icon .file-fold,.entry-icon .file-detail{stroke:var(--muted);stroke-width:.75;stroke-linecap:round;stroke-linejoin:round}
+.entry-icon .file-link{stroke:var(--primary);stroke-width:1.5;stroke-linejoin:round}
+.compact-workspace .directory-table .size-col{width:78px}
+.compact-workspace .directory-table .directory-size{font-size:11px}

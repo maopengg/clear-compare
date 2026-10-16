@@ -20,7 +20,7 @@ A usable open-source desktop client for file comparison, merge and folder synchr
 
 ## Positioning
 
-Inspect differences and review a concrete synchronization plan before changing files.
+Inspect differences and synchronize local files. Batch copies, deletes and renames use a reviewed plan. Explicit per-file direction arrows copy immediately, with native validation, verified backups and a journal.
 
 ## Brand Personality
 
@@ -30,7 +30,7 @@ Simple, modern desktop interface. Chinese by default, with an English switch.
 
 - Make source, destination and operation direction explicit.
 - Keep content equality and incomplete verification visibly distinct.
-- Show what will change before executing a synchronization plan.
+- Review batch and destructive operations before execution; make immediate single-file direction arrows explicit.
 - Put comparison results and readable text differences at the center of the workspace.
 
 ## Accessibility and Inclusion
