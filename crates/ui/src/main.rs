@@ -1504,9 +1504,14 @@ fn App() -> impl IntoView {
                         <Show when=move ||file_operation.get().starts_with("mirror_")><p class="warnings">{move ||tr(english.get(),"镜像覆盖整个比较根目录，使用本次比较记录的排除规则，不受搜索、分页或勾选影响。目标独有普通文件会先备份再删除；目录镜像会创建缺失目录、移除清空后的多余目录，含排除项的目录保留。文件镜像保留空目录。需要内容校验。","Mirror mode covers the entire comparison roots under captured exclusions, regardless of search, pages or selection. Destination-only regular files are backed up and deleted. Tree mirror creates missing directories and removes emptied extras, preserving excluded-entry ancestors; file mirror retains empty directories. Requires content verification.")}</p></Show>
                         <Show when=move ||!tree_mode.get()>{panels::folders::controls(english,busy,panels::folders::Signals{parent_id,breadcrumbs,recursive,sort:folder_sort,descending},browse_folder,load_folder)}</Show>
 
-                        {panels::directory::panel(panels::directory::Signals{english,busy,comparison,rows,outline,selected,focused:focused_row,operation:file_operation,reverse:reverse_sync},toggle_directory,open_text,open_editor,move |id,kind|match kind {"binary"=>open_binary(id,"0".into()),"table"=>open_table(id),_=>open_picture(id)},move ||plan.set(None))}
+                        {panels::directory::panel(panels::directory::Signals{english,busy,comparison,rows,outline,selected,focused:focused_row,operation:file_operation,reverse:reverse_sync},toggle_directory,open_text,open_editor,move |id,kind|match kind {"binary"=>open_binary(id,"0".into()),"table"=>open_table(id),_=>open_picture(id)},move ||plan.set(None),move |id,side,action,name|{
+                            if busy.get_untracked(){return;}
+                            selected.set(BTreeSet::from([id]));plan.set(None);
+                            match action {"copy"=>{file_operation.set("copy".into());reverse_sync.set(side==Side::Right);},"rename"=>{file_operation.set(if side==Side::Left{"rename_left"}else{"rename_right"}.into());rename_name.set(name);},_=>file_operation.set(if side==Side::Left{"delete_left"}else{"delete_right"}.into())}
+                            preview();
+                        })}
 
-                        <Show when=move || comparison.get().is_some_and(|c| !c.warnings.is_empty())><p class="warnings">{move || comparison.get().map(|c| c.warnings.join(" · "))}</p></Show>
+                        <Show when=move || comparison.get().is_some_and(|c| !c.warnings.is_empty())><p class="warnings">{move || comparison.get().map(|c| c.warnings.iter().map(|note|if note=="Symbolic links are listed but not followed, compared or synchronized."{tr(english.get(),"符号链接仅列出，不跟随、比较或同步。","Symbolic links are listed but not followed, compared or synchronized.")}else{note.as_str()}).collect::<Vec<_>>().join(" · "))}</p></Show>
     <div class="results-status">                    <p class="comparison-basis" title=move ||tr(english.get(),"快速扫描仅比较大小和修改时间；只有完整内容校验能证明内容一致。错误和符号链接单独标记。","Quick scans compare size and timestamps only; content equality requires full verification. Errors and symbolic links remain distinct.")>{move ||if comparison_verified.get() {
                             tr(english.get(),"内容校验 · SHA-256","Content check · SHA-256")
                         } else {
