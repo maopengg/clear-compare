@@ -79,6 +79,7 @@ fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[tauri::command]
 async fn compare(
     request: CompareRequest,
+    verify_matching: Option<bool>,
     state: State<'_, Arc<Backend>>,
 ) -> Result<OpenedComparison, String> {
     let _operation_guard = state.begin()?;
@@ -91,7 +92,11 @@ async fn compare(
     *state.plan.lock().map_err(|_| "State unavailable")? = None;
     let cancel = state.cancel.clone();
     let snapshot = tauri::async_runtime::spawn_blocking(move || {
-        clear_core::compare::compare(&request, &cancel)
+        if verify_matching.unwrap_or(false) {
+            clear_core::compare::compare_matching(&request, &cancel)
+        } else {
+            clear_core::compare::compare(&request, &cancel)
+        }
     })
     .await
     .map_err(|e| e.to_string())?

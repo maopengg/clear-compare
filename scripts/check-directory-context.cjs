@@ -80,7 +80,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  const calls=command=>page.evaluate(c=>window.__qa.calls.filter(x=>x.command===c),command);
  const action=(name)=>menu().getByRole('menuitem',{name,exact:true});
  const dismiss=async()=>{await page.waitForFunction(()=>!!document.activeElement?.closest('.file-context-menu'));await page.keyboard.press('Escape');await menu().waitFor({state:'detached'});};
- assert((await page.locator('.warnings').innerText()).includes('符号链接仅列出'));
+ assert.equal(await page.locator('.warnings').count(),0);
  await left.click({button:'right'});await menu().waitFor();await page.waitForFunction(()=>document.activeElement?.getAttribute('role')==='menuitem');
  assert.equal(await action('复制到右侧…').isEnabled(),true);
  assert(!(await menu().innerText()).includes('Reload'));
@@ -92,7 +92,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.locator('.outline-row').filter({has:page.getByRole('button',{name:'notes.txt',exact:true})}).getByRole('checkbox').check();
  await left.click({button:'right'});await action('复制到右侧…').click();
  await page.getByRole('button',{name:'执行已预览的复制',exact:true}).waitFor();
- assert.deepEqual((await calls('preview_sync')).at(-1).args,{session:'s1',rowIds:['f1'],sourceSide:'left'});
+ assert.deepEqual((await calls('preview_sync')).at(-1).args,{session:'s2',rowIds:['f1'],sourceSide:'left'});
  await page.getByRole('button',{name:'返回',exact:true}).click();
  await right.click({button:'right'});await action('复制到左侧…').click();
  await page.getByRole('button',{name:'执行已预览的复制',exact:true}).waitFor();
@@ -101,10 +101,10 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await right.click({button:'right'});await action('重命名…').click();
  await menu().getByRole('textbox',{name:'新文件名',exact:true}).fill('renamed.rs');
  await action('预览重命名…').click();await page.getByRole('button',{name:'执行已预览的重命名',exact:true}).waitFor();
- assert.deepEqual((await calls('preview_rename')).at(-1).args,{session:'s1',rowId:'f1',targetSide:'right',newName:'renamed.rs'});
+ assert.deepEqual((await calls('preview_rename')).at(-1).args,{session:'s2',rowId:'f1',targetSide:'right',newName:'renamed.rs'});
  await page.getByRole('button',{name:'返回',exact:true}).click();
  await right.click({button:'right'});await action('删除右侧文件…').click();await page.getByRole('button',{name:'执行已预览的删除',exact:true}).waitFor();
- assert.deepEqual((await calls('preview_delete')).at(-1).args,{session:'s1',rowIds:['f1'],targetSide:'right'});
+ assert.deepEqual((await calls('preview_delete')).at(-1).args,{session:'s2',rowIds:['f1'],targetSide:'right'});
  await page.getByRole('button',{name:'返回',exact:true}).click();
  assert.equal(await page.evaluate(()=>window.__qa.calls.filter(c=>/^(apply|start_)/.test(c.command)).length),0);
  await left.focus();await page.keyboard.press('Shift+F10');await menu().waitFor();await action('属性').click();

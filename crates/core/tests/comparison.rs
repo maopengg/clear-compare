@@ -125,3 +125,51 @@ fn modification_times_do_not_affect_file_or_directory_status() {
     assert_eq!(verified.report.summary.same, 1);
     assert_eq!(verified.report.summary.changed, 2);
 }
+
+#[test]
+fn difference_verification_hides_equal_pairs_and_does_not_hash_one_sided_files() {
+    let left = tempfile::tempdir().unwrap();
+    let right = tempfile::tempdir().unwrap();
+    for root in [left.path(), right.path()] {
+        fs::create_dir(root.join("images")).unwrap();
+        fs::write(root.join("images/same.jpg"), b"same bytes").unwrap();
+    }
+    fs::write(left.path().join("changed"), b"left").unwrap();
+    fs::write(right.path().join("changed"), b"rght").unwrap();
+    fs::write(left.path().join("size"), b"a").unwrap();
+    fs::write(right.path().join("size"), b"longer").unwrap();
+    fs::write(left.path().join("one-sided"), b"not needed for equality").unwrap();
+    let request = CompareRequest {
+        left: left.path().to_string_lossy().into_owned(),
+        right: right.path().to_string_lossy().into_owned(),
+        exclusions: String::new(),
+        content: false,
+    };
+    let result = compare::compare_matching(&request, &AtomicBool::new(false)).unwrap();
+    let row = |name: &str| result.report.rows.iter().find(|r| r.path == name).unwrap();
+    assert_eq!(row("images").status, Status::Same);
+    assert_eq!(row("images/same.jpg").status, Status::Same);
+    assert_eq!(row("changed").status, Status::Changed);
+    assert!(row("changed").left.as_ref().unwrap().digest.is_some());
+    assert_eq!(row("size").status, Status::Changed);
+    assert!(row("size").left.as_ref().unwrap().digest.is_none());
+    assert_eq!(row("one-sided").status, Status::LeftOnly);
+    assert!(row("one-sided").left.as_ref().unwrap().digest.is_none());
+    let filtered = clear_core::tree::query(
+        &result,
+        &clear_contracts::FolderQuery {
+            parent_id: None,
+            recursive: true,
+            search: String::new(),
+            differences_only: true,
+            sort: clear_contracts::FolderSort::Path,
+            descending: false,
+        },
+        0,
+    )
+    .unwrap()
+    .page;
+    assert_eq!(filtered.total, 3);
+    assert!(!filtered.rows.iter().any(|r| r.path.starts_with("images")));
+    assert!(compare::compare_matching(&request, &AtomicBool::new(true)).is_err());
+}

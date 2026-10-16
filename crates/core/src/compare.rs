@@ -188,12 +188,26 @@ pub(crate) fn status(left: Option<&Entry>, right: Option<&Entry>) -> Status {
 }
 
 pub fn compare(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot> {
+    compare_inner(request, false, cancel)
+}
+
+/// Verify only pairs whose equal sizes leave their content equality unresolved.
+/// One-sided files and unequal sizes already have a definite difference status.
+pub fn compare_matching(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot> {
+    compare_inner(request, true, cancel)
+}
+
+fn compare_inner(
+    request: &CompareRequest,
+    matching_only: bool,
+    cancel: &AtomicBool,
+) -> Result<Snapshot> {
     let left = canonical_root(&request.left)?;
     let right = canonical_root(&request.right)?;
     reject_overlap(&left, &right)?;
     let rules = Rules::parse(&request.exclusions)?;
-    let l = scan(&left, &rules, request.content, cancel)?;
-    let r = scan(&right, &rules, request.content, cancel)?;
+    let l = scan(&left, &rules, request.content && !matching_only, cancel)?;
+    let r = scan(&right, &rules, request.content && !matching_only, cancel)?;
     let all: BTreeSet<_> = l.keys().chain(r.keys()).cloned().collect();
     let mut rows = Vec::new();
     let mut paths = BTreeMap::new();
@@ -201,8 +215,27 @@ pub fn compare(request: &CompareRequest, cancel: &AtomicBool) -> Result<Snapshot
     let mut warnings = Vec::new();
     for (index, path) in all.into_iter().enumerate() {
         check_cancel(cancel)?;
-        let a = l.get(&path).cloned();
-        let b = r.get(&path).cloned();
+        let mut a = l.get(&path).cloned();
+        let mut b = r.get(&path).cloned();
+        if matching_only
+            && a.as_ref().zip(b.as_ref()).is_some_and(|(a, b)| {
+                a.kind == Kind::File
+                    && b.kind == Kind::File
+                    && a.error.is_none()
+                    && b.error.is_none()
+                    && a.bytes == b.bytes
+            })
+        {
+            for (root, entry) in [(&left, &mut a), (&right, &mut b)] {
+                if let Some(entry) = entry {
+                    match hash_file(&root.join(&path), cancel) {
+                        Ok(digest) => entry.digest = Some(digest),
+                        Err(Error::Cancelled) => return Err(Error::Cancelled),
+                        Err(e) => entry.error = Some(e.to_string()),
+                    }
+                }
+            }
+        }
         let state = status(a.as_ref(), b.as_ref());
         let id = index.to_string();
         paths.insert(id.clone(), path.clone());

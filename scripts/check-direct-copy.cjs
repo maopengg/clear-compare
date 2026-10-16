@@ -111,7 +111,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert(loadingBounds.height<=35,'Loading remains compact');
  assert.equal(await arrow(false).isDisabled(),true);assert.equal(await arrow(true).isDisabled(),true);assert.equal(await page.getByRole('button',{name:'执行已预览的复制',exact:true}).count(),0);
  await page.evaluate(()=>{window.__qa.delayPreview=false;window.__qa.previewResolve();});await page.getByText(/文件已合并，来源文件保留/).waitFor();
- assert.deepEqual((await count('preview_sync')).at(-1).args,{session:'s1',rowIds:['f1'],sourceSide:'left'});assert.equal((await count('apply_sync')).length,1);assert.equal((await count('compare')).length,1);
+ assert.deepEqual((await count('preview_sync')).at(-1).args,{session:'s2',rowIds:['f1'],sourceSide:'left'});assert.equal((await count('apply_sync')).length,1);assert.equal((await count('compare')).length,2);
  assert.equal((await count('refresh_compared_file')).at(-1).args.rowId,'f1');assert.equal(await arrow(true).isDisabled(),true);assert.equal(await page.locator('.outline-row').count(),3);
  assert.equal(await page.locator('svg.folder-icon[data-expanded=true]').count(),2);
  await fresh();await arrow(false).focus();await page.keyboard.press('Enter');await page.getByText(/文件已合并，来源文件保留/).waitFor();assert.equal((await count('preview_sync')).at(-1).args.sourceSide,'right');assert.equal((await count('apply_sync')).length,1);

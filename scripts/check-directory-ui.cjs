@@ -33,12 +33,14 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
    if(command==='save_session'||command==='set_native_language')return null;
    if(command==='active_operation')return null;
    if(command==='compare'){
+    if(args.verifyMatching && window.__qa.equalityMode){await new Promise(resolve=>window.__qa.equalResolve=resolve);window.__qa.equalVerified=true;}
     if(args.request.content)await new Promise((resolve,reject)=>{window.__qa.verifyResolve=resolve;window.__qa.verifyReject=reject});
     return {session:'s'+ ++session,left:'/sample/project-left',right:'/sample/project-right',summary,warnings:[],page:{rows:[],total:3}};
    }
    if(command==='query_folder'){
     const flat=!args.expanded;
-    const visible=flat?(args.query.parent_id==='d0'?[rows[1]]:[rows[0],rows[2]]):rows.filter(r=>r.id!=='f1'||args.expandAll!==args.expanded.includes('d0')||args.query.search);
+    let visible=flat?(args.query.parent_id==='d0'?[rows[1]]:[rows[0],rows[2]]):rows.filter(r=>r.id!=='f1'||args.expandAll!==args.expanded.includes('d0')||args.query.search);
+    if(window.__qa.equalityMode){const same={id:'image',path:'same.jpg',status:window.__qa.equalVerified?'same':'metadata_match',left:entry('file',500),right:entry('file',500)};if(!args.query.differences_only||same.status!=='same')visible.push(same);}
     const outline=Object.fromEntries(visible.map(r=>[r.id,{name:r.path.split('/').at(-1),depth:r.id==='f1'?1:0,has_children:r.id==='d0',expanded:r.id==='d0'&&visible.some(r=>r.id==='f1'),context_only:false}]));
     return {page:{rows:visible,total:visible.length},breadcrumbs:flat&&args.query.parent_id==='d0'?[{id:'d0',label:'src'}]:[],outline:flat?{}:outline};
    }
@@ -141,6 +143,21 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert.equal(await page.locator('.outline-row').count(),2);
  assert((await page.locator('.comparison-basis').innerText()).includes('内容未校验'));
+ // Differences-only automatically verifies unresolved equal-sized pairs, even when full verification is off.
+ await page.locator('.comparison-settings>summary').click();
+ await page.getByRole('checkbox',{name:'列表显示后完整校验内容（SHA-256，较慢）',exact:true}).uncheck();
+ await page.evaluate(()=>{window.__qa.equalityMode=true;window.__qa.equalVerified=false;});
+ await page.getByRole('button',{name:'比较文件夹',exact:true}).click();
+ await page.waitForFunction(()=>typeof window.__qa.equalResolve==='function');
+ assert.equal(await page.getByRole('button',{name:'same.jpg',exact:true}).count(),2);
+ assert.equal(await page.locator('.workspace-progress.bottom-progress .progress').count(),1);
+ await page.evaluate(()=>window.__qa.equalResolve());
+ await page.waitForFunction(()=>!document.querySelector('.progress'));
+ assert.equal(await page.getByRole('button',{name:'same.jpg',exact:true}).count(),0);
+ await page.getByRole('checkbox',{name:'只看差异',exact:true}).uncheck();
+ await page.getByRole('button',{name:'same.jpg',exact:true}).first().waitFor();
+ assert.equal(await page.getByRole('button',{name:'same.jpg',exact:true}).count(),2);
+ assert.equal(await page.locator('.comparison-basis').innerText(),'内容比较 · SHA-256');
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify({passed:true,checks:['collapsed root','paired row positions','missing-side rendering','timestamps','expand/collapse/all exception','file selection','double-click text diff','line highlighting','quiet ordinary endings and explicit LF/CRLF differences','show-all-endings toggle','quick-list-before-full-verification','stop-and-retain-quick-list'],pageErrors:errors}));
  }finally{await browser.close();}
