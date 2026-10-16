@@ -23,7 +23,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
   const entry=(kind,bytes)=>({kind,bytes:String(bytes),modified_ms:'1792108800000',digest:null,error:null});
   const rows=[{id:'d0',path:'src',status:'changed',left:entry('directory',200),right:entry('directory',210)}, {id:'f1',path:'src/main.rs',status:'changed',left:entry('file',200),right:entry('file',210)},{id:'f2',path:'notes.txt',status:'left_only',left:entry('file',64),right:null}];
   const summary={same:0,changed:1,left_only:1,right_only:0,unverified:0,errors:0};
-  window.__qa={calls:[],verifyResolve:null,verifyReject:null};
+  window.__qa={calls:[],verifyResolve:null,verifyReject:null,emptyText:false};
   let session=0;
   window.__TAURI__={core:{invoke:async(command,args)=>{
    args=JSON.parse(JSON.stringify(args,(_,v)=>v instanceof Map?Object.fromEntries(v):v));
@@ -36,10 +36,12 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
     return {session:'s'+ ++session,left:'/sample/project-left',right:'/sample/project-right',summary,warnings:[],page:{rows:[],total:3}};
    }
    if(command==='query_folder'){
-    const visible=rows.filter(r=>r.id!=='f1'||args.expandAll!==args.expanded.includes('d0')||args.query.search);
+    const flat=!args.expanded;
+    const visible=flat?(args.query.parent_id==='d0'?[rows[1]]:[rows[0],rows[2]]):rows.filter(r=>r.id!=='f1'||args.expandAll!==args.expanded.includes('d0')||args.query.search);
     const outline=Object.fromEntries(visible.map(r=>[r.id,{name:r.path.split('/').at(-1),depth:r.id==='f1'?1:0,has_children:r.id==='d0',expanded:r.id==='d0'&&visible.some(r=>r.id==='f1'),context_only:false}]));
-    return {page:{rows:visible,total:visible.length},breadcrumbs:[],outline};
+    return {page:{rows:visible,total:visible.length},breadcrumbs:flat&&args.query.parent_id==='d0'?[{id:'d0',label:'src'}]:[],outline:flat?{}:outline};
    }
+   if(command==='text_diff'&&window.__qa.emptyText)return {id:'text-empty',path:'src/main.rs',lines:[]};
    if(command==='text_diff')return {id:'text-1',path:'src/main.rs',lines:[{tag:'delete',old_line:1,new_line:null,text:'let version = 1;\n',right_text:null,changes:[{start:14,end:15}]},{tag:'insert',old_line:null,new_line:1,text:'let version = 2;\n',right_text:null,changes:[{start:14,end:15}]}]};
    if(command==='cancel'){if(window.__qa.verifyReject)window.__qa.verifyReject('Cancelled');return null;}
    throw new Error('Unexpected mock command '+command);
@@ -76,6 +78,22 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.locator('#text-comparison').scrollIntoViewIfNeeded();
  await page.locator('#text-comparison').screenshot({path:'target/work/directory-text-qa.png'});
  await page.getByRole('button',{name:'关闭预览',exact:true}).click();
+ // Empty previews and the legacy breadcrumb path previously escaped browser coverage.
+ await page.evaluate(()=>{window.__qa.emptyText=true});
+ await page.getByRole('button',{name:'main.rs',exact:true}).first().dblclick();
+ await page.locator('#text-comparison').waitFor();
+ await page.waitForFunction(()=>!document.querySelector('.progress'));
+ assert.equal(await page.locator('#text-comparison .diff-cell').count(),0);
+ await page.getByRole('button',{name:'关闭预览',exact:true}).click();
+ await page.getByRole('checkbox',{name:'目录树',exact:true}).uncheck();
+ await page.getByRole('button',{name:'src',exact:true}).first().dblclick();
+ await page.getByRole('button',{name:'src/main.rs',exact:true}).first().waitFor();
+ assert.equal(await page.locator('.outline-row').count(),1);
+ await page.getByRole('button',{name:'根目录',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelectorAll('.outline-row').length===2);
+ await page.getByRole('checkbox',{name:'目录树',exact:true}).check();
+ await page.waitForFunction(()=>!document.querySelector('.progress'));
+
  await page.getByRole('button',{name:'全部折叠',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('.outline-row').length===2);
  await page.getByRole('button',{name:'全部展开',exact:true}).click();

@@ -334,3 +334,120 @@ pub fn outline(
         outline: nodes,
     })
 }
+
+#[cfg(test)]
+mod load_tests {
+    use super::*;
+    use clear_contracts::{Comparison, Entry};
+    #[test]
+    fn large_directory_query_keeps_small_folder_replies_bounded() {
+        // Synthetic captured metadata: no real directory scanning or file I/O.
+        let mut rows = Vec::new();
+        let mut paths = BTreeMap::new();
+        let mut directory_index = BTreeMap::new();
+        for (i, name) in [
+            "project",
+            "project/.venv",
+            "project/.venv/bin",
+            "project/.venv/lib",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let id = format!("d{i}");
+            let path = PathBuf::from(name);
+            directory_index.insert(path.clone(), id.clone());
+            paths.insert(id.clone(), path);
+            rows.push(Row {
+                id,
+                path: (*name).into(),
+                directory_summary: None,
+                status: Status::LeftOnly,
+                left: Some(Entry {
+                    kind: Kind::Directory,
+                    bytes: "0".into(),
+                    modified_ms: None,
+                    digest: None,
+                    error: None,
+                }),
+                right: None,
+            });
+        }
+        for i in 0..105_128 {
+            let name = if i < 128 {
+                format!("project/.venv/bin/tool-{i:06}")
+            } else {
+                format!("project/.venv/lib/package-{i:06}.py")
+            };
+            let id = format!("f{i}");
+            paths.insert(id.clone(), PathBuf::from(&name));
+            rows.push(Row {
+                id,
+                path: name,
+                directory_summary: None,
+                status: Status::LeftOnly,
+                left: Some(Entry {
+                    kind: Kind::File,
+                    bytes: "128".into(),
+                    modified_ms: None,
+                    digest: None,
+                    error: None,
+                }),
+                right: None,
+            });
+        }
+        let snapshot = Snapshot {
+            restart: None,
+            report: Comparison {
+                policy: None,
+                session: "load-test".into(),
+                left: "/sample/left".into(),
+                right: "/sample/right".into(),
+                summary: Summary::default(),
+                rows,
+                warnings: Vec::new(),
+            },
+            left: PathBuf::from("/sample/left"),
+            right: PathBuf::from("/sample/right"),
+            paths,
+            directory_index,
+            rules: crate::rules::Rules::parse("").unwrap(),
+        };
+        let mut request = FolderQuery {
+            parent_id: None,
+            recursive: true,
+            search: String::new(),
+            differences_only: true,
+            sort: FolderSort::Path,
+            descending: false,
+        };
+        let started = std::time::Instant::now();
+        let root = query(&snapshot, &request, 0).unwrap();
+        eprintln!("105132-entry root query: {:?}", started.elapsed());
+        assert_eq!(root.page.total, 105_132);
+        assert_eq!(root.page.rows.len(), 500);
+        request.parent_id = Some("d2".into());
+        request.recursive = false;
+        let started = std::time::Instant::now();
+        let bin = query(&snapshot, &request, 0).unwrap();
+        eprintln!(
+            "128-entry bin query in 105132-entry snapshot: {:?}",
+            started.elapsed()
+        );
+        assert_eq!(bin.page.total, 128);
+        assert_eq!(bin.page.rows.len(), 128);
+        assert_eq!(
+            bin.breadcrumbs
+                .iter()
+                .map(|b| b.label.as_str())
+                .collect::<Vec<_>>(),
+            ["project", ".venv", "bin"]
+        );
+        assert!(
+            bin.page
+                .rows
+                .iter()
+                .all(|r| r.path.starts_with("project/.venv/bin/"))
+        );
+    }
+}
