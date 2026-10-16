@@ -162,3 +162,94 @@ fn unverified_children_prevent_a_verified_directory_status_and_size_sort_is_nume
         vec!["sub", "large", "small"]
     );
 }
+
+#[test]
+fn outline_keeps_native_hierarchy_empty_and_one_sided_branches_aligned() {
+    let t = tempfile::tempdir().unwrap();
+    for dir in ["l/a/deep", "r/a/deep", "l/only/empty"] {
+        fs::create_dir_all(t.path().join(dir)).unwrap();
+    }
+    fs::write(t.path().join("l/a/deep/f.txt"), "left").unwrap();
+    fs::write(t.path().join("r/a/deep/f.txt"), "right").unwrap();
+    let s = scan(t.path(), true);
+    let collapsed = tree::outline(&s, &query(), &[], false, 0).unwrap();
+    assert_eq!(
+        collapsed
+            .page
+            .rows
+            .iter()
+            .map(|r| r.path.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "only"]
+    );
+    let a = collapsed.page.rows[0].id.clone();
+    let opened = tree::outline(&s, &query(), &[a], false, 0).unwrap();
+    assert_eq!(
+        opened
+            .page
+            .rows
+            .iter()
+            .map(|r| r.path.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "a/deep", "only"]
+    );
+    assert_eq!(opened.outline[&opened.page.rows[1].id].depth, 1);
+    let all = tree::outline(&s, &query(), &[], true, 0).unwrap();
+    assert_eq!(all.page.total, 5);
+    let file = all
+        .page
+        .rows
+        .iter()
+        .find(|r| r.path == "a/deep/f.txt")
+        .unwrap();
+    assert_eq!(all.outline[&file.id].name, "f.txt");
+    assert_eq!(all.outline[&file.id].depth, 2);
+    let only = all
+        .page
+        .rows
+        .iter()
+        .find(|r| r.path == "only/empty")
+        .unwrap();
+    assert!(only.left.is_some() && only.right.is_none());
+    assert!(!all.outline[&only.id].has_children);
+    let collapse_a =
+        tree::outline(&s, &query(), &[collapsed.page.rows[0].id.clone()], true, 0).unwrap();
+    assert_eq!(collapse_a.page.total, 3);
+    assert!(tree::outline(&s, &query(), &[file.id.clone()], false, 0).is_err());
+    assert!(tree::outline(&s, &query(), &["unknown".into()], false, 0).is_err());
+}
+
+#[test]
+fn outline_search_retains_and_opens_ancestors_before_paging() {
+    let t = tempfile::tempdir().unwrap();
+    for dir in ["l/top/deep", "r/top/deep"] {
+        fs::create_dir_all(t.path().join(dir)).unwrap();
+    }
+    for i in 0..605 {
+        fs::write(t.path().join(format!("l/top/deep/file-{i:04}")), "left").unwrap();
+    }
+    let s = scan(t.path(), true);
+    let filtered = tree::outline(
+        &s,
+        &FolderQuery {
+            search: "file-0604".into(),
+            ..query()
+        },
+        &[],
+        false,
+        0,
+    )
+    .unwrap();
+    assert_eq!(filtered.page.total, 3);
+    assert_eq!(filtered.page.rows[0].path, "top");
+    assert!(filtered.outline[&filtered.page.rows[0].id].context_only);
+    assert!(filtered.outline[&filtered.page.rows[0].id].expanded);
+    assert_eq!(filtered.page.rows[2].path, "top/deep/file-0604");
+    let first = tree::outline(&s, &query(), &[], true, 0).unwrap();
+    let last = tree::outline(&s, &query(), &[], true, 500).unwrap();
+    assert_eq!(first.page.rows.len(), 500);
+    assert_eq!(last.page.rows.len(), 107);
+    assert_eq!(last.page.total, 607);
+    assert_eq!(last.outline[&last.page.rows[0].id].depth, 2);
+    assert_eq!(last.page.rows.last().unwrap().path, "top/deep/file-0604");
+}

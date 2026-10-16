@@ -23,3 +23,5 @@ pub mod tasks;
 pub mod resume;
 
 pub mod bidirectional;
+
+pub mod directory;

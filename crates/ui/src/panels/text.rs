@@ -56,16 +56,25 @@ pub fn panel(
         })
     });
     let hunks = Memo::new(move |_| rows.with(|r| text_view::hunks(r)));
-    Effect::new(move |_| {
-        diff.with(|d| {
-            let _ = d.as_ref().map(|d| &d.id);
-        });
-        offset.set(0);
-        current.set(None);
-        hits.set(Vec::new());
-        hit.set(None);
-        notice.set(String::new());
-    });
+    Effect::watch(
+        move || diff.with(|d| d.as_ref().map(|d| d.id.clone())),
+        move |_, _, _| {
+            offset.set(0);
+            current.set(None);
+            hits.set(Vec::new());
+            hit.set(None);
+            notice.set(String::new());
+            if diff.with_untracked(|d| d.is_some()) {
+                let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
+                    if let Some(node) = document().get_element_by_id("text-comparison") {
+                        node.scroll_into_view();
+                    }
+                });
+                let _ = window().request_animation_frame(callback.unchecked_ref());
+            }
+        },
+        true,
+    );
     let jump = move |row: usize| {
         offset.set(row / 500 * 500);
         current.set(Some(row));
@@ -135,18 +144,19 @@ pub fn panel(
             }
         }
     };
-    Effect::new(move |_| {
-        let _ = rows.with(|r| r.len());
-        let _ = offset.get();
-        let _ = english.get();
-        width.set(0);
-        let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
-            if let (Some(l), Some(r)) = (scroll.get(), other_scroll.get()) {
-                width.set(l.scroll_width().max(r.scroll_width()));
-            }
-        });
-        let _ = window().request_animation_frame(callback.unchecked_ref());
-    });
+    Effect::watch(
+        move || (rows.with(|r| r.len()), offset.get(), english.get()),
+        move |_, _, _| {
+            width.set(0);
+            let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
+                if let (Some(l), Some(r)) = (scroll.get(), other_scroll.get()) {
+                    width.set(l.scroll_width().max(r.scroll_width()));
+                }
+            });
+            let _ = window().request_animation_frame(callback.unchecked_ref());
+        },
+        true,
+    );
     let pane = move |right: bool| {
         view! {
             <div node_ref=if right{other_scroll}else{scroll} class="diff-scroll shared-diff" on:scroll=move |_|sync(right)><div class="text-pane-content" style:min-width=move ||format!("{}px",width.get())><div class="diff-column-head">{move ||if right{tr(english.get(),"右侧 · 目标","Right · Destination")}else{tr(english.get(),"左侧 · 来源","Left · Source")}}</div>
@@ -156,9 +166,9 @@ pub fn panel(
             }/></div></div>
         }
     };
-    view! {<Show when=move ||diff.with(|d|d.is_some())><section class="diff-panel" tabindex="0" aria-label="Text comparison" on:keydown=move |ev|{if !ev.is_composing() && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() && ev.key()=="F7"{ev.prevent_default();navigate(!ev.shift_key());}}><header><button class="quiet" on:click=move |_|{if let Some(d)=diff.get_untracked(){load(d);}}>{move ||tr(english.get(),"载入合并面板","Load into merge panel")}</button><strong>{move ||diff.with(|d|d.as_ref().map(|d|d.path.clone()))}</strong><button class="quiet" on:click=move |_|diff.set(None)>{move ||tr(english.get(),"关闭预览","Close preview")}</button></header>
+    view! {<Show when=move ||diff.with(|d|d.is_some())>{move ||untrack(move ||view!{<section id="text-comparison" class="diff-panel" tabindex="0" aria-label="Text comparison" on:keydown=move |ev|{if !ev.is_composing() && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() && ev.key()=="F7"{ev.prevent_default();navigate(!ev.shift_key());}}><header><button class="quiet" on:click=move |_|{if let Some(d)=diff.get_untracked(){load(d);}}>{move ||tr(english.get(),"载入合并面板","Load into merge panel")}</button><strong>{move ||diff.with(|d|d.as_ref().map(|d|d.path.clone()))}</strong><button class="quiet" on:click=move |_|diff.set(None)>{move ||tr(english.get(),"关闭预览","Close preview")}</button></header>
         <div class="text-navigation"><button class="quiet" disabled=move ||!hunks.with(|h|h.iter().any(|n|current.get().is_some_and(|c|*n<c))) on:click=move |_|navigate(false)>{move ||tr(english.get(),"上一差异","Previous change")}</button><button class="quiet" disabled=move ||!hunks.with(|h|h.iter().any(|n|current.get().is_none_or(|c|*n>c))) on:click=move |_|navigate(true)>{move ||tr(english.get(),"下一差异","Next change")}</button><span>{move ||format!("{} {}",hunks.with(|h|h.len()),tr(english.get(),"组差异","change groups"))}</span><input aria-label="Find literal text" prop:value=move ||query.get() on:input=move |ev|{query.set(event_target_value(&ev));hits.set(Vec::new());hit.set(None);} on:keydown=move |ev|{if ev.key()=="Enter" && !ev.is_composing(){search();}}/><button class="quiet" on:click=move |_|search()>{move ||tr(english.get(),"查找原文","Find literal text")}</button><button class="quiet" disabled=move ||hit.get().is_none_or(|i|i==0) on:click=move |_|{let i=hit.get_untracked().unwrap_or_default().saturating_sub(1);if let Some(row)=hits.with_untracked(|h|h.get(i).copied()){hit.set(Some(i));jump(row);}}>{move ||tr(english.get(),"上一匹配","Previous match")}</button><button class="quiet" disabled=move ||hit.get().is_none_or(|i|i+1>=hits.with(|h|h.len())) on:click=move |_|{let i=hit.get_untracked().unwrap_or_default()+1;if let Some(row)=hits.with_untracked(|h|h.get(i).copied()){hit.set(Some(i));jump(row);}}>{move ||tr(english.get(),"下一匹配","Next match")}</button><span>{move ||format!("{} / {}",hit.get().map(|i|i+1).unwrap_or_default(),hits.with(|h|h.len()))}</span></div>
         <p class="text-view-note">{move ||tr(english.get(),"修改组按行序对齐；下划线标记行内变化。LF / CRLF / CR 为行尾，∅ 表示无末尾换行。查找区分大小写，覆盖全部原文。","Changed groups align by line order; underlines mark intraline changes. LF / CRLF / CR identify endings; ∅ means no final newline. Search is case-sensitive across all original text.")}</p><Show when=move ||diff.with(|d|d.as_ref().is_some_and(|d|d.intraline_limited))><p class="text-view-note">{move ||tr(english.get(),"部分行内比较超出预算，已降级为整行提示；原始行差异仍保留。","Some intraline comparisons exceeded their budget and use whole-line hints; original line differences remain.")}</p></Show><Show when=move ||!notice.get().is_empty()><p role="alert">{move ||notice.get()}</p></Show>
-        <div class="text-panes">{pane(false)}{pane(true)}</div><footer class="text-pagination"><button class="quiet" disabled=move ||offset.get()==0 on:click=move |_|{offset.update(|n|*n=n.saturating_sub(500));if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"上一页","Previous page")}</button><span>{move ||format!("{}–{} / {}",offset.get()+usize::from(rows.with(|r|!r.is_empty())),(offset.get()+500).min(rows.with(|r|r.len())),rows.with(|r|r.len()))}</span><button class="quiet" disabled=move ||offset.get()+500>=rows.with(|r|r.len()) on:click=move |_|{offset.update(|n|*n+=500);if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"下一页","Next page")}</button></footer>
-    </section></Show>}
+        <div class="text-panes">{pane(false)}{pane(true)}</div><footer class="text-pagination"><button class="quiet" disabled=move ||offset.get()==0 on:click=move |_|{offset.update(|n|*n=n.saturating_sub(500));if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"上一页","Previous page")}</button><span>{move ||format!("{}–{} / {}",offset.get()+usize::from(rows.with(|r|!r.is_empty())),(offset.get()+500).min(rows.with(|r|r.len())),rows.with(|r|r.len()))}</span><button class="quiet" disabled=move ||{offset.get()+500>=rows.with(|r|r.len())} on:click=move |_|{offset.update(|n|*n+=500);if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"下一页","Next page")}</button></footer>
+    </section>})}</Show>}
 }

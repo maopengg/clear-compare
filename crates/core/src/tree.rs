@@ -196,5 +196,141 @@ pub fn query(snapshot: &Snapshot, request: &FolderQuery, offset: usize) -> Resul
         })
         .collect::<Vec<_>>();
     breadcrumbs.reverse();
-    Ok(FolderPage { page, breadcrumbs })
+    Ok(FolderPage {
+        page,
+        breadcrumbs,
+        outline: BTreeMap::new(),
+    })
+}
+
+/// Preorder of the visible outline. Filtering precedes collapse and paging;
+/// matching descendants retain their ancestors. Native paths never leave core.
+pub fn outline(
+    snapshot: &Snapshot,
+    request: &FolderQuery,
+    expanded: &[String],
+    expand_all: bool,
+    offset: usize,
+) -> Result<FolderPage> {
+    use clear_contracts::OutlineNode;
+    use std::collections::BTreeSet;
+    if expanded.len() > crate::compare::MAX_ENTRIES {
+        return Err(Error::Invalid("Too many expanded directories".into()));
+    }
+    let rows = &snapshot.report.rows;
+    let ids: BTreeMap<_, _> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.id.as_str(), i))
+        .collect();
+    let mut opened = BTreeSet::new();
+    for id in expanded {
+        let i = ids
+            .get(id.as_str())
+            .ok_or_else(|| Error::Invalid("Unknown expanded directory".into()))?;
+        if !is_directory(&rows[*i]) {
+            return Err(Error::Invalid("Expanded entry is not a directory".into()));
+        }
+        opened.insert(*i);
+    }
+    let search = request.search.to_lowercase();
+    let matches: BTreeSet<_> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| {
+            (!request.differences_only || row.status != Status::Same)
+                && (search.is_empty() || row.path.to_lowercase().contains(&search))
+        })
+        .map(|(i, _)| i)
+        .collect();
+    let mut included = matches.clone();
+    for i in &matches {
+        if let Some(path) = snapshot.paths.get(&rows[*i].id) {
+            for parent in path
+                .ancestors()
+                .skip(1)
+                .filter(|p| !p.as_os_str().is_empty())
+            {
+                if let Some(id) = snapshot.directory_index.get(parent) {
+                    included.insert(ids[id.as_str()]);
+                }
+            }
+        }
+    }
+    let mut children: BTreeMap<&Path, Vec<usize>> = BTreeMap::new();
+    for i in &included {
+        if let Some(path) = snapshot.paths.get(&rows[*i].id) {
+            children
+                .entry(path.parent().unwrap_or(Path::new("")))
+                .or_default()
+                .push(*i);
+        }
+    }
+    for siblings in children.values_mut() {
+        siblings.sort_by(|a, b| {
+            let (a, b) = (&rows[*a], &rows[*b]);
+            let dirs = is_directory(b).cmp(&is_directory(a));
+            if !dirs.is_eq() {
+                return dirs;
+            }
+            let order = match request.sort {
+                FolderSort::Path => a.path.cmp(&b.path),
+                FolderSort::Status => rank(&a.status).cmp(&rank(&b.status)),
+                FolderSort::LeftSize => size(a, true).cmp(&size(b, true)),
+                FolderSort::RightSize => size(a, false).cmp(&size(b, false)),
+            }
+            .then_with(|| a.path.cmp(&b.path))
+            .then_with(|| a.id.cmp(&b.id));
+            if request.descending {
+                order.reverse()
+            } else {
+                order
+            }
+        });
+    }
+    let mut stack = children
+        .get(Path::new(""))
+        .into_iter()
+        .flatten()
+        .rev()
+        .map(|i| (*i, 0usize))
+        .collect::<Vec<_>>();
+    let mut total = 0usize;
+    let mut visible = Vec::new();
+    let mut nodes = BTreeMap::new();
+    while let Some((i, depth)) = stack.pop() {
+        let row = &rows[i];
+        let path = &snapshot.paths[&row.id];
+        let nested = children.get(path.as_path());
+        let has_children = nested.is_some_and(|c| !c.is_empty());
+        let expanded = has_children && (!search.is_empty() || (expand_all != opened.contains(&i)));
+        if total >= offset && visible.len() < 500 {
+            nodes.insert(
+                row.id.clone(),
+                OutlineNode {
+                    name: path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    depth,
+                    expanded,
+                    has_children,
+                    context_only: !matches.contains(&i),
+                },
+            );
+            visible.push(row.clone());
+        }
+        total += 1;
+        if expanded && let Some(children) = nested {
+            stack.extend(children.iter().rev().map(|child| (*child, depth + 1)));
+        }
+    }
+    Ok(FolderPage {
+        page: Page {
+            total,
+            rows: visible,
+        },
+        breadcrumbs: Vec::new(),
+        outline: nodes,
+    })
 }

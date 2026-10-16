@@ -502,6 +502,16 @@ pub struct Breadcrumb {
 pub struct FolderPage {
     pub page: Page,
     pub breadcrumbs: Vec<Breadcrumb>,
+    #[serde(default)]
+    pub outline: std::collections::BTreeMap<String, OutlineNode>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutlineNode {
+    pub name: String,
+    pub depth: usize,
+    pub expanded: bool,
+    pub has_children: bool,
+    pub context_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -333,13 +333,27 @@ async fn query_folder(
     session: String,
     query: FolderQuery,
     offset: usize,
+    expanded: Option<Vec<String>>,
+    expand_all: Option<bool>,
     state: State<'_, Arc<Backend>>,
 ) -> Result<FolderPage, String> {
     let snapshot = state.snapshot(&session)?;
-    tauri::async_runtime::spawn_blocking(move || clear_core::tree::query(&snapshot, &query, offset))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(expanded) = expanded {
+            clear_core::tree::outline(
+                &snapshot,
+                &query,
+                &expanded,
+                expand_all.unwrap_or(false),
+                offset,
+            )
+        } else {
+            clear_core::tree::query(&snapshot, &query, offset)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

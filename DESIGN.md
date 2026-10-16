@@ -6,7 +6,7 @@ A developer checks project changes on a desktop monitor in a normally lit worksp
 
 ## Structure
 
-One desktop window. A small application header, paired path inputs, rules, summary, paged results and an optional side-by-side text panel. The synchronization plan appears only after the user asks to preview selected files.
+One desktop window. A small application header, paired path inputs, rules, summary, aligned two-sided directory columns and an optional side-by-side text panel. The default outline expands native directory IDs in place, retains ancestors under search and shows missing counterparts explicitly. Name, size and modification time are separate for each side. Double-clicking a file opens its aligned content differences and scrolls the comparison panel into view. Text rules and reports sit in a collapsed secondary section; advanced baseline synchronization remains accessible below the comparison workspace so completed-run evidence survives comparison invalidation. The synchronization plan appears only after the user asks to preview selected files.
 
 ## Tokens
 
