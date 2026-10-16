@@ -168,3 +168,11 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .compact-workspace .directory-table td:first-child input{margin:0;vertical-align:middle}
 
 .line-ending-option{display:flex;align-items:center;gap:6px;margin-bottom:10px;color:var(--ink)}
+
+/* Slim desktop scrollbars, including both axes of paired text panes. */
+.compact-workspace ::-webkit-scrollbar{width:8px;height:8px}
+.compact-workspace ::-webkit-scrollbar-track{background:transparent}
+.compact-workspace ::-webkit-scrollbar-thumb{background:color-mix(in oklch,var(--muted) 60%,var(--bg));border:1px solid transparent;background-clip:padding-box;border-radius:8px}
+.compact-workspace ::-webkit-scrollbar-thumb:hover{background:var(--muted);border:1px solid transparent;background-clip:padding-box}
+.compact-workspace ::-webkit-scrollbar-corner{background:var(--bg)}
+@supports not selector(::-webkit-scrollbar){.compact-workspace *{scrollbar-width:thin;scrollbar-color:var(--muted) transparent}}
