@@ -1688,7 +1688,7 @@ fn App() -> impl IntoView {
                         <details name="workspace-menu" class="comparison-settings"><summary>{move ||tr(english.get(),"比较设置","Compare settings")}</summary><div class="menu-body">                <div class="compare-options"><label class="check-label"><input type="checkbox" prop:checked=move || content.get() disabled=move || busy.get() on:change=move |ev| {reset();content.set(event_target_checked(&ev));}/>{move || tr(english.get(),"列表显示后完整校验内容（SHA-256，较慢）","Verify all contents after listing (SHA-256, slower)")}</label>
 
                         </div>
-                        <p class="compare-hint">{move ||tr(english.get(),"先按大小和修改时间列出结果；元数据匹配仍标为未验证内容。完整校验需读取所有未排除文件。","List results using size and modification time first; metadata matches remain unverified. Full verification reads every included file.")}</p>
+                        <p class="compare-hint">{move ||tr(english.get(),"先按文件大小列出结果；修改时间不参与比较。大小相同仍标为未验证内容，完整校验后确定是否一致。","List results using file size; modification times do not affect comparison. Equal sizes remain unverified until content verification.")}</p>
                         <div class="rules"><button class="quiet" disabled=move||busy.get() on:click=move|_|exclusions_visible.set(true)>{move||tr(english.get(),"管理项目排除规则…","Manage project exclusions…")}</button></div></div></details>
                     </section>
                     {panels::git::panel(english,busy,git_visible,error,diff)}
@@ -1700,7 +1700,7 @@ fn App() -> impl IntoView {
                     {panels::tasks::panel(english,busy,error,operation_progress,reconnect_operation)}
 
                     <Show when=move || busy.get()><div class="progress" role="status"><span class="pulse"></span>{move || match compare_stage.get() {
-                        1 => tr(english.get(),"正在快速扫描目录（大小和修改时间）…","Scanning directory metadata (size and modification time)…"),
+                        1 => tr(english.get(),"正在快速扫描目录（按文件大小，忽略修改时间）…","Scanning directories by file size (ignoring modification time)…"),
                         2 => tr(english.get(),"列表已显示，正在完整校验文件内容；耗时取决于文件总量…","List available; verifying all file contents. Time depends on total file data…"),
                         _ => tr(english.get(),"正在处理，请稍候…","Working, please wait…"),
                     }}<button class="quiet" disabled=move ||text_merge_dirty.get() on:click=move |_| {compare_cancelled.set(true);spawn_local(async move { let _ = invoke::<()>("cancel",serde_json::json!({})).await; });}>{move ||if compare_stage.get() == 2 {tr(english.get(),"停止校验，保留列表","Stop verification, keep list")} else {tr(english.get(),"取消任务","Cancel task")}}</button></div></Show>
@@ -1728,10 +1728,10 @@ fn App() -> impl IntoView {
                         })}
 
                         <Show when=move || comparison.with(|c|c.as_ref().is_some_and(|c|c.warnings.iter().any(|note|note!="Symbolic links are listed but not followed, compared or synchronized.")))><p class="warnings">{move || comparison.with(|c|c.as_ref().map(|c|c.warnings.iter().filter(|note|note.as_str()!="Symbolic links are listed but not followed, compared or synchronized.").cloned().collect::<Vec<_>>().join(" · ")))}</p></Show>
-    <div class="results-status">                    <p class="comparison-basis" title=move ||tr(english.get(),"快速扫描仅比较大小和修改时间；只有完整内容校验能证明内容一致。错误和符号链接单独标记。","Quick scans compare size and timestamps only; content equality requires full verification. Errors and symbolic links remain distinct.")>{move ||if comparison_verified.get() {
+    <div class="results-status">                    <p class="comparison-basis" title=move ||tr(english.get(),"快速扫描只按文件大小判断；修改时间不参与比较。大小相同不代表内容一致，请使用完整内容校验。","Quick scans compare file sizes only and ignore modification times. Equal sizes do not prove equal contents; use full content verification.")>{move ||if comparison_verified.get() {
                             tr(english.get(),"内容校验 · SHA-256","Content check · SHA-256")
                         } else {
-                            tr(english.get(),"元数据比较 · 内容未校验","Metadata · content unverified")
+                            tr(english.get(),"大小比较 · 忽略时间 · 内容未校验","Size comparison · time ignored · content unverified")
                         }}</p>
                         <div class="summary-bar"><span class="stat">{move ||tr(english.get(),"统计","Summary")}</span>{move || comparison.get().map(|c| { let s=c.summary; view! {<span class="stat changed">{format!("{} {}",tr(english.get(),"修改","Changed"),s.changed)}</span><span class="stat left">{format!("{} {}",tr(english.get(),"仅左","Left only"),s.left_only)}</span><span class="stat right">{format!("{} {}",tr(english.get(),"仅右","Right only"),s.right_only)}</span><span class="stat same">{format!("{} {}",tr(english.get(),"一致","Same"),s.same)}</span><span class="stat">{format!("{} {} · {} {}",tr(english.get(),"未验证","Unverified"),s.unverified,tr(english.get(),"错误","Errors"),s.errors)}</span>} })}</div>                    <div class="pagination"><span>{move || format!("{}–{} / {}",offset.get()+usize::from(visible_total.get()>0),(offset.get()+500).min(visible_total.get()),visible_total.get())}</span><button class="quiet" disabled=move || offset.get()==0 || busy.get() on:click=move |_| paginate(false)>{move || tr(english.get(),"上一页","Previous")}</button><button class="quiet" disabled=move || busy.get() || (offset.get()+500>=visible_total.get()) on:click=move |_| paginate(true)>{move || tr(english.get(),"下一页","Next")}</button></div></div>
                     </Show></div>

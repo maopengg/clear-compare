@@ -68,7 +68,7 @@ fn snapshot_survives_source_removal_without_capturing_contents_or_claiming_equal
     assert_eq!(result.page(500, "", false).unwrap().rows.len(), 0);
 }
 #[test]
-fn changed_metadata_missing_paths_and_content_verification_are_explicit() {
+fn time_only_changes_remain_unverified_and_missing_paths_are_explicit() {
     let (_t, root, file) = fixture();
     fs::write(root.join("a"), "one").unwrap();
     capture(&root, &file);
@@ -77,7 +77,8 @@ fn changed_metadata_missing_paths_and_content_verification_are_explicit() {
     let other = file.with_extension("other");
     fs::write(&other, serde_json::to_vec(&data).unwrap()).unwrap();
     let r = tree_snapshot::compare(&request(&file, Some(&other)), &cancel()).unwrap();
-    assert_eq!(r.report.summary.changed, 1);
+    assert_eq!(r.report.summary.changed, 0);
+    assert_eq!(r.report.summary.unverified, 1);
     fs::remove_file(root.join("a")).unwrap();
     fs::write(root.join("new"), "longer").unwrap();
     let r = tree_snapshot::compare(&request(&file, Some(&root)), &cancel()).unwrap();

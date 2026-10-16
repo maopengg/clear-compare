@@ -326,14 +326,7 @@ pub fn compare(request: &ArchiveRequest, cancel: &AtomicBool) -> Result<Snapshot
         check_cancel(cancel)?;
         let a = l.get(&path).cloned();
         let b = r.get(&path).cloned();
-        let mut state = crate::archive::status(a.as_ref(), b.as_ref());
-        if state == Status::MetadataMatch
-            && a.as_ref()
-                .zip(b.as_ref())
-                .is_some_and(|(a, b)| a.kind == Kind::File && a.modified_ms != b.modified_ms)
-        {
-            state = Status::Changed;
-        }
+        let state = crate::archive::status(a.as_ref(), b.as_ref());
         if !a
             .as_ref()
             .or(b.as_ref())

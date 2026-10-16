@@ -78,7 +78,7 @@ The compressed container is fingerprinted before/after comparison and again arou
 
 A separate versioned `.cctree` inventory records paths, entry kinds, size/time/error metadata and capture exclusions. It has no content/hash fields and cannot participate in text preview, sync, merge or recovery. Export scans without opening file bodies, writes a bounded temporary file outside the source tree, syncs it and persists without replacing an existing destination. A live scan is not a filesystem-consistent point-in-time backup.
 
-Portable path components are validated independently of host separators; nonportable names use lossless OS encoding and are rejected on incompatible systems. Import caps file size and entry count, rejects unknown fields/versions, invalid metadata, duplicate/traversing paths and missing/non-directory ancestors before applying exclusions. Historical matching sizes/timestamps stay unverified; metadata changes are distinct from proven content changes. Native snapshots return at most 500 rows and have independent opaque sessions.
+Portable path components are validated independently of host separators; nonportable names use lossless OS encoding and are rejected on incompatible systems. Import caps file size and entry count, rejects unknown fields/versions, invalid metadata, duplicate/traversing paths and missing/non-directory ancestors before applying exclusions. Historical equal sizes stay unverified; modification times do not affect comparison status, and size changes remain distinct from proven content equality. Native snapshots return at most 500 rows and have independent opaque sessions.
 
 ## Git commit/index/working-tree adapter
 

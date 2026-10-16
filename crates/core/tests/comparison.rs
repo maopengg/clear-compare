@@ -64,3 +64,64 @@ fn text_preview_rejects_binary_invalid_encoding_and_large_inputs() {
     fs::write(&path, "\u{feff}中文\r\n").unwrap();
     assert_eq!(text::read_text(&path).unwrap(), "中文\r\n");
 }
+
+#[test]
+fn modification_times_do_not_affect_file_or_directory_status() {
+    use std::time::{Duration, UNIX_EPOCH};
+    let left = tempfile::tempdir().unwrap();
+    let right = tempfile::tempdir().unwrap();
+    for (root, seconds) in [(left.path(), 1000), (right.path(), 9000)] {
+        fs::create_dir(root.join("images")).unwrap();
+        for (name, bytes) in [
+            ("same.jpg", b"same".as_slice()),
+            ("different.jpg", b"left".as_slice()),
+        ] {
+            let path = root.join("images").join(name);
+            let bytes = if root == right.path() && name == "different.jpg" {
+                b"rght".as_slice()
+            } else {
+                bytes
+            };
+            fs::write(&path, bytes).unwrap();
+            fs::File::open(path)
+                .unwrap()
+                .set_times(
+                    fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(seconds)),
+                )
+                .unwrap();
+        }
+    }
+    fs::write(left.path().join("size.txt"), "a").unwrap();
+    fs::write(right.path().join("size.txt"), "longer").unwrap();
+    let mut request = CompareRequest {
+        left: left.path().to_string_lossy().into_owned(),
+        right: right.path().to_string_lossy().into_owned(),
+        exclusions: String::new(),
+        content: false,
+    };
+    let quick = compare::compare(&request, &AtomicBool::new(false)).unwrap();
+    for path in ["images", "images/same.jpg", "images/different.jpg"] {
+        let row = quick.report.rows.iter().find(|r| r.path == path).unwrap();
+        assert_eq!(row.status, Status::MetadataMatch, "{path}");
+    }
+    assert_eq!(quick.report.summary.changed, 1);
+    assert_eq!(quick.report.summary.unverified, 2);
+    request.content = true;
+    let verified = compare::compare(&request, &AtomicBool::new(false)).unwrap();
+    let same = verified
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "images/same.jpg")
+        .unwrap();
+    assert_eq!(same.status, Status::Same);
+    let changed = verified
+        .report
+        .rows
+        .iter()
+        .find(|r| r.path == "images/different.jpg")
+        .unwrap();
+    assert_eq!(changed.status, Status::Changed);
+    assert_eq!(verified.report.summary.same, 1);
+    assert_eq!(verified.report.summary.changed, 2);
+}

@@ -177,7 +177,7 @@ pub(crate) fn status(left: Option<&Entry>, right: Option<&Entry>) -> Status {
             }
         }
         (Some(a), Some(b)) => {
-            if a.bytes == b.bytes && a.modified_ms.is_some() && a.modified_ms == b.modified_ms {
+            if a.bytes == b.bytes {
                 Status::MetadataMatch
             } else {
                 Status::Changed
