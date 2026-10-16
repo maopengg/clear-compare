@@ -96,6 +96,25 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
   assert(!result.pageOverflow,JSON.stringify(result));assert(result.ratio>.70,JSON.stringify(result));metrics.push({view:'text',...result});
  }
  await page.setViewportSize({width:1260,height:840});
+ // The two merge directions share a fixed center gutter, even when text scrolls.
+ const assertCenter=async()=>{
+  const result=await page.evaluate(()=>{
+   const panes=[...document.querySelectorAll('.shared-diff')].map(n=>n.getBoundingClientRect());
+   const gutter=document.querySelector('.merge-gutter').getBoundingClientRect();
+   const rows=[...document.querySelectorAll('.merge-gutter-row')];
+   return {width:gutter.width,between:gutter.left>=panes[0].right-.5&&gutter.right<=panes[1].left+.5,
+    buttons:rows.every(row=>{const [left,right]=row.querySelectorAll('button');const a=left.getBoundingClientRect(),b=right.getBoundingClientRect();return a.left>=gutter.left&&b.right<=gutter.right&&Math.abs(a.top-b.top)<.5;}),
+    aligned:rows.every(row=>{const i=parseFloat(row.style.top)/22;const text=document.querySelectorAll('.shared-diff')[0].querySelectorAll('.diff-render-row')[i];return Math.abs(row.getBoundingClientRect().top-text.getBoundingClientRect().top)<1;})};
+  });
+  assert.equal(result.width,48);assert(result.between&&result.buttons&&result.aligned,JSON.stringify(result));
+ };
+ await assertCenter();
+ await page.locator('.shared-diff').first().evaluate(n=>{n.scrollLeft=100;n.scrollTop=200;});await page.waitForTimeout(100);await assertCenter();
+ const top=await page.locator('.shared-diff').first().evaluate(n=>n.scrollTop);
+ const gutterBox=await page.locator('.merge-gutter').boundingBox();await page.mouse.move(gutterBox.x+24,gutterBox.y+100);await page.mouse.wheel(0,100);await page.waitForTimeout(150);
+ assert((await page.locator('.shared-diff').first().evaluate(n=>n.scrollTop))>top);await assertCenter();
+ // Return keyboard focus from the wheel target to the comparison for F7 navigation.
+ await page.locator('#text-comparison').focus();
  await page.keyboard.press('F7');
  assert.equal(await page.locator('.diff-focus').count(),2);
  assert.equal(await page.locator('#text-comparison').evaluate(n=>n.contains(document.activeElement)),true);

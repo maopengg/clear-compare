@@ -65,6 +65,7 @@ pub fn panel(
     let scroll = NodeRef::<leptos::html::Div>::new();
     let other_scroll = NodeRef::<leptos::html::Div>::new();
     let width = RwSignal::new(0i32);
+    let gutter_top = RwSignal::new(0i32);
     let rows = Memo::new(move |_| {
         diff.with(|d| {
             d.as_ref()
@@ -106,6 +107,7 @@ pub fn panel(
             let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
                 let top = (row % 500).saturating_sub(3) as i32 * 22;
                 node.set_scroll_top(top);
+                gutter_top.set(node.scroll_top());
                 if let Some(other) = other_scroll.get() {
                     other.set_scroll_top(top);
                 }
@@ -160,6 +162,7 @@ pub fn panel(
             (scroll.get(), other_scroll.get())
         };
         if let (Some(from), Some(to)) = (from, to) {
+            gutter_top.set(from.scroll_top());
             if from.scroll_top() != to.scroll_top() {
                 to.set_scroll_top(from.scroll_top());
             }
@@ -204,9 +207,29 @@ pub fn panel(
             <div node_ref=if right{other_scroll}else{scroll} class="diff-scroll shared-diff" on:scroll=move |_|sync(right)><div class="text-pane-content" style:min-width=move ||format!("{}px",width.get())><div class="diff-column-head">{move ||if right{tr(english.get(),"右侧 · 目标","Right · Destination")}else{tr(english.get(),"左侧 · 来源","Left · Source")}}<strong>{move ||(merge.dirty.get() && merge.target()==if right{Side::Right}else{Side::Left}).then_some(tr(english.get()," · 未保存"," · Unsaved"))}</strong></div>
             <For each=move ||diff.with(|d|d.as_ref().map(|d|rows.with(|r|r.iter().enumerate().skip(offset.get()).take(500).map(|(i,r)|(d.id.clone(),i,r.clone())).collect::<Vec<_>>())).unwrap_or_default()) key=|(id,i,_)|(id.clone(),*i) children=move |(_,i,row)|{
                 let (line,ending_changed)=diff.with_untracked(|d|d.as_ref().map(|d|{let l=row.left.map(|n|&d.lines[n]);let r=row.right.map(|n|&d.lines[n]);(if right{r.cloned()}else{l.cloned()},text_view::significant_ending(l,r))})).unwrap_or_default();
-                let hunk=preview.with_untracked(|p|p.as_ref().and_then(|p|p.hunks.get(&i).copied().filter(|id|i==offset.get_untracked() || i==0 || p.hunks.get(&(i-1))!=Some(id))));
-                view!{<div class="diff-render-row"><span class="merge-arrow-slot">{hunk.map(|hunk|view!{<button class="merge-arrow" aria-label=move ||if right{tr(english.get(),"将此差异合并到右侧","Merge this change into right")}else{tr(english.get(),"将此差异合并到左侧","Merge this change into left")} title=move ||if right{tr(english.get(),"左 → 右：将此差异合并到右侧缓冲区","Left → right: merge this change into the right buffer")}else{tr(english.get(),"右 → 左：将此差异合并到左侧缓冲区","Right → left: merge this change into the left buffer")} disabled=move ||!merge.allowed(&if right{Side::Right}else{Side::Left}) on:click=move |_|merge.apply(hunk,if right{Side::Right}else{Side::Left})>{if right{"→"}else{"←"}}</button>})}</span>{move ||cell(line.as_ref(),right,ending_changed,show_endings.get(),current.get()==Some(i),english.get())}</div>}
+                view!{<div class="diff-render-row">{move ||cell(line.as_ref(),right,ending_changed,show_endings.get(),current.get()==Some(i),english.get())}</div>}
             }/></div></div>
+        }
+    };
+    let gutter = move || {
+        view! {
+            <div class="merge-gutter" role="group" aria-label=move ||tr(english.get(),"差异合并","Merge changes") on:wheel:capture=move |ev|{
+                ev.prevent_default();
+                if let Some(node)=scroll.get(){node.set_scroll_top(node.scroll_top()+ev.delta_y() as i32);sync(false);}
+            }>
+                <div class="merge-gutter-heading" aria-hidden="true">"← →"</div>
+                <div class="merge-gutter-viewport"><div class="merge-gutter-content" style:transform=move ||format!("translateY(-{}px)",gutter_top.get())>
+                    <For each=move ||preview.with(|p|p.as_ref().map(|p|p.hunks.iter().filter(|(i,id)|**i>=offset.get() && **i<offset.get()+500 && (**i==offset.get() || **i==0 || p.hunks.get(&(**i-1))!=Some(id))).map(|(i,id)|(p.diff.id.clone(),*i,*id)).collect::<Vec<_>>()).unwrap_or_default()) key=|(diff,i,hunk)|(diff.clone(),*i,*hunk) children=move |(_,i,hunk)|view!{
+                        <div class="merge-gutter-row" style:top=move ||format!("{}px",i.saturating_sub(offset.get())*22)>
+                            {[false,true].into_iter().map(move |right|view!{
+                                <button class="merge-arrow" aria-label=move ||if right{tr(english.get(),"将此差异合并到右侧","Merge this change into right")}else{tr(english.get(),"将此差异合并到左侧","Merge this change into left")} title=move ||if right{tr(english.get(),"左 → 右：将此差异合并到右侧缓冲区","Left → right: merge this change into the right buffer")}else{tr(english.get(),"右 → 左：将此差异合并到左侧缓冲区","Right → left: merge this change into the left buffer")} disabled=move ||!merge.allowed(&if right{Side::Right}else{Side::Left}) on:focus=move |_|{
+                                    if let Some(node)=scroll.get(){let y=(i.saturating_sub(offset.get_untracked())*22) as i32;if y<node.scroll_top() || y+48>node.scroll_top()+node.client_height(){jump(i);}}
+                                } on:click=move |_|merge.apply(hunk,if right{Side::Right}else{Side::Left})>{if right{"→"}else{"←"}}</button>
+                            }).collect_view()}
+                        </div>
+                    }/>
+                </div></div>
+            </div>
         }
     };
     view! {<Show when=move ||diff.with(|d|d.is_some())>{move ||untrack(move ||view!{<section id="text-comparison" class="diff-panel" tabindex="0" aria-label="Text comparison" on:keydown=move |ev|{if !ev.is_composing() && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() && ev.key()=="F7"{ev.prevent_default();navigate(!ev.shift_key());}}><header><button class="quiet" disabled=move ||merge.busy.get() ||merge.dirty.get() on:click=move |_|{if let Some(d)=diff.get_untracked(){load(d);}}>{move ||tr(english.get(),"载入合并面板","Load into merge panel")}</button><strong>{move ||diff.with(|d|d.as_ref().map(|d|d.path.clone()))}</strong><button class="quiet" disabled=move ||merge.busy.get() ||merge.dirty.get() on:click=move |_|original_diff.set(None)>{move ||tr(english.get(),"返回目录","Back to folders")}</button></header>
@@ -217,6 +240,6 @@ pub fn panel(
         <button class="quiet" disabled=move ||merge.busy.get() ||!merge.dirty.get() on:click=move |_|merge.discard()>{move ||tr(english.get(),"放弃合并","Discard merge")}</button><button class="primary" disabled=move ||merge.busy.get() ||!merge.dirty.get() on:click=move |_|merge.save(saved)>{move ||if merge.target()==Side::Left{tr(english.get(),"保存左侧","Save left")}else{tr(english.get(),"保存右侧","Save right")}}</button>
         </Show></div>
         <details class="text-legend"><summary>{move ||tr(english.get(),"显示 / 说明","Display / legend")}</summary><p class="text-view-note"><label class="line-ending-option"><input type="checkbox" prop:checked=move ||show_endings.get() on:change=move |ev|show_endings.set(event_target_checked(&ev))/>{move ||tr(english.get(),"显示所有行尾标记","Show all line endings")}</label>{move ||tr(english.get(),"修改组按行序对齐；下划线标记行内变化。默认只提示换行格式差异。LF / CRLF / CR 为行尾，∅ 表示无末尾换行。查找区分大小写，覆盖全部原文。","Changed groups align by line order; underlines mark intraline changes. Only differing endings are shown by default. LF / CRLF / CR identify endings; ∅ means no final newline. Search is case-sensitive across all original text.")}</p></details><Show when=move ||diff.with(|d|d.as_ref().is_some_and(|d|d.intraline_limited))><p class="text-view-note">{move ||tr(english.get(),"部分行内比较超出预算，已降级为整行提示；原始行差异仍保留。","Some intraline comparisons exceeded their budget and use whole-line hints; original line differences remain.")}</p></Show><Show when=move ||!notice.get().is_empty()><p role="alert">{move ||notice.get()}</p></Show>
-        <div class="text-panes">{pane(false)}{pane(true)}</div><footer class="text-pagination"><button class="quiet" disabled=move ||offset.get()==0 on:click=move |_|{offset.update(|n|*n=n.saturating_sub(500));if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"上一页","Previous page")}</button><span>{move ||format!("{}–{} / {}",offset.get()+usize::from(rows.with(|r|!r.is_empty())),(offset.get()+500).min(rows.with(|r|r.len())),rows.with(|r|r.len()))}</span><button class="quiet" disabled=move ||{offset.get()+500>=rows.with(|r|r.len())} on:click=move |_|{offset.update(|n|*n+=500);if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"下一页","Next page")}</button></footer>
+        <div class="text-panes">{pane(false)}{gutter()}{pane(true)}</div><footer class="text-pagination"><button class="quiet" disabled=move ||offset.get()==0 on:click=move |_|{offset.update(|n|*n=n.saturating_sub(500));if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"上一页","Previous page")}</button><span>{move ||format!("{}–{} / {}",offset.get()+usize::from(rows.with(|r|!r.is_empty())),(offset.get()+500).min(rows.with(|r|r.len())),rows.with(|r|r.len()))}</span><button class="quiet" disabled=move ||{offset.get()+500>=rows.with(|r|r.len())} on:click=move |_|{offset.update(|n|*n+=500);if let Some(n)=scroll.get(){n.set_scroll_top(0);}}>{move ||tr(english.get(),"下一页","Next page")}</button></footer>
     </section>})}</Show>}
 }
