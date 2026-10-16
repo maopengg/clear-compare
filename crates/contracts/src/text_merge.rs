@@ -40,6 +40,24 @@ pub fn preview(
     target: &Side,
     ending: Option<&LineEnding>,
 ) -> Result<Preview, String> {
+    let empty = BTreeSet::new();
+    if *target == Side::Left {
+        preview_both(original, selected, &empty, ending, None)
+    } else {
+        preview_both(original, &empty, selected, None, ending)
+    }
+}
+
+pub fn preview_both(
+    original: &TextDiff,
+    left: &BTreeSet<usize>,
+    right: &BTreeSet<usize>,
+    left_ending: Option<&LineEnding>,
+    right_ending: Option<&LineEnding>,
+) -> Result<Preview, String> {
+    if !left.is_disjoint(right) {
+        return Err("A hunk cannot target both sides".into());
+    }
     let mut lines = Vec::new();
     let mut hunks = BTreeMap::new();
     let (mut i, mut group, mut display_row) = (0, 0, 0);
@@ -55,7 +73,17 @@ pub fn preview(
             i += 1;
         }
         let block = &original.lines[start..i];
-        if selected.contains(&group) {
+        if left.contains(&group) || right.contains(&group) {
+            let target = if left.contains(&group) {
+                &Side::Left
+            } else {
+                &Side::Right
+            };
+            let ending = if *target == Side::Left {
+                left_ending
+            } else {
+                right_ending
+            };
             for line in block.iter().filter(|line| {
                 if *target == Side::Right {
                     line.old_line.is_some()
@@ -107,7 +135,7 @@ pub fn preview(
         }
         group += 1;
     }
-    if selected.iter().any(|id| *id >= group) {
+    if left.iter().chain(right).any(|id| *id >= group) {
         return Err("Unknown text hunk".into());
     }
     let (mut old, mut new) = (0, 0);
@@ -122,9 +150,11 @@ pub fn preview(
         }
     }
     let mut generation = DefaultHasher::new();
-    selected.hash(&mut generation);
+    left.hash(&mut generation);
+    right.hash(&mut generation);
+    format!("{left_ending:?}:{right_ending:?}").hash(&mut generation);
     let diff = TextDiff {
-        id: format!("{}:{target:?}:{}", original.id, generation.finish()),
+        id: format!("{}:both:{}", original.id, generation.finish()),
         path: original.path.clone(),
         intraline_limited: original.intraline_limited,
         lines,
@@ -164,6 +194,29 @@ mod tests {
                 line("insert", "tail"),
             ],
         }
+    }
+    #[test]
+    fn independent_targets_preserve_both_buffers_and_their_line_endings() {
+        let d = fixture();
+        let p = preview_both(
+            &d,
+            &BTreeSet::from([1]),
+            &BTreeSet::from([0]),
+            Some(&LineEnding::CrLf),
+            Some(&LineEnding::Lf),
+        )
+        .unwrap();
+        assert_eq!(
+            text(&p.diff, &Side::Left),
+            "head\n左🙂\r\nextra\nmiddle\ntail"
+        );
+        assert_eq!(
+            text(&p.diff, &Side::Right),
+            "head\n左🙂\nextra\nmiddle\ntail"
+        );
+        assert!(p.hunks.is_empty());
+        assert!(preview_both(&d, &BTreeSet::from([0]), &BTreeSet::from([0]), None, None).is_err());
+        assert!(preview_both(&d, &BTreeSet::from([9]), &BTreeSet::new(), None, None).is_err());
     }
     #[test]
     fn selected_hunk_preserves_unrelated_changes_and_renumbers() {

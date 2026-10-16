@@ -58,6 +58,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
    if(command==='set_text_merge_dirty'){window.__qa.guards.push(args.dirty);return null;}
    if(command==='save_document'){
     const d=window.__qa.documents[args.documentId];
+    if(window.__qa.failSide===d.side)throw new Error('Synthetic side save failed');
     if(window.__qa.externalEdit||window.__qa.files[d.side]!==d.text)throw new Error('File changed externally; save blocked');
     window.__qa.saves.push({side:d.side,text:args.text});window.__qa.files[d.side]=args.text;delete window.__qa.documents[d.id];
     const saved={...d,id:d.id+'-saved',text:args.text,digest:'after'};window.__qa.documents[saved.id]=saved;
@@ -81,11 +82,11 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  const rightText=()=>page.locator('.shared-diff').nth(1).innerText();
  await open();assert.equal(await rightArrows().count(),2);
  await rightArrows().first().click();
- await page.getByRole('button',{name:'保存右侧',exact:true}).waitFor();
+ await page.getByRole('button',{name:'保存两侧',exact:true}).waitFor();
  await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert((await rightText()).includes('leftA'));assert((await rightText()).includes('rightB'));
  assert.equal(await page.evaluate(()=>window.__qa.saves.length),0);
- assert.equal(await leftArrows().first().isDisabled(),true);
+ assert.equal(await leftArrows().first().isEnabled(),true);
  assert.equal(await page.getByRole('button',{name:'返回目录',exact:true}).isDisabled(),true);
  assert.equal(await page.locator('.top-actions').evaluate(n=>n.inert),true);
  await page.getByRole('button',{name:'撤销合并',exact:true}).click();
@@ -99,7 +100,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await rightArrows().first().click();
  await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert((await rightText()).includes('leftB'));
- await page.getByRole('button',{name:'保存右侧',exact:true}).click();
+ await page.getByRole('button',{name:'保存两侧',exact:true}).click();
  await page.waitForFunction(()=>window.__qa.saves.length===1&&!document.querySelector('.progress'));
  assert.deepEqual(await page.evaluate(()=>window.__qa.saves),[{side:'right',text:'head\nleftA\nmiddle\nleftB\nend\n'}]);
  assert.equal(await page.evaluate(()=>window.__qa.guards.at(-1)),false);
@@ -110,7 +111,7 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await leftArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert((await page.locator('.shared-diff').first().innerText()).includes('rightA'));
  await page.evaluate(()=>{window.__qa.externalEdit=true});
- await page.getByRole('button',{name:'保存左侧',exact:true}).click();
+ await page.getByRole('button',{name:'保存两侧',exact:true}).click();
  await page.getByRole('alert').waitFor();
  assert((await page.getByRole('alert').innerText()).includes('File changed externally'));
  assert.equal(await page.evaluate(()=>window.__qa.saves.length),0);
@@ -122,8 +123,8 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  // An external source edit must also block saving the staged target.
  await leftArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
  await page.evaluate(()=>{window.__qa.files.right='outside source change\n';window.__qa.externalEdit=false});
- await page.getByRole('button',{name:'保存左侧',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.progress'));
- assert((await page.getByRole('alert').innerText()).includes('来源在合并期间发生变化'));
+ await page.getByRole('button',{name:'保存两侧',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ assert((await page.getByRole('alert').innerText()).includes('来源或目标在合并期间发生变化'));
  assert.equal(await page.evaluate(()=>window.__qa.saves.length),0);
  await page.getByRole('button',{name:'放弃合并',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.progress'));
  // Refuse stale comparison evidence before the first staged change.
@@ -132,6 +133,47 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert((await page.getByRole('alert').innerText()).includes('文件在比较后发生变化'));
  assert.equal(await page.getByRole('button',{name:'返回目录',exact:true}).isEnabled(),true);
  assert.equal(await page.evaluate(()=>Object.keys(window.__qa.documents).length),0);
+ // Both targets may be dirty simultaneously; shortcuts save only the focused side.
+ await open();
+ await rightArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ await page.getByLabel('左侧文本',{exact:true}).focus();await page.keyboard.press('Control+s');
+ await page.waitForFunction(()=>!document.querySelector('.progress'));
+ assert.equal(await page.evaluate(()=>window.__qa.saves.length),0);
+ await leftArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ assert((await page.locator('.merge-state').innerText()).includes('左侧未保存'));
+ assert((await page.locator('.merge-state').innerText()).includes('右侧未保存'));
+ assert.equal(await page.evaluate(()=>window.__qa.saves.length),0);
+ await page.getByLabel('左侧文本',{exact:true}).focus();await page.keyboard.press('Meta+s');
+ await page.waitForFunction(()=>window.__qa.saves.length===1&&!document.querySelector('.progress'));
+ assert.deepEqual(await page.evaluate(()=>window.__qa.saves),[{side:'left',text:'head\nleftA\nmiddle\nrightB\nend\n'}]);
+ assert((await page.locator('.merge-state').innerText()).includes('右侧未保存'));
+ assert(!(await page.locator('.merge-state').innerText()).includes('左侧未保存'));
+ assert.equal(await page.evaluate(()=>window.__qa.guards.at(-1)),true);
+ await page.getByLabel('右侧文本',{exact:true}).focus();await page.keyboard.press('Control+s');
+ await page.waitForFunction(()=>window.__qa.saves.length===2&&!document.querySelector('.progress'));
+ assert.equal(await page.evaluate(()=>window.__qa.saves[1].side),'right');
+ assert.equal(await page.evaluate(()=>window.__qa.guards.at(-1)),false);
+ // The button saves both. A second-side failure must retain that side and the first committed save.
+ await open();
+ await rightArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ await leftArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ await page.getByRole('button',{name:'保存两侧',exact:true}).click();
+ await page.waitForFunction(()=>window.__qa.saves.length===2&&!document.querySelector('.progress'));
+ assert.deepEqual(await page.evaluate(()=>window.__qa.saves.map(s=>s.side)),['left','right']);
+ assert.equal(await page.evaluate(()=>window.__qa.guards.at(-1)),false);
+ await open();
+ await rightArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ await leftArrows().first().click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ await page.evaluate(()=>window.__qa.failSide='right');
+ await page.getByRole('button',{name:'保存两侧',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.progress'));
+ assert.deepEqual(await page.evaluate(()=>window.__qa.saves.map(s=>s.side)),['left']);
+ assert((await page.locator('.merge-state').innerText()).includes('右侧未保存'));
+ assert(!(await page.locator('.merge-state').innerText()).includes('左侧未保存'));
+ assert.equal(await page.evaluate(()=>window.__qa.guards.at(-1)),true);
+ await page.evaluate(()=>window.__qa.failSide=null);
+ await page.getByLabel('右侧文本',{exact:true}).focus();await page.keyboard.press('Control+s');
+ await page.waitForFunction(()=>window.__qa.saves.length===2&&!document.querySelector('.progress'));
+ assert.equal(await page.evaluate(()=>window.__qa.guards.at(-1)),false);
  // A hunk continued on page 2 can shrink the file below the old page offset.
  await open(()=>{window.__qa.files.left=Array.from({length:10},(_,i)=>'L'+i+'\n').join('')+'end\n';window.__qa.files.right=Array.from({length:600},(_,i)=>'R'+i+'\n').join('')+'end\n';});
  await page.locator('.text-pagination').getByRole('button',{name:'下一页',exact:true}).click();
@@ -142,6 +184,6 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  assert.equal(await page.getByRole('button',{name:'下一差异',exact:true}).isDisabled(),true);
  await page.getByRole('button',{name:'放弃合并',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.progress'));
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({passed:true,checks:['per-hunk left-to-right','unrelated hunk retained','undo and redo','dirty target and navigation guard','explicit save only','right-to-left','failed-save buffer retained','discard','external source change rejected','stale target rejected','continued hunk and shrinking-page recovery'],pageErrors:errors}));
+ console.log(JSON.stringify({passed:true,checks:['independent simultaneous left/right staging','focused Meta+S and Control+S','clean focused pane does not save opposite side','save both','partial-save failure and retry','per-hunk left-to-right','unrelated hunk retained','undo and redo','dirty target and navigation guard','explicit save only','right-to-left','failed-save buffer retained','discard','external source change rejected','stale target rejected','continued hunk and shrinking-page recovery'],pageErrors:errors}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});
