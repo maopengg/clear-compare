@@ -160,3 +160,79 @@ fn reverse_copy_uses_right_source_and_left_backup() {
         "old left"
     );
 }
+
+#[test]
+fn single_file_copy_in_large_inventory_has_a_scoped_restart_record() {
+    use std::time::Instant;
+    let base = tempfile::tempdir().unwrap();
+    for name in ["left", "right", "backups", "undo"] {
+        fs::create_dir(base.path().join(name)).unwrap();
+    }
+    let (left, right, backups) = (
+        base.path().join("left"),
+        base.path().join("right"),
+        base.path().join("backups"),
+    );
+    fs::write(left.join("code.txt"), vec![b'l'; 24_000]).unwrap();
+    fs::write(right.join("code.txt"), vec![b'r'; 4_700]).unwrap();
+    let cancel = AtomicBool::new(false);
+    let mut snapshot = compare::compare(&request(&left, &right), &cancel).unwrap();
+    let selected = snapshot.report.rows[0].id.clone();
+    // Captured unrelated entries need no on-disk fixture: selected copy must never read them.
+    let template = snapshot.report.rows[0].clone();
+    for i in 1..105_000 {
+        let mut row = template.clone();
+        row.id = i.to_string();
+        row.path = format!("unrelated/item-{i}.txt");
+        snapshot
+            .paths
+            .insert(row.id.clone(), std::path::PathBuf::from(&row.path));
+        snapshot.report.rows.push(row);
+    }
+    let text_start = Instant::now();
+    let text = clear_core::text::preview(&snapshot, &selected).unwrap();
+    eprintln!(
+        "105000-entry text preview: {:?}, {} diff rows",
+        text_start.elapsed(),
+        text.lines.len()
+    );
+    let start = Instant::now();
+    let plan = sync::plan_direction(
+        &snapshot,
+        &[selected],
+        &backups,
+        &cancel,
+        clear_contracts::Side::Right,
+    )
+    .unwrap();
+    let planned = start.elapsed();
+    let result = sync::execute(&snapshot, &plan, &cancel).unwrap();
+    let elapsed = start.elapsed();
+    assert!(
+        result.actions.iter().all(|a| a.state == "completed"),
+        "{:?}",
+        result.actions
+    );
+    assert_eq!(fs::read(left.join("code.txt")).unwrap(), vec![b'r'; 4_700]);
+    assert_eq!(fs::read(right.join("code.txt")).unwrap(), vec![b'r'; 4_700]);
+    let intent = std::path::Path::new(&plan.backup_root).join("intent.json");
+    let bytes = fs::read(&intent).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    eprintln!(
+        "105000-entry selected copy: plan={planned:?}, total={elapsed:?}, intent={} bytes / {} rows",
+        bytes.len(),
+        value["rows"].as_array().unwrap().len()
+    );
+    assert_eq!(value["rows"].as_array().unwrap().len(), 1);
+    assert!(bytes.len() < 32_000);
+    let undo = clear_core::recovery::preview(
+        std::path::Path::new(&result.journal),
+        &base.path().join("undo"),
+        &cancel,
+    )
+    .unwrap();
+    let recovered = clear_core::recovery::execute(&undo, &cancel).unwrap();
+    assert!(recovered.actions.iter().all(|a| a.state == "completed"));
+    assert_eq!(fs::read(left.join("code.txt")).unwrap(), vec![b'l'; 24_000]);
+    assert_eq!(fs::read(right.join("code.txt")).unwrap(), vec![b'r'; 4_700]);
+}

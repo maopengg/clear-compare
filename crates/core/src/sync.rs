@@ -270,10 +270,12 @@ pub fn plan_direction(
     let id = unique_id();
     let mut actions = Vec::new();
     let mut seen = BTreeSet::new();
+    let requested = row_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
     let rows = snapshot
         .report
         .rows
         .iter()
+        .filter(|r| requested.contains(r.id.as_str()))
         .map(|r| (r.id.as_str(), r))
         .collect::<BTreeMap<_, _>>();
     for row_id in row_ids {

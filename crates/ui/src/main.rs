@@ -19,12 +19,14 @@ use wasm_bindgen::prelude::*;
   const menu=document.querySelector('details[name=workspace-menu][open]');
   if(menu){menu.open=false;menu.querySelector('summary').focus();event.preventDefault();}
  });
-} export function operationDelay(){return new Promise(resolve=>setTimeout(resolve,250));} export function desktopInvoke(command,args){ if(!window.__TAURI__) return Promise.reject('Please open the installed Clear Compare desktop app.'); return window.__TAURI__.core.invoke(command,args); }")]
+} export function operationDelay(){return operationPollDelay(16);} export function operationPollDelay(ms){return new Promise(resolve=>setTimeout(resolve,ms));} export function desktopInvoke(command,args){ if(!window.__TAURI__) return Promise.reject('Please open the installed Clear Compare desktop app.'); return window.__TAURI__.core.invoke(command,args); }")]
 extern "C" {
     #[wasm_bindgen(js_name = installWorkspaceMenus)]
     fn install_workspace_menus();
     #[wasm_bindgen(js_name = operationDelay)]
     fn operation_delay() -> js_sys::Promise;
+    #[wasm_bindgen(js_name = operationPollDelay)]
+    fn operation_poll_delay(milliseconds: u32) -> js_sys::Promise;
     #[wasm_bindgen(js_name = desktopInvoke)]
     fn desktop_invoke(command: &str, args: JsValue) -> js_sys::Promise;
 }

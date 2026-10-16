@@ -1,5 +1,5 @@
 //! Bounded status polling: the native worker owns progress and a single final result.
-use crate::{invoke, operation_delay};
+use crate::{invoke, operation_poll_delay};
 use clear_contracts::*;
 use leptos::prelude::*;
 use serde::Serialize;
@@ -55,6 +55,7 @@ pub async fn follow(
     handle: TaskHandle,
     progress: RwSignal<Option<TaskProgress>>,
 ) -> Result<OperationOutcome, String> {
+    let mut poll_ms = 16;
     loop {
         let next =
             invoke::<TaskProgress>("operation_status", serde_json::json!({"taskId":handle.id}))
@@ -71,8 +72,9 @@ pub async fn follow(
             )
             .await;
         }
-        wasm_bindgen_futures::JsFuture::from(operation_delay())
+        wasm_bindgen_futures::JsFuture::from(operation_poll_delay(poll_ms))
             .await
             .map_err(|_| "Progress timer unavailable")?;
+        poll_ms = (poll_ms * 2).min(250);
     }
 }

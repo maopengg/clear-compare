@@ -6,7 +6,7 @@ use clear_contracts::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use std::io::{BufWriter, Read};
 pub const MAX_INTENT: u64 = 128 * 1024 * 1024;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -256,7 +256,7 @@ pub fn read<T: DeserializeOwned>(path: &Path, limit: u64) -> Result<(T, String)>
 }
 pub fn write<T: Serialize>(path: &Path, value: &T, limit: u64) -> Result<String> {
     struct Limited<'a> {
-        file: &'a mut File,
+        file: &'a mut dyn Write,
         left: u64,
     }
     impl Write for Limited<'_> {
@@ -278,13 +278,17 @@ pub fn write<T: Serialize>(path: &Path, value: &T, limit: u64) -> Result<String>
         .parent()
         .ok_or_else(|| Error::Invalid("Restart metadata parent missing".into()))?;
     let mut temporary = NamedTempFile::new_in(parent)?;
-    serde_json::to_writer_pretty(
-        Limited {
-            file: temporary.as_file_mut(),
-            left: limit,
-        },
-        value,
-    )?;
+    {
+        let mut buffered = BufWriter::with_capacity(64 * 1024, temporary.as_file_mut());
+        serde_json::to_writer_pretty(
+            Limited {
+                file: &mut buffered,
+                left: limit,
+            },
+            value,
+        )?;
+        buffered.flush()?;
+    }
     temporary.as_file().sync_all()?;
     temporary.persist_noclobber(path).map_err(|e| e.error)?;
     flush_directory(parent)?;
@@ -344,10 +348,20 @@ pub fn capture(snapshot: &Snapshot, plan: &SyncPlan) -> Result<Intent> {
             })
         })
         .collect::<Result<Vec<_>>>()?;
+    // Selected copies need only their own captured rows for replay. Mirrors retain
+    // the complete inventory because their deletion policy depends on its scope.
+    let selected = plan
+        .actions
+        .iter()
+        .map(|a| a.row_id.as_str())
+        .collect::<BTreeSet<_>>();
     let rows = snapshot
         .report
         .rows
         .iter()
+        .filter(|row| {
+            plan.policy != FilePlanPolicy::SelectedCopy || selected.contains(row.id.as_str())
+        })
         .map(|row| {
             Ok(Captured {
                 id: row.id.clone(),

@@ -88,8 +88,10 @@ const fs=require('fs/promises');const path=require('path');const assert=require(
  await page.keyboard.press('Escape');
  await page.locator('.directory-scroll').evaluate(n=>{n.scrollTop=20});
  const retainedScroll=await page.locator('.directory-scroll').evaluate(n=>n.scrollTop);
+ const textOpenStarted=performance.now();
  await page.getByRole('button',{name:'compare.rs',exact:true}).first().dblclick();
  await page.locator('#text-comparison .diff-cell').first().waitFor();
+ metrics.push({view:'text-open',automationAndRenderMs:performance.now()-textOpenStarted});
  assert.equal(await page.locator('.directory-host').isVisible(),false);
  for(const viewport of [{width:1260,height:840},{width:900,height:620}]){
   await page.setViewportSize(viewport);
