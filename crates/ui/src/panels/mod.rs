@@ -25,3 +25,5 @@ pub mod resume;
 pub mod bidirectional;
 
 pub mod directory;
+
+pub mod text_merge;

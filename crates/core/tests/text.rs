@@ -180,3 +180,28 @@ fn annotations_and_alignment_never_alter_source_reconstruction() {
         }
     }
 }
+
+#[test]
+fn missing_side_created_after_comparison_is_not_treated_as_empty() {
+    let left = tempfile::tempdir().unwrap();
+    let right = tempfile::tempdir().unwrap();
+    std::fs::write(left.path().join("sample.txt"), "source\n").unwrap();
+    let snapshot = clear_core::compare::compare(
+        &clear_contracts::CompareRequest {
+            left: left.path().to_string_lossy().into_owned(),
+            right: right.path().to_string_lossy().into_owned(),
+            exclusions: String::new(),
+            content: false,
+        },
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+    .unwrap();
+    let id = &snapshot.report.rows[0].id;
+    assert_eq!(clear_core::text::load_pair(&snapshot, id).unwrap().2, "");
+    std::fs::write(right.path().join("sample.txt"), "appeared\n").unwrap();
+    assert!(clear_core::text::load_pair(&snapshot, id).is_err());
+    assert_eq!(
+        std::fs::read_to_string(right.path().join("sample.txt")).unwrap(),
+        "appeared\n"
+    );
+}

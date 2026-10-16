@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-text-merge-dirty"
+description = "Enables the set_text_merge_dirty command without any pre-configured scope."
+commands.allow = ["set_text_merge_dirty"]
+
+[[permission]]
+identifier = "deny-set-text-merge-dirty"
+description = "Denies the set_text_merge_dirty command without any pre-configured scope."
+commands.deny = ["set_text_merge_dirty"]

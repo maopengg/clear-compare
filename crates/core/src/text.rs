@@ -286,7 +286,16 @@ pub fn load_pair(snapshot: &Snapshot, row_id: &str) -> Result<(String, String, S
         .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
     let load = |root: &Path, entry: Option<&clear_contracts::Entry>| -> Result<String> {
         match entry {
-            None => Ok(String::new()),
+            None => {
+                let candidate = checked_path(root, path, true)?;
+                match std::fs::symlink_metadata(candidate) {
+                    Ok(_) => Err(Error::Invalid(
+                        "File appeared on a missing comparison side; compare again".into(),
+                    )),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+                    Err(e) => Err(e.into()),
+                }
+            }
             Some(e) if e.kind == Kind::File => read_text(&checked_path(root, path, false)?),
             _ => Err(Error::Invalid("Select a regular text file".into())),
         }

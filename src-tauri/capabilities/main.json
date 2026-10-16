@@ -22,6 +22,7 @@
     "allow-archive-text-diff",
     "allow-pick-archive",
     "allow-cancel",
+    "allow-set-text-merge-dirty",
     "allow-page",
     "allow-query-folder",
     "allow-picture-preview",

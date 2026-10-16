@@ -41,3 +41,13 @@ NODE_PATH=./target/work/ui-qa/node_modules node scripts/check-workspace-density.
 ```
 
 Ordinary LF/CRLF/CR and missing-final-newline labels are hidden by default. Significant paired line-ending differences remain visible; ignored EOL differences retain the existing rule semantics. Display / legend contains a Show all line endings option for inspecting every original ending. This changes presentation only and never rewrites line endings.
+
+## Inline two-way text merge
+
+Local folder text comparisons provide ← / → buttons at the first row of each changed block, including blocks continued on a later 500-row page. Each button stages that block from the other side, while unrelated changes remain untouched. The destination header and toolbar show unsaved state. Undo/redo retain up to 128 selections. One destination is edited at a time; save or discard it before changing the other side. Back navigation and other workspace tools stay locked while changes are pending, and native close/quit requests are blocked until they are saved or discarded.
+
+Saving is explicit. It rechecks the source against the compared text, then uses the existing native editor's digest revalidation, verified original-byte backup, encoding/BOM and target newline policy, and journal. After saving, the text pair is read and compared again; remaining format differences are therefore retained. The directory snapshot is marked as needing a new comparison; it is not silently declared up to date. Failed saves retain the buffer. Stale targets are rejected before the first staged change, and a previously missing side that has appeared on disk is rejected rather than treated as empty text.
+
+Git/archive comparisons remain read-only in this view. Creating a missing counterpart uses the directory copy workflow; inline merge writes only existing regular files. Mixed-EOL targets require an explicit newline choice in the existing editor before using inline merging. This does not add concurrent editing of both sides or arbitrary typing in the line viewer.
+
+`NODE_PATH=./target/work/ui-qa/node_modules node scripts/check-inline-merge.cjs` exercises both directions, multiple blocks, undo/redo, no write before Save, failure retention, discard, and stale evidence using synthetic bridge replies. Pure contract tests cover insertions/deletions, Unicode, ignored-equal original text, final newlines and pagination. Native editor integration tests verify encoding retention, backups and external-change rejection. Browser tests do not verify native OS close dialogs.

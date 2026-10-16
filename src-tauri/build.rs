@@ -24,6 +24,7 @@ fn main() {
             "archive_text_diff",
             "pick_archive",
             "cancel",
+            "set_text_merge_dirty",
             "page",
             "query_folder",
             "picture_preview",

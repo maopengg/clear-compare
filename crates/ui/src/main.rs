@@ -128,6 +128,8 @@ fn App() -> impl IntoView {
     let rename_name = RwSignal::new(String::new());
     let selected = RwSignal::new(BTreeSet::<String>::new());
     let diff = RwSignal::new(None::<TextDiff>);
+    let text_context = RwSignal::new(None::<panels::text_merge::Context>);
+    let text_merge_dirty = RwSignal::new(false);
     let ignore_case = RwSignal::new(false);
     let ignore_space = RwSignal::new(false);
     let ignore_endings = RwSignal::new(false);
@@ -584,9 +586,32 @@ fn App() -> impl IntoView {
         busy.set(true);
         error.set(String::new());
         diff.set(None);
+        text_context.set(None);
+        let merge_row = rows.with_untracked(|rows| rows.iter().find(|r| r.id == id).cloned());
+        let text_options = TextOptions {
+            ignore_case: ignore_case.get_untracked(),
+            ignore_whitespace: ignore_space.get_untracked(),
+            ignore_line_endings: ignore_endings.get_untracked(),
+        };
         spawn_local(async move {
-            match invoke::<TextDiff>("text_diff",serde_json::json!({"session":c.session,"rowId":id,"options":{"ignore_case":ignore_case.get_untracked(),"ignore_whitespace":ignore_space.get_untracked(),"ignore_line_endings":ignore_endings.get_untracked()}})).await {
-                Ok(d)=>diff.set(Some(d)),Err(e)=>error.set(e)
+            match invoke::<TextDiff>(
+                "text_diff",
+                serde_json::json!({"session":c.session,"rowId":id,"options":text_options}),
+            )
+            .await
+            {
+                Ok(d) => {
+                    text_context.set(merge_row.map(|row| panels::text_merge::Context {
+                        diff_id: d.id.clone(),
+                        session: c.session.clone(),
+                        row_id: id.clone(),
+                        options: text_options.clone(),
+                        left: row.left.is_some_and(|e| e.kind == Kind::File),
+                        right: row.right.is_some_and(|e| e.kind == Kind::File),
+                    }));
+                    diff.set(Some(d));
+                }
+                Err(e) => error.set(e),
             }
             busy.set(false);
         });
@@ -1436,7 +1461,7 @@ fn App() -> impl IntoView {
                 <main class=move ||if comparison.get().is_some(){if diff.get().is_some(){"workspace compact-workspace has-comparison active-text"}else{"workspace compact-workspace has-comparison"}}else{if diff.get().is_some(){"workspace compact-workspace active-text"}else{"workspace compact-workspace"}} data-theme=move ||theme.get().value()>
                     <header class="topbar">
                         <div class="identity"><span class="mark" aria-hidden="true">"⇄"</span><strong>"Clear Compare"</strong><span class="version">"0.1 preview"</span></div>
-                        <div class="top-actions"><details name="workspace-menu" class="app-menu"><summary>{move ||tr(english.get(),"工具","Tools")}</summary><div class="menu-body"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);git_visible.set(true);}>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);archive_visible.set(true);}>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|reconnect_operation()>{move ||tr(english.get(),"连接文件任务","Connect file task")}</button></div></details>{panels::bidirectional::panel(english,busy,error,comparison,operation_progress,bidi,complete_bidi,recover_bidi,reset)}<span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
+                        <div class="top-actions" inert=move ||text_merge_dirty.get()><details name="workspace-menu" class="app-menu"><summary>{move ||tr(english.get(),"工具","Tools")}</summary><div class="menu-body"><button class="quiet" aria-expanded=move ||help_visible.get() aria-controls="help-panel" on:click=move |_|help_visible.update(|v| *v = !*v)>{move ||tr(english.get(),"帮助 / 主题","Help / theme")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);git_visible.set(true);}>"Git"</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|{diff.set(None);archive_visible.set(true);}>{move ||tr(english.get(),"归档 / 快照","Archives / snapshots")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|folder_merge_visible.set(!folder_merge_visible.get_untracked())>{move ||tr(english.get(),"目录合并","Folder merge")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|refresh_library()>{move ||tr(english.get(),"会话库","Session library")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|load_history()>{move ||tr(english.get(),"操作历史","Operation history")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|reconnect_operation()>{move ||tr(english.get(),"连接文件任务","Connect file task")}</button></div></details>{panels::bidirectional::panel(english,busy,error,comparison,operation_progress,bidi,complete_bidi,recover_bidi,reset)}<span class="local-label">{move || tr(english.get(),"本地处理 · 自动备份","Local processing · Verified backups")}</span>
                         <button class="quiet" on:click=move |_| english.update(|v| *v = !*v)>{move || if english.get() { "中文" } else { "English" }}</button></div>
                     </header>
                     {panels::help::panel(english,help_visible,theme,theme_error)}
@@ -1489,7 +1514,7 @@ fn App() -> impl IntoView {
                         }}</p>
                         <div class="summary-bar"><span class="stat">{move ||tr(english.get(),"统计","Summary")}</span>{move || comparison.get().map(|c| { let s=c.summary; view! {<span class="stat changed">{format!("{} {}",tr(english.get(),"修改","Changed"),s.changed)}</span><span class="stat left">{format!("{} {}",tr(english.get(),"仅左","Left only"),s.left_only)}</span><span class="stat right">{format!("{} {}",tr(english.get(),"仅右","Right only"),s.right_only)}</span><span class="stat same">{format!("{} {}",tr(english.get(),"一致","Same"),s.same)}</span><span class="stat">{format!("{} {} · {} {}",tr(english.get(),"未验证","Unverified"),s.unverified,tr(english.get(),"错误","Errors"),s.errors)}</span>} })}</div>                    <div class="pagination"><span>{move || format!("{}–{} / {}",offset.get()+usize::from(visible_total.get()>0),(offset.get()+500).min(visible_total.get()),visible_total.get())}</span><button class="quiet" disabled=move || offset.get()==0 || busy.get() on:click=move |_| paginate(false)>{move || tr(english.get(),"上一页","Previous")}</button><button class="quiet" disabled=move || busy.get() || (offset.get()+500>=visible_total.get()) on:click=move |_| paginate(true)>{move || tr(english.get(),"下一页","Next")}</button></div></div>
                     </Show></div>
-                    {panels::text::panel(english,diff,move |d|{merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);})}
+                    {panels::text::panel(panels::text::Signals{english,busy,error,dirty:text_merge_dirty,context:text_context,diff},move |backup|{plan.set(None);comparison_verified.set(false);message.set(format!("{} {}",tr(english.get_untracked(),"合并已保存；原始内容备份：","Merge saved; original backup:"),backup));},move |d|{merge_left.set(d.lines.iter().filter(|l|l.old_line.is_some()).map(|l|l.text.clone()).collect::<String>());merge_right.set(d.lines.iter().filter(|l|l.new_line.is_some()).map(|l|l.right_text.clone().unwrap_or_else(||l.text.clone())).collect::<String>());merge_result.set(None);merge_visible.set(true);})}
                     {panels::picture::panel(english,busy,panels::picture::Signals{picture,picture_id,picture_tolerance,picture_ignore_alpha},open_picture)}
                     {panels::table::panel(english,busy,panels::table::Signals{table_visible, table, table_document, table_left_mode,table_right_mode,table_left_index,table_right_index, table_headers, table_align_names, table_key, table_tolerance, table_offset}, compare_table_document, paginate_table,table_catalog,close_table)}
                     {panels::binary::panel(english,busy,panels::binary::Signals{binary, binary_id, comparison, error}, open_binary)}

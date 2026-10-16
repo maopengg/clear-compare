@@ -17,6 +17,7 @@ use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 struct Backend {
+    text_merge_dirty: AtomicBool,
     baseline: Mutex<Option<(String, PathBuf)>>,
     bidirectional: Mutex<Option<clear_core::bidirectional::Plan>>,
     bidirectional_recovery: Mutex<Option<clear_core::bidirectional::RecoveryPlan>>,
@@ -108,6 +109,11 @@ async fn compare(
     };
     *state.snapshot.lock().map_err(|_| "State unavailable")? = Some(Arc::new(snapshot));
     Ok(opened)
+}
+
+#[tauri::command]
+fn set_text_merge_dirty(dirty: bool, state: State<'_, Arc<Backend>>) {
+    state.text_merge_dirty.store(dirty, Ordering::Release);
 }
 
 #[tauri::command]
@@ -1491,6 +1497,7 @@ fn main() {
             archive_text_diff,
             pick_archive,
             cancel,
+            set_text_merge_dirty,
             page,
             query_folder,
             picture_preview,
@@ -1539,6 +1546,19 @@ fn main() {
             apply_sync_resume,
             apply_sync_recovery
         ])
-        .run(tauri::generate_context!())
-        .expect("desktop runtime failed");
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && window.state::<Arc<Backend>>().text_merge_dirty.load(Ordering::Acquire) {
+                api.prevent_close();
+                window.app_handle().dialog().message("请先保存或放弃文本合并，再关闭应用。 / Save or discard the text merge before closing.").title("未保存的合并 / Unsaved merge").show(|_|{});
+            }
+        })
+        .build(tauri::generate_context!()).expect("desktop runtime failed")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event
+                && app.state::<Arc<Backend>>().text_merge_dirty.load(Ordering::Acquire) {
+                api.prevent_exit();
+                app.dialog().message("请先保存或放弃文本合并，再退出应用。 / Save or discard the text merge before quitting.").title("未保存的合并 / Unsaved merge").show(|_|{});
+            }
+        });
 }

@@ -176,3 +176,19 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .compact-workspace ::-webkit-scrollbar-thumb:hover{background:var(--muted);border:1px solid transparent;background-clip:padding-box}
 .compact-workspace ::-webkit-scrollbar-corner{background:var(--bg)}
 @supports not selector(::-webkit-scrollbar){.compact-workspace *{scrollbar-width:thin;scrollbar-color:var(--muted) transparent}}
+
+/* Inline hunk merging stays in the paired comparison surface. */
+.diff-render-row{display:flex;min-height:22px}
+.diff-render-row>.diff-cell{flex:1}
+.merge-arrow-slot{position:sticky;left:0;z-index:2;width:23px;flex:0 0 23px;background:var(--surface);border-right:1px solid var(--line);display:flex;align-items:flex-start;justify-content:center}
+.compact-workspace button.merge-arrow{width:21px;height:21px;min-height:0;padding:0;line-height:20px;border:0;border-radius:2px;color:var(--primary);background:var(--selected);font-size:17px;font-weight:600}
+.compact-workspace button.merge-arrow:hover:not(:disabled){background:var(--line)}
+.text-merge-bar{display:flex;align-items:center;gap:6px;min-height:33px;padding:3px 10px;border-bottom:1px solid var(--line);background:var(--surface);font-size:11px;white-space:nowrap}
+.text-merge-bar .merge-state{flex:1;overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--muted)}
+.text-merge-bar .primary{font-size:11px}
+.diff-column-head strong{color:var(--amber);font-size:11px}
+.compact-workspace .diff-column-head{z-index:4}
+/* Empty gutter cells do not need sticky layers; only actionable arrows stay pinned. */
+.merge-arrow-slot{position:static}
+.merge-arrow-slot:has(button){position:sticky;left:0;z-index:2}
+.compact-workspace .top-actions[inert]{opacity:.45}

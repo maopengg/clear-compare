@@ -228,3 +228,55 @@ fn decoded_utf16_expansion_can_be_saved_within_the_encoded_file_limit() {
     assert_eq!(fs::read(&path).unwrap(), bytes);
     assert_eq!(fs::read(saved.backup).unwrap(), bytes);
 }
+
+#[test]
+fn selected_text_hunk_saves_only_that_block_with_original_target_bytes_backed_up() {
+    use clear_contracts::text_merge;
+    use std::collections::BTreeSet;
+    let root = tempfile::tempdir().unwrap();
+    for d in ["left", "right", "backup"] {
+        fs::create_dir(root.path().join(d)).unwrap();
+    }
+    fs::write(
+        root.path().join("left/sample.txt"),
+        "head\r\n左🙂\r\nmiddle\r\nleftB\r\n",
+    )
+    .unwrap();
+    let original = b"head\r\nrightA\r\nmiddle\r\nrightB\r\n";
+    fs::write(root.path().join("right/sample.txt"), original).unwrap();
+    let snapshot = compare::compare(
+        &CompareRequest {
+            left: root.path().join("left").to_string_lossy().into_owned(),
+            right: root.path().join("right").to_string_lossy().into_owned(),
+            content: true,
+            exclusions: String::new(),
+        },
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let id = &snapshot.report.rows[0].id;
+    let diff = clear_core::text::preview(&snapshot, id).unwrap();
+    let document = editing::open(&snapshot, id, Side::Right).unwrap();
+    let preview = text_merge::preview(
+        &diff,
+        &BTreeSet::from([0]),
+        &Side::Right,
+        Some(&document.view.line_ending),
+    )
+    .unwrap();
+    let (_, result) = editing::save(
+        &document,
+        &text_merge::text(&preview.diff, &Side::Right),
+        &root.path().join("backup"),
+    )
+    .unwrap();
+    assert_eq!(
+        fs::read_to_string(root.path().join("right/sample.txt")).unwrap(),
+        "head\r\n左🙂\r\nmiddle\r\nrightB\r\n"
+    );
+    assert_eq!(fs::read(result.backup).unwrap(), original);
+    assert_eq!(
+        fs::read_to_string(root.path().join("left/sample.txt")).unwrap(),
+        "head\r\n左🙂\r\nmiddle\r\nleftB\r\n"
+    );
+}

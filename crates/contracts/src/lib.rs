@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod binary_query;
 pub mod edit_history;
 pub mod merge_edit;
+pub mod text_merge;
 pub mod text_view;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -101,7 +102,7 @@ pub struct OpenedComparison {
     pub page: Page,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DiffLine {
     #[serde(default)]
     pub intraline_limited: bool,
@@ -123,7 +124,7 @@ pub struct TextOptions {
     pub ignore_line_endings: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TextDiff {
     #[serde(default)]
     pub id: String,
