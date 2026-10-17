@@ -1,5 +1,5 @@
 //! Home for comparison projects and captured Git repositories.
-use super::{git_actions, git_history};
+use super::{git_actions, git_history, source};
 use crate::{invoke, tr};
 use clear_contracts::workbench::Action;
 use clear_contracts::{LibraryEntry, workbench::*};
@@ -32,14 +32,22 @@ fn reference_kind(code: &str, en: bool) -> &str {
         _ => tr(en, "标签", "Tag"),
     }
 }
+#[derive(Clone, Copy)]
+pub struct Navigation {
+    pub files: RwSignal<bool>,
+    pub home: RwSignal<bool>,
+    pub library: RwSignal<Option<Vec<LibraryEntry>>>,
+}
 pub fn panel(
     english: RwSignal<bool>,
     busy: RwSignal<bool>,
     error: RwSignal<String>,
+    navigation: Navigation,
     compare: impl Fn() + Copy + Send + Sync + 'static,
     manage: impl Fn() + Copy + Send + Sync + 'static,
     open_project: impl Fn(LibraryEntry) + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
+    let files_visible = navigation.files;
     let catalog = RwSignal::new(Catalog::default());
     let projects = RwSignal::new(Vec::<LibraryEntry>::new());
     let selected = RwSignal::new(None::<RepositoryState>);
@@ -62,8 +70,10 @@ pub fn panel(
         spawn_local(async move {
             match invoke::<Catalog>("workspace_catalog", serde_json::json!({})).await {
                 Ok(c) => {
-                    roots.set(c.settings.roots.clone());
-                    exclusions.set(c.settings.exclusions.join("\n"));
+                    if !settings_open.get_untracked() {
+                        roots.set(c.settings.roots.clone());
+                        exclusions.set(c.settings.exclusions.join("\n"));
+                    }
                     projects.set(c.projects.clone());
                     catalog.set(c);
                 }
@@ -72,7 +82,10 @@ pub fn panel(
         })
     };
     Effect::new(move |_| {
-        load();
+        let _ = navigation.library.get();
+        if navigation.home.get() {
+            load();
+        }
     });
     let scan = move || {
         if busy.get_untracked() {
@@ -203,23 +216,23 @@ pub fn panel(
         }
         r
     });
-    view! {<section class="workbench" aria-label=move ||tr(english.get(),"项目工作台","Project workspace")>
+    view! {<section class="workbench" class:source-active=move ||files_visible.get() on:keydown=move |ev|{if (ev.meta_key()||ev.ctrl_key())&&!ev.alt_key()&&((ev.shift_key()&&ev.key().eq_ignore_ascii_case("f"))||ev.key().eq_ignore_ascii_case("p")){ev.prevent_default();files_visible.set(true);if ev.key().eq_ignore_ascii_case("p"){source::quick_open();}else{source::focus_search();}}} aria-label=move ||tr(english.get(),"项目工作台","Project workspace")>
         <header class="workbench-heading"><div><strong>{move ||tr(english.get(),"工作台","Workspace")}</strong><span>{move ||format!("{} {} · {} {}",projects.with(|p|p.len()),tr(english.get(),"个比较项目","comparison projects"),catalog.with(|c|c.repositories.len()),tr(english.get(),"个 Git 仓库","Git repositories"))}</span></div><button class="quiet" disabled=move ||busy.get() on:click=move |_|manage()>{move ||tr(english.get(),"管理比较项目","Manage comparison projects")}</button><button class="primary" disabled=move ||busy.get() on:click=move |_|compare()>{move ||tr(english.get(),"文件夹比较","Folder comparison")}</button></header>
-        <div class="workbench-toolbar"><nav aria-label=move ||tr(english.get(),"项目分类","Project categories")>{[ ("all","全部","All"),("recent","最近","Recent"),("favorites","收藏","Favorites"),("projects","比较项目","Comparisons"),("repositories","Git 仓库","Git repositories")].into_iter().map(move |(value,zh,en)|view!{<button class="quiet" aria-pressed=move ||mode.get()==value on:click=move |_|{mode.set(value.into());selected.set(None);}>{move ||tr(english.get(),zh,en)}</button>}).collect_view()}</nav><input aria-label=move ||tr(english.get(),"搜索项目与仓库","Search projects and repositories") placeholder=move ||tr(english.get(),"搜索名称、路径、远程地址、分支…","Search name, path, remote or branch…") prop:value=move ||query.get() on:input=move |ev|query.set(event_target_value(&ev))/><button class="quiet" disabled=move ||busy.get() on:click=move |_|browse()>{move ||tr(english.get(),"添加扫描目录","Add scan directory")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|settings_open.update(|v|*v = !*v)>{move ||tr(english.get(),"扫描设置","Scan settings")}</button><button class="quiet" disabled=move ||busy.get()||roots.with(|r|r.is_empty()) on:click=move |_|scan()>{move ||tr(english.get(),"重新扫描","Rescan")}</button></div>
+        <div class="workbench-toolbar"><button class="quiet" on:click=move |_|{files_visible.set(true);source::focus_search();}>{move ||tr(english.get(),"文件 / 全局搜索","Files / global search")}</button><nav aria-label=move ||tr(english.get(),"项目分类","Project categories")>{[ ("all","全部","All"),("recent","最近","Recent"),("favorites","收藏","Favorites"),("projects","比较项目","Comparisons"),("repositories","Git 仓库","Git repositories")].into_iter().map(move |(value,zh,en)|view!{<button class="quiet" aria-pressed=move ||mode.get()==value on:click=move |_|{mode.set(value.into());selected.set(None);}>{move ||tr(english.get(),zh,en)}</button>}).collect_view()}</nav><input aria-label=move ||tr(english.get(),"搜索项目与仓库","Search projects and repositories") placeholder=move ||tr(english.get(),"搜索名称、路径、远程地址、分支…","Search name, path, remote or branch…") prop:value=move ||query.get() on:input=move |ev|query.set(event_target_value(&ev))/><button class="quiet" disabled=move ||busy.get() on:click=move |_|browse()>{move ||tr(english.get(),"添加扫描目录","Add scan directory")}</button><button class="quiet" disabled=move ||busy.get() on:click=move |_|settings_open.update(|v|*v = !*v)>{move ||tr(english.get(),"扫描设置","Scan settings")}</button><button class="quiet" disabled=move ||busy.get()||roots.with(|r|r.is_empty()) on:click=move |_|scan()>{move ||tr(english.get(),"重新扫描","Rescan")}</button></div>
         <Show when=move ||settings_open.get()><section class="workbench-scan" aria-label=move ||tr(english.get(),"扫描设置","Scan settings")><div class="workbench-root-input"><input aria-label=move ||tr(english.get(),"扫描目录路径","Scan directory path") placeholder=move ||tr(english.get(),"输入一个目录，再点击添加","Enter a directory, then Add") prop:value=move ||root.get() on:input=move |ev|root.set(event_target_value(&ev))/><button class="quiet" disabled=move ||busy.get()||root.get().trim().is_empty() on:click=move |_|{let value=root.get_untracked().trim().to_string();roots.update(|r|{if !r.contains(&value){r.push(value);}});root.set(String::new());}>{move ||tr(english.get(),"添加","Add")}</button></div><For each=move ||roots.get() key=|r|r.clone() children=move |path|{let remove=path.clone();view!{<div class="workbench-root"><code>{path}</code><button class="quiet" disabled=move ||busy.get() on:click=move |_|roots.update(|r|r.retain(|p|p!=&remove))>{move ||tr(english.get(),"移除目录","Remove directory")}</button></div>}}/><label>{move ||tr(english.get(),"跳过的目录名称（每行一个；.git 内部始终跳过）","Directory names to skip (one per line; .git internals are always skipped)")}<textarea prop:value=move ||exclusions.get() on:input=move |ev|exclusions.set(event_target_value(&ev))/></label><button class="primary" disabled=move ||busy.get()||roots.with(|r|r.is_empty()) on:click=move |_|scan()>{move ||tr(english.get(),"保存并扫描","Save and scan")}</button></section></Show>
         <Show when=move ||catalog.with(|c|!c.warnings.is_empty()||c.truncated)><details class="workbench-warnings"><summary>{move ||tr(english.get(),"扫描警告","Scan warnings")}</summary><pre>{move ||catalog.with(|c|format!("{}{}",if c.truncated{tr(english.get(),"扫描达到数量或深度上限，请缩小范围。\n","Scan limit reached; narrow the scope.\n")}else{""},c.warnings.join("\n")))}</pre></details></Show>
-        <div class="workbench-body"><aside class="workbench-list">
+        <div class="workbench-body" class:files-view=move ||files_visible.get()><aside class="workbench-list">
             <Show when=move ||mode.get()=="all"||mode.get()=="projects"><h2>{move ||tr(english.get(),"比较项目","Comparison projects")}</h2><For each=move ||projects.with(|p|p.iter().filter(|p|query.get().is_empty()||p.name.to_lowercase().contains(&query.get().to_lowercase())).cloned().collect::<Vec<_>>()) key=|p|p.id.clone() children=move |p|{let entry=p.clone();view!{<button class="workbench-project" disabled=move ||busy.get() on:click=move |_|open_project(entry.clone())><strong>{p.name}</strong><span>{p.session.request.left}</span><span>{p.session.request.right}</span></button>}}/><Show when=move ||projects.with(|p|p.is_empty())><p class="workbench-empty">{move ||tr(english.get(),"尚无已保存的比较项目。","No saved comparison projects.")}</p></Show></Show>
             <Show when=move ||mode.get()!="projects"><h2>{move ||tr(english.get(),"Git 仓库","Git repositories")}</h2><For each=move ||repositories.get() key=|r|format!("{}:{}:{}:{}:{}:{}",r.id,r.favorite,r.branch,r.changed,r.available,r.last_opened) children=move |r|{
                 let open_id=r.id.clone();let favorite_id=r.id.clone();let chosen_id=r.id.clone();let is_favorite=r.favorite;let name=r.name.clone();let key=r.match_key.clone();let matched=key.is_some();
                 view!{<article class="workbench-repository" class:selected=move ||selected.with(|s|s.as_ref().is_some_and(|s|s.repository.id==chosen_id))><button class="workbench-repository-open" disabled=move ||busy.get() on:click=move |_|open(open_id.clone())><strong>{name}<small>{move ||kind(&r.kind,english.get()).to_string()}</small></strong><span title=r.path.clone()>{r.path.clone()}</span><span>{format!("{} · {} {} · {} {} · ↑{} ↓{}",r.branch,r.changed,tr(english.get_untracked(),"处变更","changes"),r.conflicts,tr(english.get_untracked(),"冲突","conflicts"),r.ahead,r.behind)}</span><Show when=move ||matched><span class="workbench-match">{key.clone()}</span></Show><Show when=move ||!r.available><span class="workbench-unavailable">{move ||tr(english.get(),"待验证或路径失效","Needs verification or unavailable")}</span></Show></button><button class="quiet workbench-star" aria-label=move ||if is_favorite{tr(english.get(),"取消收藏仓库","Unfavorite repository")}else{tr(english.get(),"收藏仓库","Favorite repository")} disabled=move ||busy.get() on:click=move |_|favorite(favorite_id.clone(),!is_favorite)>{if is_favorite{"★"}else{"☆"}}</button></article>}
             }/><Show when=move ||repositories.with(|r|r.is_empty())><p class="workbench-empty">{move ||tr(english.get(),"添加扫描目录，发现你的 Git 仓库。扫描不会拉取或修改代码。","Add a scan directory to discover Git repositories. Scanning does not fetch or modify code.")}</p></Show></Show>
-        </aside><main class="workbench-detail"><Show when=move ||selected.with(|s|s.is_some()) fallback=move ||view!{<section class="workbench-welcome"><strong>{move ||tr(english.get(),"选择项目或仓库开始","Choose a project or repository")}</strong><p>{move ||tr(english.get(),"比较项目保留独立规则；同一远程地址的仓库自动归组，本地副本与 worktree 分别保留。","Comparison projects keep independent rules. Repositories sharing a remote are grouped while local copies and worktrees remain separate.")}</p></section>}>
+        </aside><main class="workbench-detail">{source::panel(actions,files_visible,english,move ||files_visible.set(false))}<Show when=move ||!files_visible.get()><Show when=move ||selected.with(|s|s.is_some()) fallback=move ||view!{<section class="workbench-welcome"><strong>{move ||tr(english.get(),"选择项目或仓库开始","Choose a project or repository")}</strong><p>{move ||tr(english.get(),"比较项目保留独立规则；同一远程地址的仓库自动归组，本地副本与 worktree 分别保留。","Comparison projects keep independent rules. Repositories sharing a remote are grouped while local copies and worktrees remain separate.")}</p></section>}>
             <nav class="git-workspace-tabs"><button class="quiet" aria-pressed=move ||!history_visible.get() on:click=move |_|history_visible.set(false)>{move ||tr(english.get(),"工作区","Working tree")}</button><button class="quiet" aria-pressed=move ||history_visible.get() on:click=move |_|history_visible.set(true)>{move ||tr(english.get(),"提交历史","History")}</button></nav>
             {git_actions::panel(actions, english)}
             {git_history::panel(actions,history_visible,english)}
             <div class="workbench-status" style:display=move ||if history_visible.get(){"none"}else{"flex"}>
             {move ||selected.get().map(|state|{let repo=state.repository;let refresh_id=repo.id.clone();let operation=state.operation.clone().unwrap_or_default();let ongoing=state.operation.is_some();view!{<header class="workbench-repo-heading"><div><strong>{repo.name}</strong><span>{repo.path}</span></div><span>{format!("{} · ↑{} ↓{}",repo.branch,repo.ahead,repo.behind)}</span><button class="quiet" disabled=move ||busy.get() on:click=move |_|open(refresh_id.clone())>{move ||tr(english.get(),"刷新仓库","Refresh repository")}</button></header><Show when=move ||ongoing><p class="workbench-operation">{format!("{}: {}",tr(english.get_untracked(),"进行中的操作","Operation in progress"),operation)}</p></Show><div class="workbench-repo-scroll"><h2>{move ||tr(english.get(),"工作区状态","Working tree status")}</h2><table class="workbench-changes"><thead><tr><th>{move ||tr(english.get(),"文件","File")}</th><th>{move ||tr(english.get(),"暂存区","Index")}</th><th>{move ||tr(english.get(),"工作区","Worktree")}</th><th>{move ||tr(english.get(),"操作","Actions")}</th></tr></thead><tbody>{state.changes.into_iter().map(|c|{let stage=c.id.clone();let unstage=c.id.clone();let discard=c.id.clone();let tracked=!c.untracked&&!c.conflicted;let has_staged=c.index!="."&&!c.untracked;view!{<tr><td>{c.path}</td><td>{change_label(&c.index,english.get_untracked()).to_string()}</td><td>{change_label(&c.worktree,english.get_untracked()).to_string()}</td><td><button class="quiet" disabled=move ||busy.get() on:click=move |_|actions.run(Action::Stage{files:vec![stage.clone()]})>{move ||tr(english.get(),"暂存","Stage")}</button><button class="quiet" disabled=move ||busy.get()||!has_staged on:click=move |_|actions.run(Action::Unstage{files:vec![unstage.clone()]})>{move ||tr(english.get(),"取消暂存","Unstage")}</button><button class="quiet" disabled=move ||busy.get()||!tracked on:click=move |_|actions.run(Action::Discard{files:vec![discard.clone()]})>{move ||tr(english.get(),"放弃修改","Discard")}</button></td></tr>}}).collect_view()}</tbody></table><h2>{move ||tr(english.get(),"本地、远程分支与标签","Local/remote branches and tags")}</h2><ul class="workbench-refs">{state.references.into_iter().map(|r|view!{<li><span>{if r.current{"●"}else{""}}</span><strong>{r.name}</strong><span>{reference_kind(&r.kind,english.get_untracked()).to_string()}</span><span>{r.upstream}</span><span>{r.tracking}</span></li>}).collect_view()}</ul><h2>{move ||tr(english.get(),"远程地址","Remotes")}</h2>{state.remotes.into_iter().map(|r|view!{<div class="workbench-remote"><strong>{r.name}</strong><code>{r.fetch}</code><code>{r.push}</code></div>}).collect_view()}</div>}})}
-        </div></Show></main></div>
+        </div></Show></Show></main></div>
     </section>}
 }

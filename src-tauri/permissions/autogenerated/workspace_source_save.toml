@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-source-save"
+description = "Enables the workspace_source_save command without any pre-configured scope."
+commands.allow = ["workspace_source_save"]
+
+[[permission]]
+identifier = "deny-workspace-source-save"
+description = "Denies the workspace_source_save command without any pre-configured scope."
+commands.deny = ["workspace_source_save"]

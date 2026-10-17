@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-source-close"
+description = "Enables the workspace_source_close command without any pre-configured scope."
+commands.allow = ["workspace_source_close"]
+
+[[permission]]
+identifier = "deny-workspace-source-close"
+description = "Denies the workspace_source_close command without any pre-configured scope."
+commands.deny = ["workspace_source_close"]

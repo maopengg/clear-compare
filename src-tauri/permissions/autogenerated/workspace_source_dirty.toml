@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-source-dirty"
+description = "Enables the workspace_source_dirty command without any pre-configured scope."
+commands.allow = ["workspace_source_dirty"]
+
+[[permission]]
+identifier = "deny-workspace-source-dirty"
+description = "Denies the workspace_source_dirty command without any pre-configured scope."
+commands.deny = ["workspace_source_dirty"]

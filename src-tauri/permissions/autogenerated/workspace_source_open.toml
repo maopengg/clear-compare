@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-source-open"
+description = "Enables the workspace_source_open command without any pre-configured scope."
+commands.allow = ["workspace_source_open"]
+
+[[permission]]
+identifier = "deny-workspace-source-open"
+description = "Denies the workspace_source_open command without any pre-configured scope."
+commands.deny = ["workspace_source_open"]

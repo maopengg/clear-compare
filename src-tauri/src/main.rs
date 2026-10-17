@@ -21,6 +21,7 @@ use tauri_plugin_dialog::DialogExt;
 struct Backend {
     workspace: Mutex<Option<clear_core::workbench::Workspace>>,
     text_merge_dirty: AtomicBool,
+    workspace_dirty: AtomicBool,
     baseline: Mutex<Option<(String, PathBuf)>>,
     bidirectional: Mutex<Option<clear_core::bidirectional::Plan>>,
     bidirectional_recovery: Mutex<Option<clear_core::bidirectional::RecoveryPlan>>,
@@ -1583,6 +1584,16 @@ fn main() {
             workbench::workspace_prepare,
             workbench::workspace_apply,
             workbench::workspace_history,
+            workbench::workspace_file_tree,
+            workbench::workspace_file_settings,
+            workbench::workspace_source_open,
+            workbench::workspace_source_save,
+            workbench::workspace_source_close,
+            workbench::workspace_source_dirty,
+            workbench::workspace_source_check,
+            workbench::workspace_source_create,
+            workbench::workspace_source_search,
+
             workbench::workspace_commit_detail,
             workbench::workspace_commit_patch,
             compare,
@@ -1664,17 +1675,17 @@ fn main() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event
-                && window.state::<Arc<Backend>>().text_merge_dirty.load(Ordering::Acquire) {
+                && (window.state::<Arc<Backend>>().text_merge_dirty.load(Ordering::Acquire)||window.state::<Arc<Backend>>().workspace_dirty.load(Ordering::Acquire)) {
                 api.prevent_close();
-                window.app_handle().dialog().message("请先保存或放弃文本合并，再关闭应用。 / Save or discard the text merge before closing.").title("未保存的合并 / Unsaved merge").show(|_|{});
+                window.app_handle().dialog().message("请先保存或放弃未保存的文件或合并，再关闭应用。 / Save or discard unsaved files and merges before closing.").title("未保存的内容 / Unsaved content").show(|_|{});
             }
         })
         .build(tauri::generate_context!()).expect("desktop runtime failed")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = event
-                && app.state::<Arc<Backend>>().text_merge_dirty.load(Ordering::Acquire) {
+                && (app.state::<Arc<Backend>>().text_merge_dirty.load(Ordering::Acquire)||app.state::<Arc<Backend>>().workspace_dirty.load(Ordering::Acquire)) {
                 api.prevent_exit();
-                app.dialog().message("请先保存或放弃文本合并，再退出应用。 / Save or discard the text merge before quitting.").title("未保存的合并 / Unsaved merge").show(|_|{});
+                app.dialog().message("请先保存或放弃未保存的文件或合并，再退出应用。 / Save or discard unsaved files and merges before quitting.").title("未保存的内容 / Unsaved content").show(|_|{});
             }
         });
 }

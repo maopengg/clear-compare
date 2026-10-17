@@ -93,6 +93,15 @@
     "allow-workspace-apply",
     "allow-workspace-history",
     "allow-workspace-commit-detail",
-    "allow-workspace-commit-patch"
+    "allow-workspace-commit-patch",
+    "allow-workspace-file-tree",
+    "allow-workspace-file-settings",
+    "allow-workspace-source-open",
+    "allow-workspace-source-save",
+    "allow-workspace-source-close",
+    "allow-workspace-source-dirty",
+    "allow-workspace-source-check",
+    "allow-workspace-source-create",
+    "allow-workspace-source-search"
   ]
 }

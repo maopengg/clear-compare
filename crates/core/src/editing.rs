@@ -1,7 +1,7 @@
 //! Bounded text editing with encoding retention, optimistic concurrency and backups.
 use crate::{
     Error, Result,
-    compare::{Snapshot, checked_path, hash_file, reject_overlap},
+    compare::{Snapshot, checked_path, reject_overlap},
     unique_id,
 };
 use clear_contracts::{
@@ -17,6 +17,27 @@ use std::{
 use tempfile::NamedTempFile;
 
 pub const MAX_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
+// Revalidation must stay bounded even if an external process replaces a small
+// document with a very large or continuously growing log.
+fn hash_file(path: &Path, cancel: &AtomicBool) -> Result<String> {
+    let mut reader = File::open(path)?.take((MAX_DOCUMENT_BYTES + 1) as u64);
+    let mut digest = Sha256::new();
+    let mut bytes = 0;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        crate::compare::check_cancel(cancel)?;
+        let n = reader.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        bytes += n;
+        if bytes > MAX_DOCUMENT_BYTES {
+            return Err(Error::Invalid("Editor document exceeds 4 MiB".into()));
+        }
+        digest.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
 
 #[derive(Clone)]
 pub struct OpenDocument {

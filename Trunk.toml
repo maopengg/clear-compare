@@ -9,3 +9,8 @@ open = false
 
 [watch]
 ignore = ["src-tauri", "crates/core", "crates/cli", "target"]
+
+[[hooks]]
+stage = "pre_build"
+command = "node"
+command_arguments = ["scripts/build-editor.mjs"]

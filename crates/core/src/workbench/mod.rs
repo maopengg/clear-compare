@@ -1,5 +1,6 @@
 //! Persistent multi-repository workspace. Discovery and inspection never fetch or mutate Git.
 mod actions;
+mod files;
 mod history;
 mod runner;
 mod status;
@@ -35,10 +36,14 @@ pub struct Workspace {
     ignored: BTreeSet<String>,
     pending: Option<actions::Prepared>,
     history_details: BTreeMap<String, history::CapturedDetail>,
+    file_caps: BTreeMap<String, files::FileCapability>,
+    source_documents: BTreeMap<String, files::Document>,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Stored {
+    #[serde(default)]
+    file_settings: BTreeMap<String, FileSettings>,
     version: u32,
     settings: ScanSettings,
     entries: Vec<Repository>,
@@ -116,6 +121,7 @@ impl Workspace {
         validate(&stored.settings)?;
         let mut catalog = Catalog {
             settings: stored.settings,
+            file_settings: stored.file_settings,
             ..Catalog::default()
         };
         for mut entry in stored.entries {
@@ -129,6 +135,8 @@ impl Workspace {
             ignored: stored.ignored,
             pending: None,
             history_details: BTreeMap::new(),
+            file_caps: BTreeMap::new(),
+            source_documents: BTreeMap::new(),
         })
     }
     pub fn save(&self, base: &Path) -> Result<()> {
@@ -145,6 +153,7 @@ impl Workspace {
             ));
         }
         let stored = Stored {
+            file_settings: self.catalog.file_settings.clone(),
             version: 1,
             settings: self.catalog.settings.clone(),
             entries: self.catalog.repositories.clone(),
@@ -158,12 +167,17 @@ impl Workspace {
         tmp.write_all(&bytes)?;
         tmp.as_file().sync_all()?;
         tmp.persist(file).map_err(|e| e.error)?;
+        #[cfg(unix)]
+        std::fs::File::open(base)?.sync_all()?;
         Ok(())
     }
     pub fn scan(&mut self, settings: ScanSettings, cancel: &AtomicBool) -> Result<Catalog> {
         validate(&settings)?;
         let mut next = Workspace::default();
         next.catalog.settings = settings.clone();
+        next.catalog.file_settings = self.catalog.file_settings.clone();
+        next.file_caps = self.file_caps.clone();
+        next.source_documents = self.source_documents.clone();
         next.ignored = self.ignored.clone();
         let mut seen = BTreeSet::new();
         let mut visited = 0;
@@ -271,6 +285,7 @@ impl Workspace {
                 next.catalog.repositories.push(old);
             }
         }
+        self.retain_source_roots(&mut next);
         *self = next;
         Ok(self.catalog.clone())
     }
@@ -295,6 +310,29 @@ impl Workspace {
             .repositories
             .get_mut(repository_id)
             .ok_or_else(|| Error::Invalid("Repository unavailable".into()))?;
+        let current_git = PathBuf::from(runner::text(
+            &repo.root,
+            &["rev-parse", "--absolute-git-dir"],
+            cancel,
+        )?);
+        let current_common = PathBuf::from(runner::text(
+            &repo.root,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cancel,
+        )?);
+        if current_git != repo.git
+            || current_common != repo.common
+            || (repo.view.kind != "bare"
+                && Path::new(&runner::text(
+                    &repo.root,
+                    &["rev-parse", "--show-toplevel"],
+                    cancel,
+                )?) != repo.root)
+        {
+            return Err(Error::Invalid(
+                "Git repository mapping changed; scan again before continuing".into(),
+            ));
+        }
         let mut result = status::state(repo, cancel)?;
         result.repository.last_opened = format!(
             "{:020}",
@@ -328,6 +366,11 @@ impl Workspace {
         Ok(self.catalog.clone())
     }
     pub fn remove(&mut self, repository_id: &str) -> Result<Catalog> {
+        if self.open_sources_in(repository_id) {
+            return Err(Error::Invalid(
+                "Close this repository's source tabs before removing it".into(),
+            ));
+        }
         if !self
             .catalog
             .repositories

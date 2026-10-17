@@ -43,7 +43,8 @@
     "resources": [
       "../LICENSE",
       "../THIRD_PARTY_NOTICES.md",
-      "../docs/third-party-dependencies.md"
+      "../docs/third-party-dependencies.md",
+      "../docs/editor-dependencies.md"
     ]
   }
 }

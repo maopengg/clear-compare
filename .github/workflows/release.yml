@@ -16,6 +16,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:editor
       - uses: Swatinem/rust-cache@v2
       - name: Linux desktop dependencies
         if: runner.os == 'Linux'

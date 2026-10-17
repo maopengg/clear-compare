@@ -2,7 +2,7 @@
 use crate::{Error, Result, compare::check_cancel};
 use std::{
     fs::File,
-    io::Read,
+    io::{Read, Write},
     path::Path,
     process::{Command, Stdio},
     sync::atomic::AtomicBool,
@@ -17,10 +17,18 @@ pub fn run(repo: &Path, args: &[&str], cancel: &AtomicBool) -> Result<Vec<u8>> {
     )
 }
 pub fn run_owned(repo: &Path, args: &[String], cancel: &AtomicBool) -> Result<Vec<u8>> {
-    run_mode(repo, args, cancel, false, false)
+    run_mode(repo, args, cancel, false, false, false, None)
+}
+pub fn optional(
+    repo: &Path,
+    args: &[String],
+    input: &[u8],
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>> {
+    run_mode(repo, args, cancel, false, false, true, Some(input))
 }
 pub fn mutate(repo: &Path, args: &[String], cancel: &AtomicBool, network: bool) -> Result<Vec<u8>> {
-    run_mode(repo, args, cancel, network, true)
+    run_mode(repo, args, cancel, network, true, false, None)
 }
 fn run_mode(
     repo: &Path,
@@ -28,10 +36,20 @@ fn run_mode(
     cancel: &AtomicBool,
     network: bool,
     include_stderr: bool,
+    no_match: bool,
+    input: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
     check_cancel(cancel)?;
     let out = tempfile::NamedTempFile::new()?;
     let err = tempfile::NamedTempFile::new()?;
+    let input_file = input
+        .map(|bytes| -> Result<tempfile::NamedTempFile> {
+            let mut file = tempfile::NamedTempFile::new()?;
+            file.write_all(bytes)?;
+            file.flush()?;
+            Ok(file)
+        })
+        .transpose()?;
     let mut command = Command::new("git");
     for (name, _) in std::env::vars_os() {
         if name.to_str().is_some_and(|n| n.starts_with("GIT_")) {
@@ -43,12 +61,14 @@ fn run_mode(
         "--no-optional-locks",
         "--no-replace-objects",
         "--no-lazy-fetch",
-        "--literal-pathspecs",
         "-c",
         "core.fsmonitor=false",
         "-c",
         "protocol.allow=never",
     ]);
+    if args.first().is_none_or(|a| a != "check-ignore") {
+        command.arg("--literal-pathspecs");
+    }
     if network {
         command.args([
             "-c",
@@ -69,7 +89,11 @@ fn run_mode(
         .env("GIT_SEQUENCE_EDITOR", "false")
         .env("LC_ALL", "C")
         .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
+        .stdin(if let Some(file) = &input_file {
+            Stdio::from(File::open(file.path())?)
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::from(out.as_file().try_clone()?))
         .stderr(Stdio::from(err.as_file().try_clone()?));
     let mut child = command
@@ -106,6 +130,9 @@ fn run_mode(
         .take(256 * 1024)
         .read_to_end(&mut message)?;
     if !status.success() {
+        if no_match && status.code() == Some(1) {
+            return Ok(Vec::new());
+        }
         output.extend_from_slice(&message);
         return Err(Error::Invalid(redact(&String::from_utf8_lossy(&output))));
     }

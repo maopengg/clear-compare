@@ -34,12 +34,114 @@ pub struct Repository {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Catalog {
     #[serde(default)]
+    pub file_settings: std::collections::BTreeMap<String, FileSettings>,
+    #[serde(default)]
     pub projects: Vec<crate::LibraryEntry>,
     pub settings: ScanSettings,
     pub repositories: Vec<Repository>,
     pub warnings: Vec<String>,
     pub scanned_directories: usize,
     pub truncated: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct FileSettings {
+    pub exclusions: String,
+    pub respect_gitignore: bool,
+    pub show_hidden: bool,
+}
+impl Default for FileSettings {
+    fn default() -> Self {
+        Self {
+            exclusions: String::new(),
+            respect_gitignore: true,
+            show_hidden: false,
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceFile {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub bytes: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FilePage {
+    pub parent: Option<String>,
+    pub path: String,
+    pub files: Vec<WorkspaceFile>,
+    pub offset: usize,
+    pub total: usize,
+    pub warnings: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SourceSearch {
+    pub repositories: Vec<String>,
+    pub directory: Option<String>,
+    pub file: Option<String>,
+    pub query: String,
+    pub mode: String,
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+    pub multiline: bool,
+    pub include: String,
+    pub exclusions: String,
+    pub respect_gitignore: bool,
+}
+impl Default for SourceSearch {
+    fn default() -> Self {
+        Self {
+            repositories: Vec::new(),
+            directory: None,
+            file: None,
+            query: String::new(),
+            mode: "content".into(),
+            regex: false,
+            case_sensitive: false,
+            whole_word: false,
+            multiline: false,
+            include: String::new(),
+            exclusions: String::new(),
+            respect_gitignore: true,
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SearchHit {
+    pub file_id: String,
+    pub repository_id: String,
+    pub repository: String,
+    pub path: String,
+    pub line: usize,
+    pub column: usize,
+    pub offset_utf16: usize,
+    pub length_utf16: usize,
+    pub preview: String,
+    pub digest: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceResults {
+    pub hits: Vec<SearchHit>,
+    pub searched_files: usize,
+    pub skipped_files: usize,
+    pub truncated: bool,
+    pub cancelled: bool,
+    pub warnings: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceDocument {
+    pub repository_id: String,
+    pub file_id: String,
+    pub document: crate::TextDocument,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DocumentStatus {
+    pub id: String,
+    pub changed: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Change {

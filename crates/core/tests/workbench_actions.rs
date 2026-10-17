@@ -508,3 +508,27 @@ fn previous_branch_shorthand_is_expanded_before_execution() {
         "feature"
     );
 }
+
+#[test]
+fn a_changed_git_worktree_mapping_invalidates_prepared_actions() {
+    let (dir, mut w, id) = fixture();
+    let state = w.open(&id, &CANCEL).unwrap();
+    let plan = w
+        .prepare(
+            &id,
+            &state.revision,
+            Action::CreateBranch {
+                name: "must-not-create".into(),
+                start: None,
+            },
+            &CANCEL,
+        )
+        .unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    git(
+        dir.path(),
+        &["config", "core.worktree", outside.path().to_str().unwrap()],
+    );
+    assert!(w.apply(&plan.id, &CANCEL).is_err());
+    assert!(git(dir.path(), &["branch", "--list", "must-not-create"]).is_empty());
+}

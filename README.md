@@ -136,7 +136,9 @@ Excel 可选择每侧工作表，包括标为隐藏的工作表；比较保存�
 
 历史页支持分页提交关系图、按引用/作者/日期/相对路径/说明或哈希查询、提交说明及变更文件、选择合并父提交、提交文件路径筛选/200 项分页、逐文件只读补丁预览/500 行分页和父提交导航。筛选关系图只绘制可见提交的直接连接，完整父提交仍可在详情中查看。右键可复制哈希、拣选、反向提交、检出、Soft/Mixed/Hard 重置及创建分支/轻量标签。重置先确认并保留恢复引用；当前硬重置会拒绝存在未跟踪文件或未解决冲突的仓库，相关界面操作禁用。
 
-完整 Git 客户端仍在开发：完整历史浏览与补丁导出、逐行/逐块暂存、交互式变基、可视化冲突解决、Stash 浏览与管理、worktree/子模块管理、远程编辑、全局文件搜索和多标签编辑器等尚未全部接入。完整范围及验收清单见 [工作台验收清单](docs/workbench-acceptance.md)。本节工作台与下方的只读版本比较面板分别提供功能。
+“文件 / 全局搜索”提供工作树目录浏览、创建文件/目录、多标签文本编辑、当前文件查找替换和跨仓库搜索。支持原编码/换行保留、格式转换、保存快捷键、外部修改检查与未保存保护；返回首页或比较页面保留打开的缓冲区。项目文件规则持久化，编辑标签当前仅在本次进程内保留。具体范围和限制见 [文件工作台说明](docs/source-workspace.md)。
+
+完整 Git 客户端仍在开发：历史文件树与补丁导出、逐行/逐块暂存、交互式变基、可视化冲突解决、Stash 浏览与管理、worktree/子模块管理、远程编辑、跨文件替换、文件重命名/复制/移动及非 Git 编辑根目录等尚未全部接入。完整范围及验收清单见 [工作台验收清单](docs/workbench-acceptance.md)。本节工作台与下方的只读版本比较面板分别提供功能。
 
 ### Git 提交 / 暂存区 / 工作区比较
 
@@ -163,13 +165,15 @@ Use the tested Rust 1.99.0 toolchain pinned in `rust-toolchain.toml` and the [Ta
 ```sh
 git clone https://github.com/maopengg/clear-compare.git
 cd clear-compare
+npm ci
+npm run build:editor
 rustup target add wasm32-unknown-unknown
 cargo install trunk --version 0.21.14 --locked
 cargo install tauri-cli --version '^2' --locked
 cargo tauri build
 ```
 
-Packages are under `target/release/bundle/`. There is no npm build pipeline: Trunk builds Leptos CSR and Tauri bundles it with the Rust executable. Generated JavaScript loads WASM and bridges desktop calls. The workspace defaults to two compile jobs.
+Packages are under `target/release/bundle/`. Install Node.js 22 and run `npm ci` before building. A Trunk pre-build hook bundles the pinned CodeMirror editor locally with esbuild; Trunk then builds Leptos CSR and Tauri bundles both with the Rust executable. The client does not download editor assets at runtime. Generated JavaScript loads WASM and bridges desktop calls. The workspace defaults to two compile jobs.
 
 `cargo tauri dev` starts the desktop client and a local frontend watcher on port1420; stop both when finished. For a frontend build without running a service:
 

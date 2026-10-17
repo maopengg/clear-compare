@@ -14,7 +14,7 @@ pub struct Controller {
     pub log: RwSignal<String>,
 }
 impl Controller {
-    fn accept(self, state: RepositoryState) {
+    pub(super) fn accept(self, state: RepositoryState) {
         self.catalog.update(|c| {
             if let Some(repo) = c
                 .repositories

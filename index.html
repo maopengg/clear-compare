@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Clear Compare</title>
+    <link data-trunk rel="copy-file" href="target/editor/editor.js" data-target-path="editor" />
+    <script defer src="editor/editor.js"></script>
     <link data-trunk rel="rust" href="crates/ui/Cargo.toml" data-bin="clear-ui" data-wasm-opt="s" data-wasm-opt-params="--enable-bulk-memory-opt --enable-nontrapping-float-to-int" />
     <link data-trunk rel="css" href="crates/ui/style.css" />
   </head>

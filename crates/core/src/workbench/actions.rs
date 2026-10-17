@@ -83,6 +83,32 @@ impl Workspace {
         cancel: &AtomicBool,
     ) -> Result<ActionPlan> {
         self.pending = None;
+        if self.dirty_repository(repository_id)
+            && matches!(
+                &action,
+                Action::Stage { .. }
+                    | Action::Unstage { .. }
+                    | Action::Discard { .. }
+                    | Action::Commit { .. }
+                    | Action::Switch { .. }
+                    | Action::Merge { .. }
+                    | Action::Rebase { .. }
+                    | Action::CherryPick { .. }
+                    | Action::Revert { .. }
+                    | Action::Reset { .. }
+                    | Action::Continue { .. }
+                    | Action::Abort { .. }
+                    | Action::Skip { .. }
+                    | Action::Pull { .. }
+                    | Action::StashSave { .. }
+                    | Action::StashApply { .. }
+                    | Action::StashBranch { .. }
+            )
+        {
+            return Err(invalid(
+                "Save or close unsaved source buffers in this repository before changing its working tree or index",
+            ));
+        }
         let state = self.open(repository_id, cancel)?;
         if state.revision != revision {
             return Err(invalid(

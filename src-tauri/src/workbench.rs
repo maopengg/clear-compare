@@ -226,3 +226,236 @@ pub async fn workspace_remove(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_file_tree(
+    repository_id: String,
+    directory: Option<String>,
+    offset: usize,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::FilePage, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .file_tree(&repository_id, directory.as_deref(), offset, &state.cancel)
+            .map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_file_settings(
+    repository_id: String,
+    settings: clear_contracts::workbench::FileSettings,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::FileSettings, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .file_settings(&repository_id, settings, &state.cancel)
+            .map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        w.save(&base).map_err(|e| e.to_string())?;
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_source_open(
+    repository_id: String,
+    file_id: String,
+    expected: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::WorkspaceDocument, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .source_open(&repository_id, &file_id, expected.as_deref(), &state.cancel)
+            .map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_source_save(
+    document_id: String,
+    text: String,
+    options: clear_contracts::SaveOptions,
+    generation: u64,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::SaveResult, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .source_save(
+                &document_id,
+                &text,
+                &options,
+                &base.join("source-backups"),
+                generation,
+                &state.cancel,
+            )
+            .map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_source_close(
+    document_id: String,
+    discard: bool,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<(), String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        w.source_close(&document_id, discard)
+            .map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_source_dirty(
+    document_id: String,
+    dirty: bool,
+    generation: u64,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<(), String> {
+    if dirty {
+        state.workspace_dirty.store(true, Ordering::Release);
+    }
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .source_dirty(&document_id, dirty, generation)
+            .map_err(|e| e.to_string());
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_source_check(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<Vec<clear_contracts::workbench::DocumentStatus>, String> {
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w.source_check(&state.cancel).map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_source_create(
+    repository_id: String,
+    directory: Option<String>,
+    name: String,
+    folder: bool,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::WorkspaceFile, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .source_create(
+                &repository_id,
+                directory.as_deref(),
+                &name,
+                folder,
+                &state.cancel,
+            )
+            .map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_source_search(
+    query: clear_contracts::workbench::SourceSearch,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::SourceResults, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut workspace = workspace(&state, &base)?;
+        let w = workspace.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .source_search(&query, &state.cancel)
+            .map_err(|e| e.to_string())?;
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

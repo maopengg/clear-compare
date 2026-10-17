@@ -122,7 +122,7 @@ fn parse(repo: &mut Captured, raw: &[u8]) -> Result<Vec<Change>> {
     repo.view.conflicts = changes.iter().filter(|c| c.conflicted).count();
     Ok(changes)
 }
-fn native_path(bytes: &[u8]) -> Result<std::path::PathBuf> {
+pub(super) fn native_path(bytes: &[u8]) -> Result<std::path::PathBuf> {
     #[cfg(unix)]
     let path = {
         use std::os::unix::ffi::OsStringExt;
