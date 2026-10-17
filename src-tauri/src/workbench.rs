@@ -266,12 +266,11 @@ pub async fn workspace_file_settings(
         let mut workspace = workspace(&state, &base)?;
         let w = workspace.as_mut().ok_or("Workspace unavailable")?;
         let result = w
-            .file_settings(&repository_id, settings, &state.cancel)
+            .file_settings_persisted(&repository_id, settings, &base, &state.cancel)
             .map_err(|e| e.to_string())?;
         state
             .workspace_dirty
             .store(w.has_dirty_sources(), Ordering::Release);
-        w.save(&base).map_err(|e| e.to_string())?;
         Ok(result)
     })
     .await

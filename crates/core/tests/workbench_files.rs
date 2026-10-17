@@ -46,6 +46,77 @@ fn file(w: &mut Workspace, id: &str, name: &str) -> String {
         .id
 }
 #[test]
+fn search_preferences_survive_reload_are_isolated_and_rollback_on_persist_failure() {
+    let (dir, mut w, id) = fixture();
+    let (other_dir, _, other) = fixture();
+    w.scan(
+        ScanSettings {
+            roots: vec![
+                dir.path().display().to_string(),
+                other_dir.path().display().to_string(),
+            ],
+            exclusions: vec![],
+        },
+        &CANCEL,
+    )
+    .unwrap();
+    let base = tempfile::tempdir().unwrap();
+    let preferences = FileSettings {
+        search: Some(SourceSearch {
+            query: "hello".into(),
+            mode: "path".into(),
+            case_sensitive: true,
+            include: "*.txt".into(),
+            exclusions: "build/".into(),
+            repositories: vec!["runtime-id".into()],
+            directory: Some("runtime-dir".into()),
+            file: Some("runtime-file".into()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let saved = w
+        .file_settings_persisted(&id, preferences.clone(), base.path(), &CANCEL)
+        .unwrap();
+    let other_settings = FileSettings {
+        search: Some(SourceSearch {
+            query: "independent".into(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    w.file_settings_persisted(&other, other_settings.clone(), base.path(), &CANCEL)
+        .unwrap();
+    let search = saved.search.as_ref().unwrap();
+    assert!(search.repositories.is_empty() && search.directory.is_none() && search.file.is_none());
+    let loaded = Workspace::load(base.path()).unwrap();
+    assert_eq!(loaded.catalog.file_settings[&id], saved);
+    assert_eq!(loaded.catalog.file_settings[&other], other_settings);
+    let invalid_base = dir.path().join("not-a-directory");
+    fs::write(&invalid_base, "occupied").unwrap();
+    let mut changed = preferences.clone();
+    changed.search.as_mut().unwrap().query = "changed".into();
+    assert!(
+        w.file_settings_persisted(&id, changed, &invalid_base, &CANCEL)
+            .is_err()
+    );
+    assert_eq!(w.catalog.file_settings[&id], saved);
+    let mut invalid = preferences;
+    invalid.search.as_mut().unwrap().mode = "invalid".into();
+    assert!(w.file_settings(&id, invalid, &CANCEL).is_err());
+    assert_eq!(w.catalog.file_settings[&id], saved);
+    let file = file(&mut w, &id, "tracked.txt");
+    let document = w.source_open(&id, &file, None, &CANCEL).unwrap();
+    fs::write(dir.path().join("tracked.txt"), "external edit").unwrap();
+    assert!(
+        w.source_open(&id, &file, Some(&document.document.digest), &CANCEL)
+            .is_err()
+    );
+    // Old settings files without the optional search field remain loadable.
+    let legacy: FileSettings = serde_json::from_str(r#"{"exclusions":"dist/"}"#).unwrap();
+    assert!(legacy.search.is_none());
+}
+#[test]
 fn tree_uses_ids_hides_git_metadata_and_retains_project_rules() {
     let (dir, mut w, id) = fixture();
     fs::write(dir.path().join(".gitignore"), "ignored/\nignored.txt\n").unwrap();
@@ -64,6 +135,7 @@ fn tree_uses_ids_hides_git_metadata_and_retains_project_rules() {
             exclusions: "tracked.txt".into(),
             show_hidden: true,
             respect_gitignore: false,
+            search: None,
         },
         &CANCEL,
     )

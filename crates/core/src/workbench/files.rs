@@ -30,6 +30,27 @@ fn protected(path: &Path) -> bool {
         .any(|c| c.as_os_str().to_string_lossy().eq_ignore_ascii_case(".git"))
 }
 impl Workspace {
+    pub fn file_settings_persisted(
+        &mut self,
+        repository: &str,
+        settings: FileSettings,
+        base: &Path,
+        cancel: &AtomicBool,
+    ) -> Result<FileSettings> {
+        let previous = self.catalog.file_settings.get(repository).cloned();
+        let result = self.file_settings(repository, settings, cancel)?;
+        if let Err(error) = self.save(base) {
+            if let Some(previous) = previous {
+                self.catalog
+                    .file_settings
+                    .insert(repository.into(), previous);
+            } else {
+                self.catalog.file_settings.remove(repository);
+            }
+            return Err(error);
+        }
+        Ok(result)
+    }
     fn source_root(&mut self, repository: &str, cancel: &AtomicBool) -> Result<PathBuf> {
         if !self.repositories.contains_key(repository) {
             self.open(repository, cancel)?;
@@ -114,11 +135,24 @@ impl Workspace {
     pub fn file_settings(
         &mut self,
         repository: &str,
-        settings: FileSettings,
+        mut settings: FileSettings,
         cancel: &AtomicBool,
     ) -> Result<FileSettings> {
         self.source_root(repository, cancel)?;
         Rules::parse(&settings.exclusions)?;
+        if let Some(search) = settings.search.as_mut() {
+            if search.query.len() > 8192
+                || !matches!(search.mode.as_str(), "name" | "path" | "content")
+            {
+                return Err(invalid("Invalid saved search mode or query size"));
+            }
+            Rules::parse(&search.include)?;
+            Rules::parse(&search.exclusions)?;
+            // Search scopes are runtime capabilities; only user-entered settings persist.
+            search.repositories.clear();
+            search.directory = None;
+            search.file = None;
+        }
         self.catalog
             .file_settings
             .insert(repository.into(), settings.clone());

@@ -49,6 +49,7 @@ pub struct FileSettings {
     pub exclusions: String,
     pub respect_gitignore: bool,
     pub show_hidden: bool,
+    pub search: Option<SourceSearch>,
 }
 impl Default for FileSettings {
     fn default() -> Self {
@@ -56,6 +57,7 @@ impl Default for FileSettings {
             exclusions: String::new(),
             respect_gitignore: true,
             show_hidden: false,
+            search: None,
         }
     }
 }
@@ -76,7 +78,7 @@ pub struct FilePage {
     pub total: usize,
     pub warnings: Vec<String>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct SourceSearch {
     pub repositories: Vec<String>,
