@@ -30,6 +30,14 @@ pub fn optional(
 pub fn mutate(repo: &Path, args: &[String], cancel: &AtomicBool, network: bool) -> Result<Vec<u8>> {
     run_mode(repo, args, cancel, network, true, false, None)
 }
+pub fn mutate_input(
+    repo: &Path,
+    args: &[String],
+    input: &[u8],
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>> {
+    run_mode(repo, args, cancel, false, true, false, Some(input))
+}
 fn run_mode(
     repo: &Path,
     args: &[String],
@@ -131,7 +139,7 @@ fn run_mode(
         .read_to_end(&mut message)?;
     if !status.success() {
         if no_match && status.code() == Some(1) {
-            return Ok(Vec::new());
+            return Ok(output);
         }
         output.extend_from_slice(&message);
         return Err(Error::Invalid(redact(&String::from_utf8_lossy(&output))));

@@ -182,7 +182,7 @@ pub struct DocumentStatus {
     pub id: String,
     pub changed: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Change {
     pub id: String,
     pub path: String,
@@ -281,10 +281,49 @@ pub struct GitPatch {
     pub next_offset: Option<usize>,
     pub long_lines: bool,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkingLine {
+    pub id: Option<String>,
+    pub kind: String,
+    pub before: Option<usize>,
+    pub after: Option<usize>,
+    pub text: String,
+    pub no_newline: bool,
+    pub truncated: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkingHunk {
+    pub id: String,
+    pub before: usize,
+    pub after: usize,
+    pub continued: bool,
+    pub lines: Vec<WorkingLine>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkingDiff {
+    pub id: String,
+    pub repository_id: String,
+    pub file_id: String,
+    pub revision: String,
+    pub path: String,
+    pub area: String,
+    pub partial: bool,
+    pub reason: Option<String>,
+    pub hunks: Vec<WorkingHunk>,
+    pub raw: String,
+    pub offset: usize,
+    pub total_lines: usize,
+    pub next_offset: Option<usize>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    StageSelection {
+        diff_id: String,
+        hunks: Vec<String>,
+        lines: Vec<String>,
+    },
     Stage {
         files: Vec<String>,
     },

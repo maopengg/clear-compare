@@ -7,6 +7,9 @@ pub(super) struct Prepared {
     network: bool,
     backup_worktree: bool,
     backup_target: Option<String>,
+    input: Option<Vec<u8>>,
+    selection: Option<super::working::SelectionGuard>,
+    guard_unsaved: bool,
 }
 fn invalid(message: &str) -> Error {
     Error::Invalid(message.into())
@@ -83,28 +86,28 @@ impl Workspace {
         cancel: &AtomicBool,
     ) -> Result<ActionPlan> {
         self.pending = None;
-        if self.dirty_repository(repository_id)
-            && matches!(
-                &action,
-                Action::Stage { .. }
-                    | Action::Unstage { .. }
-                    | Action::Discard { .. }
-                    | Action::Commit { .. }
-                    | Action::Switch { .. }
-                    | Action::Merge { .. }
-                    | Action::Rebase { .. }
-                    | Action::CherryPick { .. }
-                    | Action::Revert { .. }
-                    | Action::Reset { .. }
-                    | Action::Continue { .. }
-                    | Action::Abort { .. }
-                    | Action::Skip { .. }
-                    | Action::Pull { .. }
-                    | Action::StashSave { .. }
-                    | Action::StashApply { .. }
-                    | Action::StashBranch { .. }
-            )
-        {
+        let guard_unsaved = matches!(
+            &action,
+            Action::StageSelection { .. }
+                | Action::Stage { .. }
+                | Action::Unstage { .. }
+                | Action::Discard { .. }
+                | Action::Commit { .. }
+                | Action::Switch { .. }
+                | Action::Merge { .. }
+                | Action::Rebase { .. }
+                | Action::CherryPick { .. }
+                | Action::Revert { .. }
+                | Action::Reset { .. }
+                | Action::Continue { .. }
+                | Action::Abort { .. }
+                | Action::Skip { .. }
+                | Action::Pull { .. }
+                | Action::StashSave { .. }
+                | Action::StashApply { .. }
+                | Action::StashBranch { .. }
+        );
+        if guard_unsaved && self.dirty_repository(repository_id) {
             return Err(invalid(
                 "Save or close unsaved source buffers in this repository before changing its working tree or index",
             ));
@@ -151,7 +154,38 @@ impl Workspace {
             }
             Ok(paths.into_iter().collect())
         };
+        let mut input = None;
+        let mut selection = None;
         let args = match action {
+            Action::StageSelection {
+                diff_id,
+                hunks,
+                lines,
+            } => {
+                let (patch, guard, old_blob) = self.prepare_selection(
+                    repository_id,
+                    &state.revision,
+                    &diff_id,
+                    &hunks,
+                    &lines,
+                    cancel,
+                )?;
+                input = Some(patch);
+                selection = Some(guard);
+                backup = old_blob.is_some() || state.repository.head.is_some();
+                backup_target = old_blob;
+                let mut args = vec![
+                    "apply".into(),
+                    "--cached".into(),
+                    "--recount".into(),
+                    "--unidiff-zero".into(),
+                    "--whitespace=nowarn".into(),
+                ];
+                if self.selection_reversed(&diff_id) {
+                    args.push("--reverse".into());
+                }
+                args
+            }
             Action::Stage { files } => {
                 let mut a = vec!["add".into(), "--".into()];
                 a.extend(paths(&files)?);
@@ -490,6 +524,9 @@ impl Workspace {
             network,
             backup_worktree,
             backup_target,
+            input,
+            selection,
+            guard_unsaved,
         });
         Ok(view)
     }
@@ -500,6 +537,11 @@ impl Workspace {
             .ok_or_else(|| invalid("Git action plan expired"))?;
         if plan.view.id != plan_id {
             return Err(invalid("Git action plan identity differs"));
+        }
+        if plan.guard_unsaved && self.dirty_repository(&plan.view.repository_id) {
+            return Err(invalid(
+                "Save or close unsaved source buffers before applying this Git operation",
+            ));
         }
         let state = self.open(&plan.view.repository_id, cancel)?;
         if state.revision != plan.view.revision {
@@ -515,6 +557,9 @@ impl Workspace {
             || crate::sync::durable::Object::observe(&repo.git, Path::new(""))? != repo.git_identity
         {
             return Err(invalid("Repository identity changed; scan again"));
+        }
+        if let Some(selection) = &plan.selection {
+            selection.check(&repo.root, cancel)?;
         }
         if let Some(reference) = &plan.view.backup_reference {
             let target = if plan.backup_worktree {
@@ -542,7 +587,11 @@ impl Workspace {
                 )?;
             }
         }
-        let output = runner::mutate(&repo.root, &plan.args, cancel, plan.network)?;
+        let output = if let Some(input) = &plan.input {
+            runner::mutate_input(&repo.root, &plan.args, input, cancel)?
+        } else {
+            runner::mutate(&repo.root, &plan.args, cancel, plan.network)?
+        };
         let output = runner::redact(&String::from_utf8_lossy(&output));
         let state = self.open(&plan.view.repository_id, cancel)?;
         Ok(ActionResult {

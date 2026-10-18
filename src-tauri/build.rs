@@ -12,6 +12,8 @@ fn main() {
             "workspace_history",
             "workspace_file_tree",
             "workspace_file_info",
+            "workspace_working_diff",
+            "workspace_change_file",
             "workspace_file_exclude",
             "workspace_file_prepare",
             "workspace_file_apply",

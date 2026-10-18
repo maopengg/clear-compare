@@ -430,6 +430,7 @@ pub fn panel(
     c: git_actions::Controller,
     visible: RwSignal<bool>,
     english: RwSignal<bool>,
+    requests: RwSignal<Option<(String, String)>>,
     back: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
     let menu = source_menu::State::new();
@@ -460,6 +461,15 @@ pub fn panel(
         {
             s.parent.set(None);
             s.load(repo, None, 0);
+        }
+    });
+    Effect::new(move |_| {
+        if visible.get()
+            && !c.busy.get()
+            && let Some((repository, file)) = requests.get()
+        {
+            requests.set(None);
+            s.open(repository, file, None, None);
         }
     });
     Effect::new(move |_| readonly(c.busy.get()));

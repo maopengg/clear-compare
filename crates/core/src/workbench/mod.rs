@@ -5,6 +5,7 @@ mod files;
 mod history;
 mod runner;
 mod status;
+mod working;
 use crate::{
     Error, Result,
     compare::{canonical_root, check_cancel},
@@ -40,6 +41,7 @@ pub struct Workspace {
     file_caps: BTreeMap<String, files::FileCapability>,
     source_documents: BTreeMap<String, files::Document>,
     file_plan: Option<file_ops::Prepared>,
+    working_diff: Option<working::CapturedDiff>,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -140,6 +142,7 @@ impl Workspace {
             file_caps: BTreeMap::new(),
             source_documents: BTreeMap::new(),
             file_plan: None,
+            working_diff: None,
         })
     }
     pub fn save(&self, base: &Path) -> Result<()> {

@@ -1,7 +1,6 @@
 //! Home for comparison projects and captured Git repositories.
-use super::{git_actions, git_history, source};
+use super::{git_actions, git_changes, git_history, source};
 use crate::{invoke, tr};
-use clear_contracts::workbench::Action;
 use clear_contracts::{LibraryEntry, workbench::*};
 use leptos::{prelude::*, task::spawn_local};
 fn kind(kind: &str, en: bool) -> &str {
@@ -12,7 +11,7 @@ fn kind(kind: &str, en: bool) -> &str {
         _ => tr(en, "仓库", "Repository"),
     }
 }
-fn change_label(code: &str, en: bool) -> &str {
+pub(super) fn change_label(code: &str, en: bool) -> &str {
     match code {
         "M" => tr(en, "已修改", "Modified"),
         "A" => tr(en, "新增", "Added"),
@@ -23,13 +22,6 @@ fn change_label(code: &str, en: bool) -> &str {
         "?" => tr(en, "未跟踪", "Untracked"),
         "T" => tr(en, "类型变化", "Type changed"),
         _ => "—",
-    }
-}
-fn reference_kind(code: &str, en: bool) -> &str {
-    match code {
-        "local" => tr(en, "本地", "Local"),
-        "remote" => tr(en, "远程", "Remote"),
-        _ => tr(en, "标签", "Tag"),
     }
 }
 #[derive(Clone, Copy)]
@@ -60,6 +52,7 @@ pub fn panel(
         log: RwSignal::new(String::new()),
     };
     let history_visible = RwSignal::new(false);
+    let editor_request = RwSignal::new(None);
     let query = RwSignal::new(String::new());
     let mode = RwSignal::new("all".to_string());
     let root = RwSignal::new(String::new());
@@ -228,12 +221,11 @@ pub fn panel(
                     let open_id=r.id.clone();let favorite_id=r.id.clone();let chosen_id=r.id.clone();let is_favorite=r.favorite;let name=r.name.clone();let key=r.match_key.clone();let matched=key.is_some();
                     view!{<article class="workbench-repository" class:selected=move ||selected.with(|s|s.as_ref().is_some_and(|s|s.repository.id==chosen_id))><button class="workbench-repository-open" disabled=move ||busy.get() on:click=move |_|open(open_id.clone())><strong>{name}<small>{move ||kind(&r.kind,english.get()).to_string()}</small></strong><span title=r.path.clone()>{r.path.clone()}</span><span>{format!("{} · {} {} · {} {} · ↑{} ↓{}",r.branch,r.changed,tr(english.get_untracked(),"处变更","changes"),r.conflicts,tr(english.get_untracked(),"冲突","conflicts"),r.ahead,r.behind)}</span><Show when=move ||matched><span class="workbench-match">{key.clone()}</span></Show><Show when=move ||!r.available><span class="workbench-unavailable">{move ||tr(english.get(),"待验证或路径失效","Needs verification or unavailable")}</span></Show></button><button class="quiet workbench-star" aria-label=move ||if is_favorite{tr(english.get(),"取消收藏仓库","Unfavorite repository")}else{tr(english.get(),"收藏仓库","Favorite repository")} disabled=move ||busy.get() on:click=move |_|favorite(favorite_id.clone(),!is_favorite)>{if is_favorite{"★"}else{"☆"}}</button></article>}
                 }/><Show when=move ||repositories.with(|r|r.is_empty())><p class="workbench-empty">{move ||tr(english.get(),"添加扫描目录，发现你的 Git 仓库。扫描不会拉取或修改代码。","Add a scan directory to discover Git repositories. Scanning does not fetch or modify code.")}</p></Show></Show>
-            </aside><main class="workbench-detail">{source::panel(actions,files_visible,english,move ||files_visible.set(false))}<Show when=move ||!files_visible.get()><Show when=move ||selected.with(|s|s.is_some()) fallback=move ||view!{<section class="workbench-welcome"><strong>{move ||tr(english.get(),"选择项目或仓库开始","Choose a project or repository")}</strong><p>{move ||tr(english.get(),"比较项目保留独立规则；同一远程地址的仓库自动归组，本地副本与 worktree 分别保留。","Comparison projects keep independent rules. Repositories sharing a remote are grouped while local copies and worktrees remain separate.")}</p></section>}>
+            </aside><main class="workbench-detail">{source::panel(actions,files_visible,english,editor_request,move ||files_visible.set(false))}<div class="git-panels" style:display=move ||if files_visible.get(){"none"}else{"flex"}><Show when=move ||selected.with(|s|s.is_some()) fallback=move ||view!{<section class="workbench-welcome"><strong>{move ||tr(english.get(),"选择项目或仓库开始","Choose a project or repository")}</strong><p>{move ||tr(english.get(),"比较项目保留独立规则；同一远程地址的仓库自动归组，本地副本与 worktree 分别保留。","Comparison projects keep independent rules. Repositories sharing a remote are grouped while local copies and worktrees remain separate.")}</p></section>}>
                 <nav class="git-workspace-tabs"><button class="quiet" aria-pressed=move ||!history_visible.get() on:click=move |_|history_visible.set(false)>{move ||tr(english.get(),"工作区","Working tree")}</button><button class="quiet" aria-pressed=move ||history_visible.get() on:click=move |_|history_visible.set(true)>{move ||tr(english.get(),"提交历史","History")}</button></nav>
                 {git_actions::panel(actions, english)}
                 {git_history::panel(actions,history_visible,english)}
-                <div class="workbench-status" style:display=move ||if history_visible.get(){"none"}else{"flex"}>
-                {move ||selected.get().map(|state|{let repo=state.repository;let refresh_id=repo.id.clone();let operation=state.operation.clone().unwrap_or_default();let ongoing=state.operation.is_some();view!{<header class="workbench-repo-heading"><div><strong>{repo.name}</strong><span>{repo.path}</span></div><span>{format!("{} · ↑{} ↓{}",repo.branch,repo.ahead,repo.behind)}</span><button class="quiet" disabled=move ||busy.get() on:click=move |_|open(refresh_id.clone())>{move ||tr(english.get(),"刷新仓库","Refresh repository")}</button></header><Show when=move ||ongoing><p class="workbench-operation">{format!("{}: {}",tr(english.get_untracked(),"进行中的操作","Operation in progress"),operation)}</p></Show><div class="workbench-repo-scroll"><h2>{move ||tr(english.get(),"工作区状态","Working tree status")}</h2><table class="workbench-changes"><thead><tr><th>{move ||tr(english.get(),"文件","File")}</th><th>{move ||tr(english.get(),"暂存区","Index")}</th><th>{move ||tr(english.get(),"工作区","Worktree")}</th><th>{move ||tr(english.get(),"操作","Actions")}</th></tr></thead><tbody>{state.changes.into_iter().map(|c|{let stage=c.id.clone();let unstage=c.id.clone();let discard=c.id.clone();let tracked=!c.untracked&&!c.conflicted;let has_staged=c.index!="."&&!c.untracked;view!{<tr><td>{c.path}</td><td>{change_label(&c.index,english.get_untracked()).to_string()}</td><td>{change_label(&c.worktree,english.get_untracked()).to_string()}</td><td><button class="quiet" disabled=move ||busy.get() on:click=move |_|actions.run(Action::Stage{files:vec![stage.clone()]})>{move ||tr(english.get(),"暂存","Stage")}</button><button class="quiet" disabled=move ||busy.get()||!has_staged on:click=move |_|actions.run(Action::Unstage{files:vec![unstage.clone()]})>{move ||tr(english.get(),"取消暂存","Unstage")}</button><button class="quiet" disabled=move ||busy.get()||!tracked on:click=move |_|actions.run(Action::Discard{files:vec![discard.clone()]})>{move ||tr(english.get(),"放弃修改","Discard")}</button></td></tr>}}).collect_view()}</tbody></table><h2>{move ||tr(english.get(),"本地、远程分支与标签","Local/remote branches and tags")}</h2><ul class="workbench-refs">{state.references.into_iter().map(|r|view!{<li><span>{if r.current{"●"}else{""}}</span><strong>{r.name}</strong><span>{reference_kind(&r.kind,english.get_untracked()).to_string()}</span><span>{r.upstream}</span><span>{r.tracking}</span></li>}).collect_view()}</ul><h2>{move ||tr(english.get(),"远程地址","Remotes")}</h2>{state.remotes.into_iter().map(|r|view!{<div class="workbench-remote"><strong>{r.name}</strong><code>{r.fetch}</code><code>{r.push}</code></div>}).collect_view()}</div>}})}
-            </div></Show></Show></main></div>
+                {git_changes::panel(actions,history_visible,files_visible,editor_request,english)}
+            </Show></div></main></div>
         </section>}
 }

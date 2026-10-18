@@ -40,3 +40,5 @@ pub mod git_actions;
 pub mod git_history;
 pub mod source;
 pub mod workbench;
+
+pub mod git_changes;
