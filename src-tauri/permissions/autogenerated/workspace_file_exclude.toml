@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-file-exclude"
+description = "Enables the workspace_file_exclude command without any pre-configured scope."
+commands.allow = ["workspace_file_exclude"]
+
+[[permission]]
+identifier = "deny-workspace-file-exclude"
+description = "Denies the workspace_file_exclude command without any pre-configured scope."
+commands.deny = ["workspace_file_exclude"]

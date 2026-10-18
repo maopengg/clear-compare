@@ -458,3 +458,154 @@ pub async fn workspace_source_search(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_file_info(
+    repository_id: String,
+    file_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::SourceFileInfo, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .source_file_info(&repository_id, &file_id, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_file_prepare(
+    repository_id: String,
+    file_id: String,
+    action: clear_contracts::workbench::SourceFileAction,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::SourceFilePlan, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .source_file_prepare(&repository_id, &file_id, action, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+fn recycle_source_file(path: &std::path::Path) -> clear_core::Result<()> {
+    let context = trash::TrashContext::default();
+    #[cfg(target_os = "macos")]
+    let context = {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        let mut context = context;
+        context.set_delete_method(DeleteMethod::NsFileManager);
+        context
+    };
+    context.delete(path).map_err(|e| {
+        clear_core::Error::Invalid(format!(
+            "System trash failed; no permanent-delete fallback: {e}"
+        ))
+    })
+}
+#[tauri::command]
+pub async fn workspace_file_apply(
+    plan_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::SourceFileResult, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .source_file_apply(
+                &plan_id,
+                &base.join("file-operations"),
+                &state.cancel,
+                recycle_source_file,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_file_reveal(
+    repository_id: String,
+    file_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<(), String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .source_file_path(&repository_id, &file_id, &state.cancel)
+            .map_err(|e| e.to_string())?;
+        #[cfg(target_os = "macos")]
+        let mut command = {
+            let mut c = std::process::Command::new("open");
+            c.arg("-R").arg(&path);
+            c
+        };
+        #[cfg(windows)]
+        let mut command = {
+            let mut c = std::process::Command::new("explorer.exe");
+            let mut argument = std::ffi::OsString::from("/select,");
+            argument.push(&path);
+            c.arg(argument);
+            c
+        };
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let mut command = {
+            let mut c = std::process::Command::new("xdg-open");
+            c.arg(path.parent().ok_or("File parent unavailable")?);
+            c
+        };
+        let status = command
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("System file manager could not reveal this item".into());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_file_exclude(
+    repository_id: String,
+    file_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::FileSettings, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .source_file_exclude(&repository_id, &file_id, &base, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

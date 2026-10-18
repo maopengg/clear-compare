@@ -1,5 +1,6 @@
 //! Persistent multi-repository workspace. Discovery and inspection never fetch or mutate Git.
 mod actions;
+mod file_ops;
 mod files;
 mod history;
 mod runner;
@@ -38,6 +39,7 @@ pub struct Workspace {
     history_details: BTreeMap<String, history::CapturedDetail>,
     file_caps: BTreeMap<String, files::FileCapability>,
     source_documents: BTreeMap<String, files::Document>,
+    file_plan: Option<file_ops::Prepared>,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -137,6 +139,7 @@ impl Workspace {
             history_details: BTreeMap::new(),
             file_caps: BTreeMap::new(),
             source_documents: BTreeMap::new(),
+            file_plan: None,
         })
     }
     pub fn save(&self, base: &Path) -> Result<()> {

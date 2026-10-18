@@ -447,6 +447,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | tower-service | 0.3.3 | MIT | [crate](https://crates.io/crates/tower-service/0.3.3) |
 | tracing | 0.1.44 | MIT | [crate](https://crates.io/crates/tracing/0.1.44) |
 | tracing-core | 0.1.36 | MIT | [crate](https://crates.io/crates/tracing-core/0.1.36) |
+| trash | 5.2.9 | MIT | [crate](https://crates.io/crates/trash/5.2.9) |
 | tray-icon | 0.25.1 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/tray-icon/0.25.1) |
 | try-lock | 0.2.5 | MIT | [crate](https://crates.io/crates/try-lock/0.2.5) |
 | typed-builder | 0.23.2 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/typed-builder/0.23.2) |
@@ -459,6 +460,7 @@ Generated from Cargo.lock and cargo metadata. This lists the full resolved works
 | unicode-segmentation | 1.13.3 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/unicode-segmentation/1.13.3) |
 | unicode-xid | 0.2.6 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/unicode-xid/0.2.6) |
 | url | 2.5.8 | MIT OR Apache-2.0 | [crate](https://crates.io/crates/url/2.5.8) |
+| urlencoding | 2.1.3 | MIT | [crate](https://crates.io/crates/urlencoding/2.1.3) |
 | urlpattern | 0.6.0 | MIT | [crate](https://crates.io/crates/urlpattern/0.6.0) |
 | utf8_iter | 1.0.4 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/utf8_iter/1.0.4) |
 | utf8parse | 0.2.2 | Apache-2.0 OR MIT | [crate](https://crates.io/crates/utf8parse/0.2.2) |

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-file-prepare"
+description = "Enables the workspace_file_prepare command without any pre-configured scope."
+commands.allow = ["workspace_file_prepare"]
+
+[[permission]]
+identifier = "deny-workspace-file-prepare"
+description = "Denies the workspace_file_prepare command without any pre-configured scope."
+commands.deny = ["workspace_file_prepare"]

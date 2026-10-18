@@ -70,6 +70,43 @@ pub struct WorkspaceFile {
     pub bytes: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SourceFileAction {
+    Rename {
+        name: String,
+    },
+    Copy {
+        repository: String,
+        directory: Option<String>,
+    },
+    Move {
+        repository: String,
+        directory: Option<String>,
+    },
+    Trash,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceFilePlan {
+    pub id: String,
+    pub operation: String,
+    pub source: String,
+    pub destination: Option<String>,
+    pub files: usize,
+    pub directories: usize,
+    pub bytes: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceFileInfo {
+    pub name: String,
+    pub relative_path: String,
+    pub absolute_path: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceFileResult {
+    pub journal: String,
+    pub entry: Option<WorkspaceFile>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FilePage {
     pub parent: Option<String>,
     pub path: String,

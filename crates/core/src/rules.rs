@@ -91,6 +91,11 @@ pub fn exclude_entry(
         .iter()
         .find(|r| r.id == id)
         .ok_or_else(|| Error::Invalid("Unknown entry".into()))?;
+    let directory =
+        crate::tree::is_directory(row) && row.status != clear_contracts::Status::TypeConflict;
+    exclude_path(relative, directory, current)
+}
+pub(crate) fn exclude_path(relative: &Path, directory: bool, current: &str) -> Result<String> {
     let parts = relative
         .components()
         .map(|p| match p {
@@ -110,8 +115,6 @@ pub fn exclude_entry(
         .map(|p| globset::escape(p).replace(' ', "[ ]"))
         .collect::<Vec<_>>()
         .join("/");
-    let directory =
-        crate::tree::is_directory(row) && row.status != clear_contracts::Status::TypeConflict;
     let rule = format!("-./{pattern}{}", if directory { "/" } else { "" });
     let mut rules = current
         .split([';', '\n'])

@@ -10,9 +10,9 @@ use std::{
 
 #[derive(Clone)]
 pub(super) struct FileCapability {
-    repository: String,
-    relative: PathBuf,
-    kind: String,
+    pub(super) repository: String,
+    pub(super) relative: PathBuf,
+    pub(super) kind: String,
 }
 #[derive(Clone)]
 pub(super) struct Document {
@@ -51,7 +51,7 @@ impl Workspace {
         }
         Ok(result)
     }
-    fn source_root(&mut self, repository: &str, cancel: &AtomicBool) -> Result<PathBuf> {
+    pub(super) fn source_root(&mut self, repository: &str, cancel: &AtomicBool) -> Result<PathBuf> {
         if !self.repositories.contains_key(repository) {
             self.open(repository, cancel)?;
         }
@@ -69,7 +69,7 @@ impl Workspace {
         }
         Ok(repo.root.clone())
     }
-    fn file_cap(
+    pub(super) fn file_cap(
         &self,
         repository: &str,
         entry: &str,
@@ -85,7 +85,7 @@ impl Workspace {
         }
         Ok(cap.clone())
     }
-    fn capture_file(
+    pub(super) fn capture_file(
         &mut self,
         repository: &str,
         root: &Path,
@@ -358,6 +358,11 @@ impl Workspace {
         self.source_documents
             .values()
             .any(|d| d.file.repository == repository)
+    }
+    pub(super) fn open_sources_under(&self, repository: &str, path: &Path) -> bool {
+        self.source_documents
+            .values()
+            .any(|d| d.file.repository == repository && d.file.relative.starts_with(path))
     }
     pub(super) fn retain_source_roots(&self, next: &mut Self) {
         for doc in self.source_documents.values() {

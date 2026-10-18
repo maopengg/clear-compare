@@ -102,6 +102,11 @@
     "allow-workspace-source-dirty",
     "allow-workspace-source-check",
     "allow-workspace-source-create",
-    "allow-workspace-source-search"
+    "allow-workspace-source-search",
+    "allow-workspace-file-info",
+    "allow-workspace-file-prepare",
+    "allow-workspace-file-apply",
+    "allow-workspace-file-reveal",
+    "allow-workspace-file-exclude"
   ]
 }
