@@ -502,7 +502,7 @@ fn previous_branch_shorthand_is_expanded_before_execution() {
             &CANCEL,
         )
         .unwrap();
-    assert_eq!(p.arguments, vec!["switch", "feature"]);
+    assert_eq!(p.arguments, vec!["switch", "--no-guess", "feature"]);
     assert_eq!(
         w.apply(&p.id, &CANCEL).unwrap().state.repository.branch,
         "feature"

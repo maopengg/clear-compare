@@ -44,6 +44,7 @@ pub fn panel(
     let projects = RwSignal::new(Vec::<LibraryEntry>::new());
     let selected = RwSignal::new(None::<RepositoryState>);
     let actions = git_actions::Controller {
+        completion: RwSignal::new(None),
         selected,
         catalog,
         busy,

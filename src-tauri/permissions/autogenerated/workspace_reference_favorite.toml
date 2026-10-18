@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-reference-favorite"
+description = "Enables the workspace_reference_favorite command without any pre-configured scope."
+commands.allow = ["workspace_reference_favorite"]
+
+[[permission]]
+identifier = "deny-workspace-reference-favorite"
+description = "Denies the workspace_reference_favorite command without any pre-configured scope."
+commands.deny = ["workspace_reference_favorite"]

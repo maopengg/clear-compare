@@ -262,6 +262,7 @@ pub fn state(repo: &mut Captured, cancel: &AtomicBool) -> Result<RepositoryState
     repo.view.error = None;
     repo.view.available = true;
     Ok(RepositoryState {
+        reference_settings: ReferenceSettings::default(),
         repository: repo.view.clone(),
         revision: id(&revision_data),
         operation,

@@ -660,3 +660,31 @@ pub async fn workspace_change_file(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_reference_favorite(
+    repository_id: String,
+    reference_id: String,
+    favorite: bool,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::ReferenceSettings, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .favorite_reference(
+                &repository_id,
+                &reference_id,
+                favorite,
+                &base,
+                &state.cancel,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

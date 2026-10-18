@@ -109,6 +109,7 @@
     "allow-workspace-file-reveal",
     "allow-workspace-file-exclude",
     "allow-workspace-working-diff",
-    "allow-workspace-change-file"
+    "allow-workspace-change-file",
+    "allow-workspace-reference-favorite"
   ]
 }

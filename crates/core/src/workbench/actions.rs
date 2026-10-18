@@ -10,6 +10,9 @@ pub(super) struct Prepared {
     input: Option<Vec<u8>>,
     selection: Option<super::working::SelectionGuard>,
     guard_unsaved: bool,
+    followup: Option<(Vec<String>, bool)>,
+    checkout_expectation: Option<(String, String)>,
+    preference_rename: Option<(String, String)>,
 }
 fn invalid(message: &str) -> Error {
     Error::Invalid(message.into())
@@ -88,7 +91,12 @@ impl Workspace {
         self.pending = None;
         let guard_unsaved = matches!(
             &action,
-            Action::StageSelection { .. }
+            Action::CreateAndSwitch { .. }
+                | Action::CheckoutRemote { .. }
+                | Action::SwitchAndUpdate { .. }
+                | Action::SwitchAndRebase { .. }
+                | Action::UpdateCurrent { .. }
+                | Action::StageSelection { .. }
                 | Action::Stage { .. }
                 | Action::Unstage { .. }
                 | Action::Discard { .. }
@@ -156,7 +164,134 @@ impl Workspace {
         };
         let mut input = None;
         let mut selection = None;
+        let mut followup = None;
+        let mut checkout_expectation = None;
+        let mut preference_rename = None;
         let args = match action {
+            Action::CreateAndSwitch { name, start } => {
+                let mut args = vec![
+                    "switch".into(),
+                    "--create".into(),
+                    branch(&repo.root, &name, cancel)?,
+                ];
+                if let Some(start) = start {
+                    args.push(commit(&repo.root, &start, cancel)?);
+                }
+                args
+            }
+            Action::CheckoutRemote { reference, name } => {
+                let reference = super::branches::reference(&state, &reference)?;
+                if reference.kind != "remote" {
+                    return Err(invalid("Select a remote branch"));
+                }
+                super::branches::checkout(
+                    &repo.root,
+                    &state,
+                    &reference.full_name,
+                    Some(&name),
+                    cancel,
+                )?
+                .args
+            }
+            Action::SwitchAndUpdate {
+                reference,
+                name,
+                mode,
+            } => {
+                let target = super::branches::checkout(
+                    &repo.root,
+                    &state,
+                    &reference,
+                    name.as_deref(),
+                    cancel,
+                )?;
+                let upstream = if let Some(remote) = target.remote.clone() {
+                    remote
+                } else {
+                    super::branches::upstream(&repo.root, &state, &target.name, cancel)?
+                };
+                followup = Some((super::branches::pull(upstream.0, upstream.1, &mode)?, true));
+                checkout_expectation = Some((target.name, target.tip.clone()));
+                dangerous = mode != "ff_only";
+                backup = dangerous;
+                backup_target = Some(target.tip);
+                target.args
+            }
+            Action::SwitchAndRebase { reference, name } => {
+                let target = super::branches::checkout(
+                    &repo.root,
+                    &state,
+                    &reference,
+                    name.as_deref(),
+                    cancel,
+                )?;
+                let original = state
+                    .repository
+                    .head
+                    .clone()
+                    .ok_or_else(|| invalid("Current branch has no commit to rebase onto"))?;
+                if target.name == state.repository.branch {
+                    return Err(invalid("Choose a different branch for checkout and rebase"));
+                }
+                followup = Some((vec!["rebase".into(), original], false));
+                checkout_expectation = Some((target.name, target.tip.clone()));
+                dangerous = true;
+                backup = true;
+                backup_target = Some(target.tip);
+                target.args
+            }
+            Action::UpdateCurrent { mode } => {
+                let current = state
+                    .references
+                    .iter()
+                    .find(|r| r.current && r.kind == "local")
+                    .ok_or_else(|| invalid("Updating requires a local branch with an upstream"))?;
+                let upstream =
+                    super::branches::upstream(&repo.root, &state, &current.name, cancel)?;
+                network = true;
+                dangerous = mode != "ff_only";
+                backup = dangerous;
+                super::branches::pull(upstream.0, upstream.1, &mode)?
+            }
+            Action::PushBranch {
+                branch: name,
+                remote: name_remote,
+                target,
+                set_upstream,
+                force_with_lease,
+            } => {
+                let name = branch(&repo.root, &name, cancel)?;
+                if !state
+                    .references
+                    .iter()
+                    .any(|r| r.kind == "local" && r.name == name)
+                {
+                    return Err(invalid("Choose an existing local branch to push"));
+                }
+                let remote = remote(&state, &name_remote)?;
+                let target = super::branches::target_name(&repo.root, &target, cancel)?;
+                network = true;
+                dangerous = force_with_lease;
+                let mut args = vec!["push".into()];
+                if set_upstream {
+                    args.push("--set-upstream".into());
+                }
+                if force_with_lease {
+                    let expected = state
+                        .references
+                        .iter()
+                        .find(|r| r.full_name == format!("refs/remotes/{remote}/{target}"))
+                        .map(|r| r.target.as_str())
+                        .unwrap_or("");
+                    if !expected.is_empty() {
+                        backup = true;
+                        backup_target = Some(expected.into());
+                    }
+                    args.push(format!("--force-with-lease=refs/heads/{target}:{expected}"));
+                }
+                args.extend([remote, format!("refs/heads/{name}:refs/heads/{target}")]);
+                args
+            }
             Action::StageSelection {
                 diff_id,
                 hunks,
@@ -256,15 +391,27 @@ impl Workspace {
                     ]
                 } else {
                     let name = branch(&repo.root, &reference, cancel)?;
-                    vec!["switch".into(), name]
+                    if !state
+                        .references
+                        .iter()
+                        .any(|r| r.kind == "local" && r.name == name)
+                    {
+                        return Err(invalid(
+                            "Select an existing local branch; remote branches use explicit tracking checkout",
+                        ));
+                    }
+                    vec!["switch".into(), "--no-guess".into(), name]
                 }
             }
-            Action::RenameBranch { name, new_name } => vec![
-                "branch".into(),
-                "-m".into(),
-                branch(&repo.root, &name, cancel)?,
-                branch(&repo.root, &new_name, cancel)?,
-            ],
+            Action::RenameBranch { name, new_name } => {
+                let name = branch(&repo.root, &name, cancel)?;
+                let new_name = branch(&repo.root, &new_name, cancel)?;
+                preference_rename = Some((
+                    format!("refs/heads/{name}"),
+                    format!("refs/heads/{new_name}"),
+                ));
+                vec!["branch".into(), "-m".into(), name, new_name]
+            }
             Action::DeleteBranch { name, force } => {
                 dangerous = force;
                 backup = force;
@@ -505,12 +652,20 @@ impl Workspace {
         if args.iter().map(String::len).sum::<usize>() > 200_000 {
             return Err(invalid("Git action exceeds argument limit"));
         }
+        let mut displayed_args = args.clone();
+        if let Some((next, _)) = &followup {
+            displayed_args.push("→ git".into());
+            displayed_args.extend(next.iter().cloned());
+        }
+        if displayed_args.iter().map(String::len).sum::<usize>() > 200_000 {
+            return Err(invalid("Combined Git action exceeds argument limit"));
+        }
         let token = crate::unique_id();
         let view = ActionPlan {
             id: token.clone(),
             repository_id: repository_id.into(),
             revision: state.revision,
-            arguments: args.iter().map(|a| runner::redact(a)).collect(),
+            arguments: displayed_args.iter().map(|a| runner::redact(a)).collect(),
             dangerous,
             backup_reference: if backup {
                 Some(format!("refs/clear-compare/backups/{token}"))
@@ -527,6 +682,9 @@ impl Workspace {
             input,
             selection,
             guard_unsaved,
+            followup,
+            checkout_expectation,
+            preference_rename,
         });
         Ok(view)
     }
@@ -592,7 +750,39 @@ impl Workspace {
         } else {
             runner::mutate(&repo.root, &plan.args, cancel, plan.network)?
         };
-        let output = runner::redact(&String::from_utf8_lossy(&output));
+        let mut output = runner::redact(&String::from_utf8_lossy(&output));
+        if let Some((next, network)) = &plan.followup {
+            let next_result = (|| -> Result<Vec<u8>> {
+                if let Some((name, tip)) = &plan.checkout_expectation
+                    && (runner::text(
+                        &repo.root,
+                        &["symbolic-ref", "--short", "-q", "HEAD"],
+                        cancel,
+                    )? != *name
+                        || runner::text(&repo.root, &["rev-parse", "--verify", "HEAD"], cancel)?
+                            != *tip)
+                {
+                    return Err(invalid(
+                        "Branch or HEAD changed after checkout; follow-up was not run",
+                    ));
+                }
+                runner::mutate(&repo.root, next, cancel, *network)
+            })();
+            match next_result {
+                Ok(bytes) => {
+                    output.push('\n');
+                    output.push_str(&runner::redact(&String::from_utf8_lossy(&bytes)));
+                }
+                Err(error) => {
+                    return Err(invalid(&format!(
+                        "Checkout completed; follow-up failed and the current Git state was retained: {error}"
+                    )));
+                }
+            }
+        }
+        if let Some((old, new)) = &plan.preference_rename {
+            self.rename_reference_preference(&plan.view.repository_id, old, new);
+        }
         let state = self.open(&plan.view.repository_id, cancel)?;
         Ok(ActionResult {
             output,

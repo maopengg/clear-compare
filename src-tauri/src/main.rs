@@ -1580,6 +1580,7 @@ fn main() {
             workbench::workspace_scan,
             workbench::workspace_open,
             workbench::workspace_favorite,
+            workbench::workspace_reference_favorite,
             workbench::workspace_remove,
             workbench::workspace_prepare,
             workbench::workspace_apply,

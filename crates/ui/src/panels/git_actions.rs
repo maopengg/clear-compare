@@ -12,10 +12,15 @@ pub struct Controller {
     pub error: RwSignal<String>,
     pub plan: RwSignal<Option<ActionPlan>>,
     pub log: RwSignal<String>,
+    pub completion: RwSignal<Option<bool>>,
 }
 impl Controller {
     pub(super) fn accept(self, state: RepositoryState) {
         self.catalog.update(|c| {
+            c.reference_settings.insert(
+                state.repository.id.clone(),
+                state.reference_settings.clone(),
+            );
             if let Some(repo) = c
                 .repositories
                 .iter_mut()
@@ -36,9 +41,11 @@ impl Controller {
                     .unwrap_or_default();
                 self.log.set(format!("{}{recovery}", result.output));
                 self.accept(result.state);
+                self.completion.set(Some(true));
             }
             Err(e) => {
                 self.error.set(e);
+                self.completion.set(Some(false));
                 // Failed merges can still change the index and enter a conflict state.
                 if let Ok(state) = invoke::<RepositoryState>(
                     "workspace_open",
@@ -60,13 +67,14 @@ impl Controller {
             return;
         };
         self.busy.set(true);
+        self.completion.set(None);
         self.error.set(String::new());
         self.plan.set(None);
         spawn_local(async move {
             match invoke::<ActionPlan>("workspace_prepare", serde_json::json!({"repositoryId":state.repository.id,"revision":state.revision,"action":action})).await {
                 Ok(plan) if plan.dangerous => { self.plan.set(Some(plan)); self.busy.set(false); }
                 Ok(plan) => self.execute(plan).await,
-                Err(e) => { self.error.set(e); self.busy.set(false); }
+                Err(e) => { self.error.set(e); self.completion.set(Some(false)); self.busy.set(false); }
             }
         });
     }
@@ -129,8 +137,9 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
     view! {
         <section class="git-action-controls" aria-label=move ||tr(english.get(),"Git 操作","Git actions")>
             <div class="git-quick-actions">
+                {super::git_branches::panel(c,english)}
                 <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.run(Action::Fetch {remote:None,prune:true})>{move ||tr(english.get(),"获取全部远程更新","Fetch all remotes")}</button>
-                <details><summary>{move ||tr(english.get(),"提交","Commit")}</summary><div class="git-action-form">
+                <details data-git-commit><summary>{move ||tr(english.get(),"提交","Commit")}</summary><div class="git-action-form">
                     <textarea aria-label=move ||tr(english.get(),"提交说明","Commit message") placeholder=move ||tr(english.get(),"填写提交说明；仅提交已暂存的内容","Enter a message; commit staged changes only") prop:value=move ||message.get() on:input=move |ev|message.set(event_target_value(&ev))/>
                     <label><input type="checkbox" prop:checked=move ||amend.get() on:change=move |ev|amend.set(event_target_checked(&ev))/>{move ||tr(english.get(),"修改最后一次提交","Amend last commit")}</label>
                     <button class="primary" disabled=move ||c.busy.get()||message.get().trim().is_empty() on:click=move |_|c.run(Action::Commit {message:message.get_untracked(),amend:amend.get_untracked()})>{move ||tr(english.get(),"提交已暂存文件","Commit staged files")}</button>
@@ -161,7 +170,7 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
                     {[("continue","继续","Continue"),("skip","跳过","Skip"),("abort","中止","Abort")].into_iter().map(move |(kind,zh,en)|view!{<button class="quiet" disabled=move ||c.busy.get()||c.selected.with(|s|s.as_ref().is_none_or(|s|kind=="skip"&&s.operation.as_deref()==Some("merge"))) on:click=move |_|{if let Some(operation)=c.selected.get_untracked().and_then(|s|s.operation){c.run(match kind {"continue"=>Action::Continue{operation},"skip"=>Action::Skip{operation},_=>Action::Abort{operation}})}}>{move ||tr(english.get(),zh,en)}</button>}).collect_view()}
                 </div>
             </Show>
-            <Show when=move ||c.plan.with(|p|p.is_some())><section class="git-action-review" role="region" aria-label=move ||tr(english.get(),"确认 Git 操作","Review Git action")><strong>{move ||tr(english.get(),"请确认操作范围；历史或文件可能改变","Review the action; history or files may change")}</strong><code>{move ||c.plan.with(|p|p.as_ref().map(|p|format!("git {}",p.arguments.join(" "))).unwrap_or_default())}</code><code>{move ||c.plan.with(|p|p.as_ref().and_then(|p|p.backup_reference.clone()).unwrap_or_default())}</code><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.plan.set(None)>{move ||tr(english.get(),"取消操作","Cancel action")}</button><button class="primary" disabled=move ||c.busy.get() on:click=move |_|{if let Some(plan)=c.plan.get_untracked(){c.plan.set(None);c.busy.set(true);spawn_local(c.execute(plan));}}>{move ||tr(english.get(),"确认执行","Confirm action")}</button></section></Show>
+            <Show when=move ||c.plan.with(|p|p.is_some())><section class="git-action-review" role="region" aria-label=move ||tr(english.get(),"确认 Git 操作","Review Git action")><strong>{move ||tr(english.get(),"请确认操作范围；历史或文件可能改变","Review the action; history or files may change")}</strong><code>{move ||c.plan.with(|p|p.as_ref().map(|p|format!("git {}",p.arguments.join(" "))).unwrap_or_default())}</code><code>{move ||c.plan.with(|p|p.as_ref().and_then(|p|p.backup_reference.clone()).unwrap_or_default())}</code><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.plan.set(None);c.completion.set(Some(false));}>{move ||tr(english.get(),"取消操作","Cancel action")}</button><button class="primary" disabled=move ||c.busy.get() on:click=move |_|{if let Some(plan)=c.plan.get_untracked(){c.plan.set(None);c.busy.set(true);spawn_local(c.execute(plan));}}>{move ||tr(english.get(),"确认执行","Confirm action")}</button></section></Show>
             <Show when=move ||!c.log.get().is_empty()><details class="git-action-log"><summary>{move ||tr(english.get(),"上次 Git 操作结果","Last Git action result")}</summary><pre>{move ||c.log.get()}</pre></details></Show>
         </section>
     }

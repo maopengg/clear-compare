@@ -34,6 +34,8 @@ pub struct Repository {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Catalog {
     #[serde(default)]
+    pub reference_settings: std::collections::BTreeMap<String, ReferenceSettings>,
+    #[serde(default)]
     pub file_settings: std::collections::BTreeMap<String, FileSettings>,
     #[serde(default)]
     pub projects: Vec<crate::LibraryEntry>,
@@ -42,6 +44,12 @@ pub struct Catalog {
     pub warnings: Vec<String>,
     pub scanned_directories: usize,
     pub truncated: bool,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ReferenceSettings {
+    pub favorites: Vec<String>,
+    pub recent: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -192,7 +200,7 @@ pub struct Change {
     pub untracked: bool,
     pub conflicted: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reference {
     pub id: String,
     pub name: String,
@@ -205,6 +213,8 @@ pub struct Reference {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RepositoryState {
+    #[serde(default)]
+    pub reference_settings: ReferenceSettings,
     pub repository: Repository,
     pub revision: String,
     pub operation: Option<String>,
@@ -319,6 +329,33 @@ pub struct WorkingDiff {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    CreateAndSwitch {
+        name: String,
+        start: Option<String>,
+    },
+    CheckoutRemote {
+        reference: String,
+        name: String,
+    },
+    SwitchAndUpdate {
+        reference: String,
+        name: Option<String>,
+        mode: String,
+    },
+    SwitchAndRebase {
+        reference: String,
+        name: Option<String>,
+    },
+    UpdateCurrent {
+        mode: String,
+    },
+    PushBranch {
+        branch: String,
+        remote: String,
+        target: String,
+        set_upstream: bool,
+        force_with_lease: bool,
+    },
     StageSelection {
         diff_id: String,
         hunks: Vec<String>,

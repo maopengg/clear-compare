@@ -42,3 +42,5 @@ pub mod source;
 pub mod workbench;
 
 pub mod git_changes;
+
+pub mod git_branches;

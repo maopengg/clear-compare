@@ -1,5 +1,6 @@
 //! Persistent multi-repository workspace. Discovery and inspection never fetch or mutate Git.
 mod actions;
+mod branches;
 mod file_ops;
 mod files;
 mod history;
@@ -46,6 +47,8 @@ pub struct Workspace {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Stored {
+    #[serde(default)]
+    reference_settings: BTreeMap<String, ReferenceSettings>,
     #[serde(default)]
     file_settings: BTreeMap<String, FileSettings>,
     version: u32,
@@ -124,6 +127,7 @@ impl Workspace {
         }
         validate(&stored.settings)?;
         let mut catalog = Catalog {
+            reference_settings: stored.reference_settings,
             settings: stored.settings,
             file_settings: stored.file_settings,
             ..Catalog::default()
@@ -159,6 +163,7 @@ impl Workspace {
             ));
         }
         let stored = Stored {
+            reference_settings: self.catalog.reference_settings.clone(),
             file_settings: self.catalog.file_settings.clone(),
             version: 1,
             settings: self.catalog.settings.clone(),
@@ -182,6 +187,7 @@ impl Workspace {
         let mut next = Workspace::default();
         next.catalog.settings = settings.clone();
         next.catalog.file_settings = self.catalog.file_settings.clone();
+        next.catalog.reference_settings = self.catalog.reference_settings.clone();
         next.file_caps = self.file_caps.clone();
         next.source_documents = self.source_documents.clone();
         next.ignored = self.ignored.clone();
@@ -356,6 +362,7 @@ impl Workspace {
         {
             *old = repo.view.clone();
         }
+        self.record_reference_use(repository_id, &mut result);
         Ok(result)
     }
     pub fn favorite(&mut self, repository_id: &str, value: bool) -> Result<Catalog> {
