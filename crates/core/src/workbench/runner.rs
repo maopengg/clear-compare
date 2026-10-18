@@ -74,7 +74,12 @@ fn run_mode(
         "-c",
         "protocol.allow=never",
     ]);
-    if args.first().is_none_or(|a| a != "check-ignore") {
+    // Stash synthesizes internal magic pathspecs for cleaning untracked files.
+    // Its typed calls accept revisions/messages, never caller-supplied pathspecs.
+    if args
+        .first()
+        .is_none_or(|a| a != "check-ignore" && a != "stash")
+    {
         command.arg("--literal-pathspecs");
     }
     if network {

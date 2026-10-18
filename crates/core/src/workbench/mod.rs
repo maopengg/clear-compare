@@ -6,6 +6,7 @@ mod file_ops;
 mod files;
 mod history;
 mod runner;
+mod stashes;
 mod status;
 mod working;
 use crate::{
@@ -44,6 +45,7 @@ pub struct Workspace {
     source_documents: BTreeMap<String, files::Document>,
     file_plan: Option<file_ops::Prepared>,
     working_diff: Option<working::CapturedDiff>,
+    stash_entries: BTreeMap<String, (String, StashEntry)>,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -148,6 +150,7 @@ impl Workspace {
             source_documents: BTreeMap::new(),
             file_plan: None,
             working_diff: None,
+            stash_entries: BTreeMap::new(),
         })
     }
     pub fn save(&self, base: &Path) -> Result<()> {

@@ -6,6 +6,7 @@ use leptos::{prelude::*, task::spawn_local};
 
 #[derive(Clone, Copy)]
 pub struct Controller {
+    pub stashes: RwSignal<bool>,
     pub comparison: RwSignal<Option<ReferenceComparison>>,
     pub selected: RwSignal<Option<RepositoryState>>,
     pub catalog: RwSignal<Catalog>,
@@ -88,7 +89,6 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
     let operation = RwSignal::new("create_branch".to_string());
     let remote = RwSignal::new(String::new());
     let pull_mode = RwSignal::new("ff_only".to_string());
-    let include_untracked = RwSignal::new(false);
     let run_branch = move || {
         let reference = reference.get_untracked();
         let name = name.get_untracked();
@@ -160,11 +160,7 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
                     <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.run(Action::Pull {remote:remote.get_untracked(),branch:name.get_untracked(),mode:pull_mode.get_untracked()})>{move ||tr(english.get(),"拉取","Pull")}</button>
                     <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.run(Action::Push {remote:remote.get_untracked(),branch:name.get_untracked(),set_upstream:true,force_with_lease:false})>{move ||tr(english.get(),"推送并设置上游","Push and set upstream")}</button>
                 </div></details>
-                <details><summary>{move ||tr(english.get(),"贮藏修改","Stash changes")}</summary><div class="git-action-form">
-                    <input aria-label=move ||tr(english.get(),"贮藏说明","Stash message") prop:value=move ||message.get() on:input=move |ev|message.set(event_target_value(&ev))/>
-                    <label><input type="checkbox" prop:checked=move ||include_untracked.get() on:change=move |ev|include_untracked.set(event_target_checked(&ev))/>{move ||tr(english.get(),"包含未跟踪文件","Include untracked files")}</label>
-                    <button class="quiet" disabled=move ||c.busy.get()||message.get().trim().is_empty() on:click=move |_|c.run(Action::StashSave {message:message.get_untracked(),include_untracked:include_untracked.get_untracked()})>{move ||tr(english.get(),"保存贮藏","Save stash")}</button>
-                </div></details>
+                <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.stashes.set(true);}>{move ||tr(english.get(),"贮藏管理","Stash manager")}</button>
             </div>
             <Show when=move ||c.selected.with(|s|s.as_ref().is_some_and(|s|s.operation.is_some()))>
                 <div class="git-quick-actions"><span>{move ||tr(english.get(),"进行中的 Git 操作","Git operation in progress")}</span>

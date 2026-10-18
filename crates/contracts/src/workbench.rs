@@ -434,6 +434,12 @@ pub enum Action {
         set_upstream: bool,
         force_with_lease: bool,
     },
+    StashUse {
+        id: String,
+        operation: StashOperation,
+        name: Option<String>,
+        restore_index: bool,
+    },
     StashSave {
         message: String,
         include_untracked: bool,
@@ -504,4 +510,36 @@ pub enum CompareTarget {
 pub struct ReferenceComparison {
     pub left_reference_id: String,
     pub target: CompareTarget,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StashEntry {
+    pub id: String,
+    pub position: usize,
+    pub object: String,
+    pub message: String,
+    pub author: String,
+    pub date: String,
+    pub parents: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StashPage {
+    pub state: RepositoryState,
+    pub entries: Vec<StashEntry>,
+    pub offset: usize,
+    pub has_more: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StashDetail {
+    pub entry: StashEntry,
+    pub area: String,
+    pub detail: CommitDetail,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StashOperation {
+    Apply,
+    Pop,
+    Drop,
+    Branch,
 }

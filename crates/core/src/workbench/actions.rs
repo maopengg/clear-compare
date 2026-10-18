@@ -111,6 +111,10 @@ impl Workspace {
                 | Action::Abort { .. }
                 | Action::Skip { .. }
                 | Action::Pull { .. }
+                | Action::StashUse {
+                    operation: StashOperation::Apply | StashOperation::Pop | StashOperation::Branch,
+                    ..
+                }
                 | Action::StashSave { .. }
                 | Action::StashApply { .. }
                 | Action::StashBranch { .. }
@@ -546,6 +550,46 @@ impl Workspace {
                 a.push(remote(&state, &name)?);
                 a.push(branch(&repo.root, &name_branch, cancel)?);
                 a
+            }
+            Action::StashUse {
+                id,
+                operation,
+                name,
+                restore_index,
+            } => {
+                let entry = self.stash_selection(repository_id, &id, cancel)?;
+                if state.repository.kind == "bare" {
+                    return Err(invalid("Stash mutations require a working tree"));
+                }
+                dangerous = true;
+                backup = true;
+                backup_target = Some(entry.object.clone());
+                let selector = format!("stash@{{{}}}", entry.position);
+                match operation {
+                    StashOperation::Apply | StashOperation::Pop => {
+                        let pop = matches!(operation, StashOperation::Pop);
+                        let mut args = vec![
+                            "stash".into(),
+                            if pop { "pop".into() } else { "apply".into() },
+                        ];
+                        if restore_index {
+                            args.push("--index".into());
+                        }
+                        args.push(if pop { selector } else { entry.object });
+                        args
+                    }
+                    StashOperation::Drop => vec!["stash".into(), "drop".into(), selector],
+                    StashOperation::Branch => vec![
+                        "stash".into(),
+                        "branch".into(),
+                        branch(
+                            &repo.root,
+                            &name.ok_or_else(|| invalid("Enter a new branch name"))?,
+                            cancel,
+                        )?,
+                        selector,
+                    ],
+                }
             }
             Action::StashSave {
                 message: msg,

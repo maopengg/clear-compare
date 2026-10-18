@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-stash-detail"
+description = "Enables the workspace_stash_detail command without any pre-configured scope."
+commands.allow = ["workspace_stash_detail"]
+
+[[permission]]
+identifier = "deny-workspace-stash-detail"
+description = "Denies the workspace_stash_detail command without any pre-configured scope."
+commands.deny = ["workspace_stash_detail"]

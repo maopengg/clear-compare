@@ -335,3 +335,33 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .git-reference-sources label{white-space:nowrap}
 .git-reference-tab{font-size:12px;color:var(--primary);padding:3px 8px;background:var(--selected);border-radius:3px}
 .git-reference-empty{padding:10px;color:var(--muted);font-size:12px}
+
+.git-stashes{display:flex;flex:1;min-height:0;overflow:hidden;flex-direction:column;font-size:12px}
+.git-stashes>header,.git-stash-detail>header{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.git-stashes>header>strong,.git-stash-detail>header>strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.git-stash-create summary{cursor:pointer;color:var(--primary);padding:4px 8px}
+.git-stash-create[open]{flex-basis:100%;order:4}
+.git-stash-create>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0}
+.git-stash-create input:not([type=checkbox]){padding:4px 7px;flex:1;min-width:120px}
+.git-stash-create label,.git-stash-actions label{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.git-stash-body{display:grid;grid-template-columns:minmax(200px,24%) minmax(0,1fr);flex:1;min-height:0;overflow:hidden}
+.git-stash-list,.git-stash-content>aside{display:flex;flex-direction:column;min-height:0;overflow:hidden;border-right:1px solid var(--line)}
+.git-stash-list>input,.git-stash-content>aside>input{margin:5px;padding:4px 6px;min-width:0;font-size:12px}
+.git-stash-entries,.git-stash-files{flex:1;min-height:0;overflow:auto}
+.git-stash-entry{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:0;border-radius:0;border-bottom:1px solid var(--line);background:var(--bg);color:var(--ink);padding:6px 8px;font-size:12px}
+.git-stash-entry>span{overflow-wrap:anywhere}.git-stash-entry>small,.git-stash-entry>code{font-size:11px;color:var(--muted)}
+.git-stash-entry.selected,.git-stash-file.selected{background:var(--selected)}
+.git-stashes footer{display:flex;align-items:center;justify-content:space-between;gap:5px;padding:3px 6px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
+.git-stash-detail{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.git-stash-detail select{font-size:12px;min-width:100px}
+.git-stash-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:5px 8px;border-bottom:1px solid var(--line)}
+.git-stash-actions>input{padding:4px 6px;width:150px;min-width:80px;font-size:12px}
+.git-stash-content{display:grid;grid-template-columns:minmax(150px,30%) minmax(0,1fr);flex:1;min-height:0;overflow:hidden}
+.git-stash-file{display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:var(--bg);color:var(--ink);border:0;border-radius:0;border-bottom:1px solid var(--line);padding:5px 7px;font-size:12px}
+.git-stash-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.git-stash-file small{color:var(--primary)}
+.git-stash-patch{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.git-stash-patch>header{padding:5px 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border-bottom:1px solid var(--line);background:var(--surface);font-weight:600}
+.git-stash-patch-scroll{flex:1;min-height:0;overflow:auto}
+.git-stash-patch pre{margin:0;padding:0 7px;min-height:20px;width:max-content;min-width:100%;font:12px/20px ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre}
+.git-stash-patch pre.add{background:var(--green-bg)}.git-stash-patch pre.delete{background:var(--red-bg)}
+.git-stash-empty{padding:14px;color:var(--muted)}

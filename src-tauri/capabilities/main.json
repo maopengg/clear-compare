@@ -111,6 +111,8 @@
     "allow-workspace-working-diff",
     "allow-workspace-change-file",
     "allow-workspace-reference-favorite",
-    "allow-workspace-compare-references"
+    "allow-workspace-compare-references",
+    "allow-workspace-stashes",
+    "allow-workspace-stash-detail"
   ]
 }
