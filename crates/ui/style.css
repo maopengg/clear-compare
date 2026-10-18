@@ -299,3 +299,39 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .git-branch-form p,.git-branch-form small{overflow-wrap:anywhere;color:var(--muted);font-size:11px}
 .git-branch-error{color:var(--red);background:var(--red-bg);padding:6px 10px;margin:0;max-height:64px;overflow:auto;overflow-wrap:anywhere}
 @media(max-width:600px){.git-branch-content{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.git-branch-popover button.quiet{padding:4px}.git-branch-choose small{display:none}}
+
+.git-reference-compare{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;font-size:12px}
+.git-reference-compare>header,.git-reference-text>header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);background:var(--surface)}
+.git-reference-sources{display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line)}
+.git-reference-sources>label{display:flex;align-items:center;gap:5px;min-width:0}
+.git-reference-sources>label:first-child,.git-reference-sources>label:nth-child(3){flex:1}
+.git-reference-sources select{min-width:0;width:100%;font-size:12px}
+.git-reference-capture{font-size:11px;padding:3px 10px;border-bottom:1px solid var(--line);max-height:110px;overflow:auto;color:var(--muted)}
+.git-reference-capture code{overflow-wrap:anywhere}
+.git-reference-body{display:grid;grid-template-columns:minmax(230px,30%) minmax(0,1fr);flex:1;min-height:0;overflow:hidden}
+.git-reference-body>aside{display:flex;flex-direction:column;min-height:0;overflow:hidden;border-right:1px solid var(--line)}
+.git-reference-filter{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:5px;border-bottom:1px solid var(--line)}
+.git-reference-filter input:not([type=checkbox]){width:120px;flex:1;min-width:40px;padding:4px;font-size:12px}
+.git-reference-filter label{display:flex;gap:4px;align-items:center;white-space:nowrap}
+.git-reference-files{flex:1;min-height:0;overflow:auto}
+.git-reference-file{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;border:0;border-radius:0;border-bottom:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;padding:5px 8px}
+.git-reference-file>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.git-reference-file>small{white-space:nowrap;flex:none}
+.git-reference-file.selected,.git-reference-file:hover:not(:disabled){background:var(--selected)}
+.git-reference-file .changed{color:var(--red)}.git-reference-file .left{color:var(--primary)}.git-reference-file .right{color:var(--green)}
+.git-reference-body footer{display:flex;align-items:center;justify-content:space-between;padding:3px 8px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
+.git-reference-text{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.git-reference-columns,.git-reference-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.git-reference-columns{background:var(--surface);border-bottom:1px solid var(--line);color:var(--muted);padding:3px 8px;font-size:11px}
+.git-reference-text-scroll{flex:1;min-height:0;overflow:auto}
+.git-reference-line>.diff-cell{min-height:22px;overflow:auto}.git-reference-line .diff-cell.delete{background:var(--red-bg)}.git-reference-line .diff-cell.insert{background:var(--green-bg)}
+.git-reference-text>header strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.git-reference-progress{padding:4px 10px;background:var(--surface);border-top:1px solid var(--line);color:var(--muted);font-size:11px}
+.git-reference-text-scroll{display:flex;overflow:hidden}
+.git-reference-side{width:50%;min-width:0;height:100%;overflow:auto;border-right:1px solid var(--line)}
+.git-reference-render-row{min-height:22px;width:max-content;min-width:100%}
+.git-reference-render-row>.diff-cell{height:22px;overflow:visible;min-width:max-content}
+.git-reference-render-row .diff-cell.delete{background:var(--red-bg)}.git-reference-render-row .diff-cell.insert{background:var(--green-bg)}
+.git-reference-sources label{white-space:nowrap}
+.git-reference-tab{font-size:12px;color:var(--primary);padding:3px 8px;background:var(--selected);border-radius:3px}
+.git-reference-empty{padding:10px;color:var(--muted);font-size:12px}

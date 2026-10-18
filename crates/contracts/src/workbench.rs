@@ -489,3 +489,19 @@ pub struct ActionResult {
     pub backup_reference: Option<String>,
     pub state: RepositoryState,
 }
+
+/// Reference IDs come from the captured repository state, never from UI paths.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CompareTarget {
+    Current,
+    Reference { id: String },
+    WorkingTree { include_untracked: bool },
+    Index,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceComparison {
+    pub left_reference_id: String,
+    pub target: CompareTarget,
+}

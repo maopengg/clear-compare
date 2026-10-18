@@ -7,6 +7,7 @@ fn main() {
             "workspace_open",
             "workspace_favorite",
             "workspace_reference_favorite",
+            "workspace_compare_references",
             "workspace_remove",
             "workspace_prepare",
             "workspace_apply",

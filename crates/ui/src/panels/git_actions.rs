@@ -6,6 +6,7 @@ use leptos::{prelude::*, task::spawn_local};
 
 #[derive(Clone, Copy)]
 pub struct Controller {
+    pub comparison: RwSignal<Option<ReferenceComparison>>,
     pub selected: RwSignal<Option<RepositoryState>>,
     pub catalog: RwSignal<Catalog>,
     pub busy: RwSignal<bool>,

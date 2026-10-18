@@ -1,6 +1,7 @@
 //! Persistent multi-repository workspace. Discovery and inspection never fetch or mutate Git.
 mod actions;
 mod branches;
+mod comparison;
 mod file_ops;
 mod files;
 mod history;

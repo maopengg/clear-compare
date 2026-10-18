@@ -4,7 +4,7 @@ use crate::tr;
 use clear_contracts::{DiffLine, Side, TextDiff, text_view};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-fn cell(
+pub(super) fn cell(
     line: Option<&DiffLine>,
     right: bool,
     ending_changed: bool,

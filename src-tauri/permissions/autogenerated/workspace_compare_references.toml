@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-compare-references"
+description = "Enables the workspace_compare_references command without any pre-configured scope."
+commands.allow = ["workspace_compare_references"]
+
+[[permission]]
+identifier = "deny-workspace-compare-references"
+description = "Denies the workspace_compare_references command without any pre-configured scope."
+commands.deny = ["workspace_compare_references"]

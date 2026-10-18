@@ -45,6 +45,7 @@ pub fn panel(
     let selected = RwSignal::new(None::<RepositoryState>);
     let actions = git_actions::Controller {
         completion: RwSignal::new(None),
+        comparison: RwSignal::new(None),
         selected,
         catalog,
         busy,
@@ -223,10 +224,11 @@ pub fn panel(
                     view!{<article class="workbench-repository" class:selected=move ||selected.with(|s|s.as_ref().is_some_and(|s|s.repository.id==chosen_id))><button class="workbench-repository-open" disabled=move ||busy.get() on:click=move |_|open(open_id.clone())><strong>{name}<small>{move ||kind(&r.kind,english.get()).to_string()}</small></strong><span title=r.path.clone()>{r.path.clone()}</span><span>{format!("{} · {} {} · {} {} · ↑{} ↓{}",r.branch,r.changed,tr(english.get_untracked(),"处变更","changes"),r.conflicts,tr(english.get_untracked(),"冲突","conflicts"),r.ahead,r.behind)}</span><Show when=move ||matched><span class="workbench-match">{key.clone()}</span></Show><Show when=move ||!r.available><span class="workbench-unavailable">{move ||tr(english.get(),"待验证或路径失效","Needs verification or unavailable")}</span></Show></button><button class="quiet workbench-star" aria-label=move ||if is_favorite{tr(english.get(),"取消收藏仓库","Unfavorite repository")}else{tr(english.get(),"收藏仓库","Favorite repository")} disabled=move ||busy.get() on:click=move |_|favorite(favorite_id.clone(),!is_favorite)>{if is_favorite{"★"}else{"☆"}}</button></article>}
                 }/><Show when=move ||repositories.with(|r|r.is_empty())><p class="workbench-empty">{move ||tr(english.get(),"添加扫描目录，发现你的 Git 仓库。扫描不会拉取或修改代码。","Add a scan directory to discover Git repositories. Scanning does not fetch or modify code.")}</p></Show></Show>
             </aside><main class="workbench-detail">{source::panel(actions,files_visible,english,editor_request,move ||files_visible.set(false))}<div class="git-panels" style:display=move ||if files_visible.get(){"none"}else{"flex"}><Show when=move ||selected.with(|s|s.is_some()) fallback=move ||view!{<section class="workbench-welcome"><strong>{move ||tr(english.get(),"选择项目或仓库开始","Choose a project or repository")}</strong><p>{move ||tr(english.get(),"比较项目保留独立规则；同一远程地址的仓库自动归组，本地副本与 worktree 分别保留。","Comparison projects keep independent rules. Repositories sharing a remote are grouped while local copies and worktrees remain separate.")}</p></section>}>
-                <nav class="git-workspace-tabs"><button class="quiet" aria-pressed=move ||!history_visible.get() on:click=move |_|history_visible.set(false)>{move ||tr(english.get(),"工作区","Working tree")}</button><button class="quiet" aria-pressed=move ||history_visible.get() on:click=move |_|history_visible.set(true)>{move ||tr(english.get(),"提交历史","History")}</button></nav>
+                <nav class="git-workspace-tabs"><button class="quiet" aria-pressed=move ||!history_visible.get()&&actions.comparison.with(|r|r.is_none()) on:click=move |_|{actions.comparison.set(None);history_visible.set(false);}>{move ||tr(english.get(),"工作区","Working tree")}</button><button class="quiet" aria-pressed=move ||history_visible.get()&&actions.comparison.with(|r|r.is_none()) on:click=move |_|{actions.comparison.set(None);history_visible.set(true);}>{move ||tr(english.get(),"提交历史","History")}</button><Show when=move ||actions.comparison.with(|r|r.is_some())><span class="git-reference-tab" aria-current="page">{move ||tr(english.get(),"版本比较","Version comparison")}</span></Show></nav>
                 {git_actions::panel(actions, english)}
-                {git_history::panel(actions,history_visible,english)}
-                {git_changes::panel(actions,history_visible,files_visible,editor_request,english)}
+                {super::git_reference_compare::panel(actions,english)}
+                <div class="git-normal-panels" style:display=move ||if actions.comparison.with(|r|r.is_some()){"none"}else{"contents"}>{git_history::panel(actions,history_visible,english)}
+                {git_changes::panel(actions,history_visible,files_visible,editor_request,english)}</div>
             </Show></div></main></div>
         </section>}
 }

@@ -688,3 +688,37 @@ pub async fn workspace_reference_favorite(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_compare_references(
+    repository_id: String,
+    revision: String,
+    request: clear_contracts::workbench::ReferenceComparison,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<OpenedComparison, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let snapshot = {
+            let mut w = workspace(&state, &base)?;
+            w.as_mut()
+                .ok_or("Workspace unavailable")?
+                .compare_references(&repository_id, &revision, &request, &state.cancel)
+                .map_err(|e| e.to_string())?
+        };
+        let view = OpenedComparison {
+            session: snapshot.report.session.clone(),
+            left: snapshot.report.left.clone(),
+            right: snapshot.report.right.clone(),
+            summary: snapshot.report.summary.clone(),
+            warnings: snapshot.report.warnings.clone(),
+            page: snapshot.page(0, "", true).map_err(|e| e.to_string())?,
+        };
+        *state.git.lock().map_err(|_| "State unavailable")? = Some(Arc::new(snapshot));
+        Ok(view)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

@@ -44,3 +44,5 @@ pub mod workbench;
 pub mod git_changes;
 
 pub mod git_branches;
+
+pub mod git_reference_compare;
