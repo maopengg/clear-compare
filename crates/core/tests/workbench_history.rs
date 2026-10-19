@@ -1,7 +1,7 @@
 use clear_contracts::workbench::{Action, HistoryQuery, ScanSettings};
 use clear_core::workbench::Workspace;
 use std::{fs, path::Path, process::Command, sync::atomic::AtomicBool};
-const CANCEL: AtomicBool = AtomicBool::new(false);
+static CANCEL: AtomicBool = AtomicBool::new(false);
 fn git(root: &Path, args: &[&str]) -> String {
     let r = Command::new("git")
         .current_dir(root)
@@ -290,4 +290,133 @@ fn patch_pages_are_bounded_and_report_long_line_previews() {
         .unwrap();
     assert!(patch.long_lines);
     assert!(patch.text.lines().all(|l| l.chars().count() <= 8193));
+}
+
+#[test]
+fn child_navigation_follows_all_branches_merge_parents_and_captured_details() {
+    let (dir, mut w, id) = fixture();
+    let root = git(dir.path(), &["rev-parse", "HEAD"]);
+    let detail = w.commit_detail(&id, &root, 0, &CANCEL).unwrap();
+    git(dir.path(), &["commit", "--allow-empty", "-m", "main child"]);
+    let main = git(dir.path(), &["rev-parse", "HEAD"]);
+    git(dir.path(), &["switch", "-c", "feature", &root]);
+    git(
+        dir.path(),
+        &["commit", "--allow-empty", "-m", "feature child"],
+    );
+    let feature = git(dir.path(), &["rev-parse", "HEAD"]);
+    git(dir.path(), &["switch", "main"]);
+    git(dir.path(), &["merge", "--no-ff", "feature", "-m", "merge"]);
+    let merge = git(dir.path(), &["rev-parse", "HEAD"]);
+    let children = w
+        .commit_children(&id, &detail.id, 0, None, &CANCEL)
+        .unwrap();
+    assert_eq!(children.target, root);
+    assert_eq!(children.total, 2);
+    assert!(children.children.contains(&main));
+    assert!(children.children.contains(&feature));
+    assert!(!children.children.contains(&merge));
+    for hash in [&main, &feature] {
+        let d = w.commit_detail(&id, hash, 0, &CANCEL).unwrap();
+        assert_eq!(
+            w.commit_children(&id, &d.id, 0, None, &CANCEL)
+                .unwrap()
+                .children,
+            vec![merge.clone()]
+        );
+    }
+    let tip = w.commit_detail(&id, &merge, 0, &CANCEL).unwrap();
+    assert_eq!(
+        w.commit_children(&id, &tip.id, 0, None, &CANCEL)
+            .unwrap()
+            .total,
+        0
+    );
+    assert!(
+        w.commit_children("foreign", &detail.id, 0, None, &CANCEL)
+            .is_err()
+    );
+    assert!(w.commit_children(&id, "foreign", 0, None, &CANCEL).is_err());
+    assert!(
+        w.commit_children(&id, &detail.id, usize::MAX, None, &CANCEL)
+            .is_err()
+    );
+    assert!(
+        w.commit_children(&id, &detail.id, 0, None, &AtomicBool::new(true))
+            .is_err()
+    );
+    git(dir.path(), &["switch", "--detach", &root]);
+    git(
+        dir.path(),
+        &["commit", "--allow-empty", "-m", "detached child"],
+    );
+    let detached = git(dir.path(), &["rev-parse", "HEAD"]);
+    assert!(
+        w.commit_children(&id, &detail.id, 0, None, &CANCEL)
+            .unwrap()
+            .children
+            .contains(&detached)
+    );
+    git(dir.path(), &["tag", "-a", "only-tag", "-m", "kept by tag"]);
+    git(dir.path(), &["switch", "main"]);
+    assert!(
+        w.commit_children(&id, &detail.id, 0, None, &CANCEL)
+            .unwrap()
+            .children
+            .contains(&detached)
+    );
+    assert!(
+        w.commit_children(&id, &detail.id, 0, Some(&children.snapshot), &CANCEL)
+            .is_err()
+    );
+}
+
+#[test]
+fn child_navigation_pages_fanout_and_rejects_changed_reference_snapshot() {
+    let (dir, mut w, id) = fixture();
+    let root = git(dir.path(), &["rev-parse", "HEAD"]);
+    let tree = git(dir.path(), &["rev-parse", "HEAD^{tree}"]);
+    let detail = w.commit_detail(&id, &root, 0, &CANCEL).unwrap();
+    for n in 0..105 {
+        let child = git(
+            dir.path(),
+            &[
+                "commit-tree",
+                &tree,
+                "-p",
+                &root,
+                "-m",
+                &format!("child {n}"),
+            ],
+        );
+        let reference = if n % 2 == 0 {
+            format!("refs/heads/child-{n}")
+        } else {
+            format!("refs/remotes/example/child-{n}")
+        };
+        git(dir.path(), &["update-ref", &reference, &child]);
+    }
+    let first = w
+        .commit_children(&id, &detail.id, 0, None, &CANCEL)
+        .unwrap();
+    assert_eq!(first.total, 105);
+    assert_eq!(first.children.len(), 100);
+    assert_eq!(first.next_offset, Some(100));
+    let second = w
+        .commit_children(&id, &detail.id, 100, Some(&first.snapshot), &CANCEL)
+        .unwrap();
+    assert_eq!(second.children.len(), 5);
+    assert_eq!(second.next_offset, None);
+    assert!(second.children.iter().all(|c| !first.children.contains(c)));
+    git(dir.path(), &["update-ref", "-d", "refs/heads/child-0"]);
+    assert!(
+        w.commit_children(&id, &detail.id, 100, Some(&first.snapshot), &CANCEL)
+            .is_err()
+    );
+    assert_eq!(
+        w.commit_children(&id, &detail.id, 0, None, &CANCEL)
+            .unwrap()
+            .total,
+        104
+    );
 }

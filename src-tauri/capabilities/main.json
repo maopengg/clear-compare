@@ -93,6 +93,7 @@
     "allow-workspace-apply",
     "allow-workspace-history",
     "allow-workspace-commit-detail",
+    "allow-workspace-commit-children",
     "allow-workspace-commit-patch",
     "allow-workspace-file-tree",
     "allow-workspace-file-settings",

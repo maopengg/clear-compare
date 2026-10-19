@@ -288,6 +288,15 @@ pub struct CommitDetail {
     pub files: Vec<CommitFile>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommitChildren {
+    pub target: String,
+    pub snapshot: String,
+    pub offset: usize,
+    pub total: usize,
+    pub children: Vec<String>,
+    pub next_offset: Option<usize>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GitPatch {
     pub path: String,
     pub text: String,

@@ -1,7 +1,7 @@
 use super::*;
 use clear_contracts::workbench::{
-    Action, ActionPlan, ActionResult, Catalog, CommitDetail, GitPatch, HistoryPage, HistoryQuery,
-    RepositoryState, ScanSettings,
+    Action, ActionPlan, ActionResult, Catalog, CommitChildren, CommitDetail, GitPatch, HistoryPage,
+    HistoryQuery, RepositoryState, ScanSettings,
 };
 fn workspace<'a>(
     state: &'a Backend,
@@ -31,6 +31,34 @@ pub async fn workspace_history(
         w.as_mut()
             .ok_or("Workspace unavailable")?
             .history(&repository_id, &query, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_commit_children(
+    repository_id: String,
+    detail_id: String,
+    offset: usize,
+    snapshot: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<CommitChildren, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .commit_children(
+                &repository_id,
+                &detail_id,
+                offset,
+                snapshot.as_deref(),
+                &state.cancel,
+            )
             .map_err(|e| e.to_string())
     })
     .await

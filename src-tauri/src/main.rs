@@ -1607,6 +1607,7 @@ fn main() {
             workbench::workspace_source_search,
 
             workbench::workspace_commit_detail,
+            workbench::workspace_commit_children,
             workbench::workspace_commit_patch,
             compare,
             bidirectional::choose_baseline,

@@ -121,6 +121,85 @@ fn graph(commits: Vec<Commit>, filtered: bool) -> Result<Vec<GraphCommit>> {
         .collect()
 }
 impl Workspace {
+    pub fn commit_children(
+        &mut self,
+        repository: &str,
+        detail_id: &str,
+        offset: usize,
+        expected_snapshot: Option<&str>,
+        cancel: &AtomicBool,
+    ) -> Result<CommitChildren> {
+        let detail = self
+            .history_details
+            .get(detail_id)
+            .filter(|d| d.repository == repository)
+            .ok_or_else(|| invalid("Commit selection expired; open its details again"))?;
+        let target = detail.target.clone();
+        let state = self.open(repository, cancel)?;
+        let roots = |state: &RepositoryState| {
+            let mut roots = state
+                .references
+                .iter()
+                .map(|r| r.target.clone())
+                .collect::<BTreeSet<_>>();
+            roots.extend(state.repository.head.clone());
+            roots
+        };
+        let tips = roots(&state);
+        let snapshot = id(&serde_json::to_vec(&tips)?);
+        if expected_snapshot.is_some_and(|s| s != snapshot) {
+            return Err(invalid(
+                "History references changed; refresh child commits before paging",
+            ));
+        }
+        let repo = self
+            .repositories
+            .get(repository)
+            .ok_or_else(|| invalid("Unknown repository"))?;
+        let mut args = vec!["rev-list".into(), "--parents".into()];
+        args.extend(tips.iter().cloned());
+        args.push(target.clone());
+        args.push("--".into());
+        // Query the captured reference tips, independently of history filters or pages.
+        // The runner rejects timeout/output limits rather than returning partial ancestry.
+        let raw = runner::run_owned(&repo.root, &args, cancel)?;
+        let mut children = BTreeSet::new();
+        for line in raw.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
+            check_cancel(cancel)?;
+            let line = std::str::from_utf8(line).map_err(|_| invalid("Invalid ancestry output"))?;
+            let mut fields = line.split_whitespace();
+            let child = fields
+                .next()
+                .ok_or_else(|| invalid("Missing commit identity"))?;
+            if !oid(child) {
+                return Err(invalid("Invalid ancestry identity"));
+            }
+            let parents = fields.collect::<Vec<_>>();
+            if parents.iter().any(|p| !oid(p)) {
+                return Err(invalid("Invalid parent identity"));
+            }
+            if parents.contains(&target.as_str()) {
+                children.insert(child.to_string());
+            }
+        }
+        if roots(&self.open(repository, cancel)?) != tips {
+            return Err(invalid(
+                "History references changed while reading child commits; retry",
+            ));
+        }
+        let total = children.len();
+        if offset > total {
+            return Err(invalid("Invalid child commit page"));
+        }
+        Ok(CommitChildren {
+            target,
+            snapshot,
+            offset,
+            total,
+            next_offset: (total.saturating_sub(offset) > 100).then_some(offset.saturating_add(100)),
+            children: children.into_iter().skip(offset).take(100).collect(),
+        })
+    }
     pub fn history(
         &mut self,
         repository: &str,

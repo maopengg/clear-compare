@@ -383,3 +383,5 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .git-remote-form>button{margin:0 10px}.git-remote-form>p{margin:5px 10px;color:var(--muted);font-size:11px}
 .git-remote-network{display:flex;gap:8px;padding:5px 10px}.git-remote-probe{margin:8px 10px;color:var(--green);overflow-wrap:anywhere}
 .git-remotes-note,.git-remotes-empty{padding:5px 10px;color:var(--muted);font-size:11px}
+
+.git-child-navigation{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:11px}.git-child-links{display:flex;flex-wrap:wrap;gap:4px;max-height:110px;overflow:auto;min-width:0;width:100%}.git-child-navigation button{font-size:11px;padding:3px 6px}

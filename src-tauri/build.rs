@@ -32,6 +32,7 @@ fn main() {
             "workspace_source_create",
             "workspace_source_search",
             "workspace_commit_detail",
+            "workspace_commit_children",
             "workspace_commit_patch",
             "compare",
             "choose_baseline",
