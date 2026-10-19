@@ -25,4 +25,4 @@
 
 `workbench_branches` 使用临时本地仓库及本地 bare 远程验证检出/跟踪、同名拒绝、收藏持久化和失败回退、重命名记录迁移、复合更新及失败现场、变基对象恢复、精确推送租约、歧义上游、过期计划与 post-checkout hook 改变 HEAD。`scripts/check-git-branches.cjs` 对真实 WASM 界面使用模拟 IPC，验证分组/搜索/收藏、远程专属动作、表单失败保留、创建并切换、推送参数、快捷键、确认取消、焦点与窗口边界。
 
-模拟 IPC 不证明原生桌面集成，临时仓库测试不证明网络认证与三系统安装。分支间比较和工作区比较的菜单桥接、worktree 操作、完整冲突处理和交互式变基仍未完成，完整范围继续以 [原始验收清单](workbench-acceptance.md) 为准。
+模拟 IPC 不证明原生桌面集成，临时仓库测试不证明网络认证与三系统安装。分支/工作区比较已接入 [版本比较](git-reference-comparison.md)，从选定引用创建 Worktree 已接入 [工作区管理](git-worktrees.md)。完整冲突处理和交互式变基仍未完成，完整范围继续以 [原始验收清单](workbench-acceptance.md) 为准。

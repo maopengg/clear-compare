@@ -497,6 +497,21 @@ pub enum Action {
     RemoveRemote {
         name: String,
     },
+    CreateWorktree {
+        destination_id: String,
+        folder: String,
+        reference_id: Option<String>,
+        new_branch: Option<String>,
+        detach: bool,
+    },
+    RemoveWorktree {
+        id: String,
+    },
+    PruneWorktrees,
+    SetWorktreeLock {
+        id: String,
+        reason: Option<String>,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionPlan {
@@ -514,6 +529,36 @@ pub struct ActionResult {
     pub output: String,
     pub backup_reference: Option<String>,
     pub state: RepositoryState,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorktreeEntry {
+    pub id: String,
+    pub path: String,
+    pub head: Option<String>,
+    pub branch: Option<String>,
+    pub detached: bool,
+    pub bare: bool,
+    pub main: bool,
+    pub current: bool,
+    pub available: bool,
+    pub locked: Option<String>,
+    pub prunable: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorktreeList {
+    pub state: RepositoryState,
+    pub catalog: Catalog,
+    pub entries: Vec<WorktreeEntry>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorktreeDestination {
+    pub id: String,
+    pub path: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorktreeOpen {
+    pub state: RepositoryState,
+    pub catalog: Catalog,
 }
 
 /// Reference IDs come from the captured repository state, never from UI paths.

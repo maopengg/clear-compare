@@ -8,6 +8,8 @@ use leptos::{prelude::*, task::spawn_local};
 pub struct Controller {
     pub epoch: RwSignal<u64>,
     pub completion_epoch: RwSignal<u64>,
+    pub worktrees: RwSignal<bool>,
+    pub worktree_start: RwSignal<Option<String>>,
     pub remotes: RwSignal<bool>,
     pub stashes: RwSignal<bool>,
     pub comparison: RwSignal<Option<ReferenceComparison>>,
@@ -184,7 +186,8 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
                     <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.run(Action::Pull {remote:remote.get_untracked(),branch:name.get_untracked(),mode:pull_mode.get_untracked()})>{move ||tr(english.get(),"拉取","Pull")}</button>
                     <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.run(Action::Push {remote:remote.get_untracked(),branch:name.get_untracked(),set_upstream:true,force_with_lease:false})>{move ||tr(english.get(),"推送并设置上游","Push and set upstream")}</button>
                 </div></details>
-                <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.remotes.set(false);c.stashes.set(true);}>{move ||tr(english.get(),"贮藏管理","Stash manager")}</button><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.stashes.set(false);c.remotes.set(true);}>{move ||tr(english.get(),"远程管理","Remote manager")}</button>
+                <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.remotes.set(false);c.worktrees.set(false);c.stashes.set(true);}>{move ||tr(english.get(),"贮藏管理","Stash manager")}</button><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.stashes.set(false);c.worktrees.set(false);c.remotes.set(true);}>{move ||tr(english.get(),"远程管理","Remote manager")}</button>
+                <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.stashes.set(false);c.remotes.set(false);c.worktrees.set(true);}>{move ||tr(english.get(),"工作区管理","Worktrees")}</button>
             </div>
             <Show when=move ||c.selected.with(|s|s.as_ref().is_some_and(|s|s.operation.is_some()))>
                 <div class="git-quick-actions"><span>{move ||tr(english.get(),"进行中的 Git 操作","Git operation in progress")}</span>

@@ -14,6 +14,7 @@ pub(super) struct Prepared {
     checkout_expectation: Option<(String, String)>,
     preference_rename: Option<(String, String)>,
     config_change: Option<String>,
+    worktree_guard: Option<super::worktrees::Guard>,
 }
 fn invalid(message: &str) -> Error {
     Error::Invalid(message.into())
@@ -173,7 +174,20 @@ impl Workspace {
         let mut checkout_expectation = None;
         let mut preference_rename = None;
         let mut config_change = None;
+        let mut worktree_guard = None;
         let args = match action {
+            action @ (Action::CreateWorktree { .. }
+            | Action::RemoveWorktree { .. }
+            | Action::PruneWorktrees
+            | Action::SetWorktreeLock { .. }) => {
+                let (args, guard, target) =
+                    self.prepare_worktree(repository_id, &state, &action, cancel)?;
+                dangerous = true;
+                backup = target.is_some();
+                backup_target = target;
+                worktree_guard = Some(guard);
+                args
+            }
             Action::CreateAndSwitch { name, start } => {
                 let mut args = vec![
                     "switch".into(),
@@ -765,6 +779,7 @@ impl Workspace {
             checkout_expectation,
             preference_rename,
             config_change,
+            worktree_guard,
         });
         Ok(view)
     }
@@ -799,6 +814,9 @@ impl Workspace {
         if let Some(selection) = &plan.selection {
             selection.check(&repo.root, cancel)?;
         }
+        if let Some(guard) = &plan.worktree_guard {
+            guard.check(self, repo, cancel)?;
+        }
         if let Some(reference) = &plan.view.backup_reference {
             let target = if plan.backup_worktree {
                 let created = runner::text(
@@ -825,7 +843,12 @@ impl Workspace {
                 )?;
             }
         }
-        let config_recovery = if let Some(remote) = &plan.config_change {
+        let config_recovery = if let Some(guard) = &plan.worktree_guard {
+            let path = guard.journal(repo, &plan.view.id, &plan.args, cancel)?;
+            guard.check(self, repo, cancel)?;
+            super::remotes::unchanged(repo, &plan.view.revision, cancel)?;
+            Some(path)
+        } else if let Some(remote) = &plan.config_change {
             let path = super::remotes::backup(
                 repo,
                 remote,
@@ -839,16 +862,26 @@ impl Workspace {
         } else {
             None
         };
-        let result = if let Some(input) = &plan.input {
-            runner::mutate_input(&repo.root, &plan.args, input, cancel)
-        } else {
-            runner::mutate(&repo.root, &plan.args, cancel, plan.network)
-        };
+        let result = (|| {
+            if let Some(guard) = &plan.worktree_guard {
+                guard.reserve_destination(
+                    config_recovery
+                        .as_deref()
+                        .ok_or_else(|| invalid("Worktree journal missing"))?,
+                    cancel,
+                )?;
+            }
+            if let Some(input) = &plan.input {
+                runner::mutate_input(&repo.root, &plan.args, input, cancel)
+            } else {
+                runner::mutate(&repo.root, &plan.args, cancel, plan.network)
+            }
+        })();
         if let Some(path) = &config_recovery {
             let recorded = super::remotes::finish(path, result.is_ok());
             if let Err(e) = recorded {
                 return Err(invalid(&format!(
-                    "Remote command finished (success: {}), but recording recovery failed: {e}. Recovery: {}",
+                    "Git command finished (success: {}), but recording recovery failed: {e}. Recovery: {}",
                     result.is_ok(),
                     path.display()
                 )));
@@ -856,7 +889,12 @@ impl Workspace {
         }
         let output = result.map_err(|e| {
             if let Some(path) = &config_recovery {
-                invalid(&format!("{e}. Configuration recovery: {}", path.display()))
+                let kind = if plan.config_change.is_some() {
+                    "Configuration recovery"
+                } else {
+                    "Worktree recovery"
+                };
+                invalid(&format!("{e}. {kind}: {}", path.display()))
             } else {
                 e
             }
@@ -893,6 +931,18 @@ impl Workspace {
         }
         if let Some((old, new)) = &plan.preference_rename {
             self.rename_reference_preference(&plan.view.repository_id, old, new);
+        }
+        if let Some(id) = plan
+            .worktree_guard
+            .as_ref()
+            .and_then(|g| g.removed_repository())
+        {
+            self.repositories.remove(&id);
+            if let Some(entry) = self.catalog.repositories.iter().find(|r| r.id == id) {
+                let path = entry.path.clone();
+                self.catalog.settings.roots.retain(|r| r != &path);
+            }
+            self.catalog.repositories.retain(|r| r.id != id);
         }
         let state = self.open(&plan.view.repository_id, cancel)?;
         Ok(ActionResult {

@@ -10,6 +10,7 @@ mod runner;
 mod stashes;
 mod status;
 mod working;
+mod worktrees;
 use crate::{
     Error, Result,
     compare::{canonical_root, check_cancel},
@@ -47,6 +48,8 @@ pub struct Workspace {
     file_plan: Option<file_ops::Prepared>,
     working_diff: Option<working::CapturedDiff>,
     stash_entries: BTreeMap<String, (String, StashEntry)>,
+    worktree_entries: BTreeMap<String, (String, worktrees::Entry)>,
+    worktree_destinations: BTreeMap<String, worktrees::Destination>,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -167,6 +170,8 @@ impl Workspace {
             file_plan: None,
             working_diff: None,
             stash_entries: BTreeMap::new(),
+            worktree_entries: BTreeMap::new(),
+            worktree_destinations: BTreeMap::new(),
         })
     }
     pub fn save(&self, base: &Path) -> Result<()> {

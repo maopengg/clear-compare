@@ -115,6 +115,10 @@
     "allow-workspace-compare-references",
     "allow-workspace-stashes",
     "allow-workspace-remote-probe",
+    "allow-workspace-worktrees",
+    "allow-workspace-worktree-destination",
+    "allow-workspace-worktree-open",
+    "allow-workspace-worktree-reveal",
     "allow-workspace-stash-detail"
   ]
 }

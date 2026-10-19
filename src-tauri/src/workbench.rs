@@ -814,3 +814,106 @@ pub async fn workspace_remote_probe(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_worktrees(
+    repository_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::WorktreeList, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .worktrees(&repository_id, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_worktree_destination(
+    repository_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<Option<clear_contracts::workbench::WorktreeDestination>, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(chosen) = app.dialog().file().blocking_pick_folder() else {
+            return Ok(None);
+        };
+        let path = chosen.into_path().map_err(|e| e.to_string())?;
+        let path = path.to_str().ok_or("Worktree parent must be Unicode")?;
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .worktree_destination(&repository_id, path, &state.cancel)
+            .map(Some)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_worktree_open(
+    repository_id: String,
+    worktree_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::WorktreeOpen, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        let w = w.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .open_worktree(&repository_id, &worktree_id, &state.cancel)
+            .map_err(|e| e.to_string())?;
+        w.save(&base).map_err(|e| e.to_string())?;
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_worktree_reveal(
+    repository_id: String,
+    worktree_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<(), String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .worktree_path(&repository_id, &worktree_id, &state.cancel)
+            .map_err(|e| e.to_string())?;
+        #[cfg(target_os = "macos")]
+        let mut command = std::process::Command::new("open");
+        #[cfg(windows)]
+        let mut command = std::process::Command::new("explorer.exe");
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let mut command = std::process::Command::new("xdg-open");
+        let status = command
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("System file manager could not open this worktree".into());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

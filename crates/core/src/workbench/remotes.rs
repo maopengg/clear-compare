@@ -72,7 +72,7 @@ pub(super) fn editable(
         })
         .collect()
 }
-fn directory(path: &Path) -> Result<()> {
+pub(super) fn directory(path: &Path) -> Result<()> {
     let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
     {
@@ -98,7 +98,7 @@ fn directory(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn write(path: &Path, data: &[u8]) -> Result<()> {
+pub(super) fn write(path: &Path, data: &[u8]) -> Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
