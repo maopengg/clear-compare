@@ -327,14 +327,9 @@ fn visit(
 fn administrative(git: &Path, worktree: &Path, tail: &[&str]) -> Result<Vec<String>> {
     let mut args = vec![
         "--git-dir".into(),
-        git.to_str()
-            .ok_or_else(|| invalid("Submodule metadata path must be Unicode"))?
-            .into(),
+        runner::path_arg(git)?,
         "--work-tree".into(),
-        worktree
-            .to_str()
-            .ok_or_else(|| invalid("Project path must be Unicode"))?
-            .into(),
+        runner::path_arg(worktree)?,
     ];
     args.extend(tail.iter().map(|v| v.to_string()));
     Ok(args)

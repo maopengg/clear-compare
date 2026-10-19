@@ -24,9 +24,7 @@ fn invalid(text: &str) -> Error {
     Error::Invalid(text.into())
 }
 fn text(path: &Path) -> Result<String> {
-    path.to_str()
-        .map(String::from)
-        .ok_or_else(|| invalid("This worktree action requires a Unicode path"))
+    runner::path_arg(path)
 }
 fn raw(repo: &Captured, cancel: &AtomicBool) -> Result<Vec<u8>> {
     runner::run(

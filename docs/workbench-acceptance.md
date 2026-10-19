@@ -270,3 +270,12 @@ Git 变更通过原生条目转换进入文件编辑器，Git 面板保持挂载
 - Git 动作、子模块和 Worktree 回归 29 项通过；文件比较五项通过。macOS 与 Windows GNU 目标核心库 strict Clippy 通过；交叉编译不等于 Windows 运行验证。
 - 修正此前 Windows CI 时间戳测试只读打开文件导致权限不足的问题，并消除两处 Windows 平台条件编译警告。提交 d449362 的 CI 中 Linux/macOS 原生测试与 Clippy 均通过；Windows 新增进程生命周期测试通过，但后续工作台扫描测试暴露 Git 路径与 verbatim 路径表示不一致。继续修正目录解析并增加 Windows 空格/中文路径、重扫 ID 和打开状态回归；三平台完整验收仍未完成。
 - 本批未修改界面或安装当前开发版；冲突处理、交互式历史重写等其余目标仍需继续实现与验收。
+
+
+### Windows Git 路径参数与测试现场
+
+41ac18e 的 CI 中 Windows 仓库发现、普通/嵌套/裸仓库、子模块与 worktree 收录、中文空格路径、重扫 ID 和打开状态测试通过；Linux/macOS 全部流水线通过。Windows 后续测试暴露了两类额外问题：Git 不接受传入的 verbatim 目录参数，以及测试夹具依赖 runner 默认换行/使用 Windows 非法文件名。
+
+- 本批仅在原生目录参数传给 Git 的边界转换 drive/UNC 路径，修正 Worktree 目标与缓存子模块管理目录；内部身份与文件系统保护仍使用规范路径，不改写提交信息或远程地址。
+- CI 临时 Git 夹具固定 autocrlf=false，避免受 hosted runner 全局设置影响；不修改产品内真实仓库的换行设置。路径字面匹配测试在 Windows 使用合法方括号文件名，在 Unix 继续测试 Git magic pathspec 样式。
+- 本机历史、Stash、子模块与 Worktree 35 项回归通过；Windows 实际运行待后续提交 CI 确认，不能把测试环境修正作为产品功能完成的证据。

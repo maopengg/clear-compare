@@ -224,6 +224,27 @@ pub fn redact(input: &str) -> String {
         .collect()
 }
 
+/// Translate native absolute paths only at Git argument boundaries. Never rewrite
+/// arbitrary arguments such as commit messages, remote URLs or relative names.
+pub(super) fn path_arg(path: &Path) -> Result<String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| Error::Invalid("Git path must be Unicode".into()))?;
+    #[cfg(windows)]
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        if let Some(unc) = rest.strip_prefix(r"UNC\") {
+            return Ok(format!("//{}", unc.replace('\\', "/")));
+        }
+        if rest.as_bytes().get(1) == Some(&b':') {
+            return Ok(rest.replace('\\', "/"));
+        }
+        return Err(Error::Invalid(
+            "Git does not support this Windows device path".into(),
+        ));
+    }
+    Ok(text.into())
+}
+
 #[cfg(all(test, unix))]
 mod cancellation_tests {
     use super::*;
@@ -281,5 +302,26 @@ mod cancellation_tests {
         cancel.store(false, Ordering::Relaxed);
         assert!(run(dir.path(), &["rev-parse", "--verify", "HEAD"], &cancel).is_err());
         assert!(!dir.path().join(".git/index.lock").exists());
+    }
+}
+
+#[cfg(all(test, windows))]
+mod path_tests {
+    use super::*;
+    #[test]
+    fn native_windows_paths_become_git_paths_without_rewriting_relative_names() {
+        assert_eq!(
+            path_arg(Path::new(r"\\?\C:\项目 with space\repo")).unwrap(),
+            "C:/项目 with space/repo"
+        );
+        assert_eq!(
+            path_arg(Path::new(r"\\?\UNC\server\share\repo")).unwrap(),
+            "//server/share/repo"
+        );
+        assert_eq!(
+            path_arg(Path::new("[literal].txt")).unwrap(),
+            "[literal].txt"
+        );
+        assert!(path_arg(Path::new(r"\\?\GLOBALROOT\Device\x")).is_err());
     }
 }

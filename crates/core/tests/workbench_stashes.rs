@@ -397,7 +397,11 @@ fn failed_stash_branch_keeps_the_created_branch_and_untracked_collision() {
 #[test]
 fn stash_internal_literal_paths_are_preserved_without_global_literal_pathspec_mode() {
     let (d, mut w, id) = fixture();
-    let name = ":(glob)*.txt";
+    let name = if cfg!(windows) {
+        "[literal].txt"
+    } else {
+        ":(glob)*.txt"
+    };
     fs::write(d.path().join(name), "literal content\n").unwrap();
     save(&mut w, &id, true);
     assert!(!d.path().join(name).exists());

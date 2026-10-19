@@ -27,6 +27,8 @@ jobs:
       - run: npm run build:editor
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
+      - name: Use deterministic line endings in temporary Git fixtures
+        run: git config --global core.autocrlf false
       - run: cargo test -p clear-core -p clear-contracts -p clear-cli --locked --no-fail-fast
       - run: cargo clippy -p clear-core -p clear-contracts -p clear-cli --locked -- -D warnings
       - run: cargo clippy -p clear-ui --target wasm32-unknown-unknown --locked -- -D warnings

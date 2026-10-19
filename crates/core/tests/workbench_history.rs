@@ -224,10 +224,15 @@ fn literal_filters_hash_search_paging_and_changed_references_are_explicit() {
 #[test]
 fn file_names_that_look_like_pathspecs_are_literal_for_writes_and_history() {
     let (dir, mut w, id) = fixture();
-    fs::write(dir.path().join(":(glob)*"), "literal\n").unwrap();
+    let name = if cfg!(windows) {
+        "[literal].txt"
+    } else {
+        ":(glob)*"
+    };
+    fs::write(dir.path().join(name), "literal\n").unwrap();
     fs::write(dir.path().join("other.txt"), "other\n").unwrap();
     let s = w.open(&id, &CANCEL).unwrap();
-    let file = s.changes.iter().find(|c| c.path == ":(glob)*").unwrap();
+    let file = s.changes.iter().find(|c| c.path == name).unwrap();
     let p = w
         .prepare(
             &id,
@@ -239,16 +244,13 @@ fn file_names_that_look_like_pathspecs_are_literal_for_writes_and_history() {
         )
         .unwrap();
     w.apply(&p.id, &CANCEL).unwrap();
-    assert_eq!(
-        git(dir.path(), &["diff", "--cached", "--name-only"]),
-        ":(glob)*"
-    );
+    assert_eq!(git(dir.path(), &["diff", "--cached", "--name-only"]), name);
     git(dir.path(), &["commit", "-m", "literal name"]);
     let p = w
         .history(
             &id,
             &HistoryQuery {
-                path: Some(":(glob)*".into()),
+                path: Some(name.into()),
                 ..Default::default()
             },
             &CANCEL,
