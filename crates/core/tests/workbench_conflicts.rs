@@ -145,6 +145,25 @@ fn captured_versions_save_and_resolve_only_selected_file_then_continue() {
         b"unrelated local edit\n"
     );
     assert_eq!(git(dir.path(), &["show", ":untouched.txt"]), "keep");
+    let state = w.open(&id, &CANCEL).unwrap();
+    let continuation = w
+        .prepare(
+            &id,
+            &state.revision,
+            Action::Continue {
+                operation: "merge".into(),
+            },
+            &CANCEL,
+        )
+        .unwrap();
+    let continued = w.apply(&continuation.id, &CANCEL).unwrap();
+    assert!(continued.state.operation.is_none());
+    assert_eq!(
+        git(dir.path(), &["log", "-1", "--format=%P"])
+            .split_whitespace()
+            .count(),
+        2
+    );
     // Once resolved the same document becomes a normal source buffer.
     save(&mut w, &doc, "merged again\n", backup.path());
     assert_eq!(git(dir.path(), &["show", &format!(":{NAME}")]), "merged");
