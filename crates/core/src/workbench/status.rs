@@ -9,13 +9,35 @@ pub fn remotes(root: &Path, cancel: &AtomicBool) -> Result<Vec<Remote>> {
         if name.starts_with('-') || name.contains('\0') {
             return Err(Error::Invalid("Invalid remote name".into()));
         }
-        let fetch = runner::text(root, &["remote", "get-url", name], cancel)?;
-        let push = runner::text(root, &["remote", "get-url", "--push", name], cancel)?;
+        let fetch = runner::text(root, &["remote", "get-url", "--all", name], cancel)?;
+        let push = runner::text(
+            root,
+            &["remote", "get-url", "--push", "--all", name],
+            cancel,
+        )?;
+        let fetch_urls = fetch.lines().map(runner::redact).collect::<Vec<_>>();
+        let push_urls = push.lines().map(runner::redact).collect::<Vec<_>>();
+        let push_local = !runner::optional(
+            root,
+            &[
+                "config".into(),
+                "--no-includes".into(),
+                "--local".into(),
+                "--get-all".into(),
+                format!("remote.{name}.pushurl"),
+            ],
+            &[],
+            cancel,
+        )?
+        .is_empty();
         result.push(Remote {
+            fetch_urls: fetch_urls.clone(),
+            push_urls: push_urls.clone(),
+            push_local,
             name: name.into(),
-            fetch: runner::redact(&fetch),
-            push: runner::redact(&push),
-            match_key: remote_key(&fetch),
+            fetch: fetch_urls.first().cloned().unwrap_or_default(),
+            push: push_urls.first().cloned().unwrap_or_default(),
+            match_key: fetch.lines().next().and_then(remote_key),
         });
     }
     Ok(result)
@@ -259,6 +281,11 @@ pub fn state(repo: &mut Captured, cancel: &AtomicBool) -> Result<RepositoryState
         revision_data
             .extend_from_slice(format!("{:?}:{}", meta.modified().ok(), meta.len()).as_bytes());
     }
+    repo.view.match_key = remotes
+        .iter()
+        .find(|r| r.name == "origin")
+        .or(remotes.first())
+        .and_then(|r| r.match_key.clone());
     repo.view.error = None;
     repo.view.available = true;
     Ok(RepositoryState {

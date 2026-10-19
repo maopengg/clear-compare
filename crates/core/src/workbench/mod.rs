@@ -5,6 +5,7 @@ mod comparison;
 mod file_ops;
 mod files;
 mod history;
+mod remotes;
 mod runner;
 mod stashes;
 mod status;
@@ -73,11 +74,26 @@ pub fn remote_key(url: &str) -> Option<String> {
     }
     if let Some((scheme, rest)) = raw.split_once("://") {
         if !["https", "http", "ssh", "git"].contains(&scheme) {
-            return Some(raw.to_owned());
+            return (runner::redact(raw) == raw).then(|| raw.to_owned());
         }
-        let rest = rest.rsplit_once('@').map(|(_, r)| r).unwrap_or(rest);
-        let (host, path) = rest.split_once('/')?;
-        let host = host.strip_suffix(":22").unwrap_or(host);
+        let rest = rest
+            .split(['?', '#'])
+            .next()
+            .unwrap_or(rest)
+            .trim_end_matches('/')
+            .trim_end_matches(".git");
+        let (authority, path) = rest.split_once('/')?;
+        let host = authority
+            .rsplit_once('@')
+            .map(|(_, r)| r)
+            .unwrap_or(authority);
+        let port = match scheme {
+            "https" => ":443",
+            "http" => ":80",
+            "ssh" => ":22",
+            _ => ":9418",
+        };
+        let host = host.strip_suffix(port).unwrap_or(host);
         return Some(format!(
             "{}/{}",
             host.to_lowercase(),

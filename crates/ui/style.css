@@ -365,3 +365,21 @@ button.primary:hover:not(:disabled){background:color-mix(in oklch,var(--primary)
 .git-stash-patch pre{margin:0;padding:0 7px;min-height:20px;width:max-content;min-width:100%;font:12px/20px ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre}
 .git-stash-patch pre.add{background:var(--green-bg)}.git-stash-patch pre.delete{background:var(--red-bg)}
 .git-stash-empty{padding:14px;color:var(--muted)}
+
+.git-remotes{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;font-size:12px}
+.git-remotes>header,.git-remote-detail>header,.git-remote-form>header,.git-remote-addresses>header{display:flex;align-items:center;gap:7px;padding:5px 10px;border-bottom:1px solid var(--line);background:var(--surface)}
+.git-remotes header>strong{flex:1;min-width:0;overflow-wrap:anywhere}
+.git-remotes-body{display:grid;grid-template-columns:minmax(180px,24%) minmax(0,1fr);flex:1;min-height:0;overflow:hidden}
+.git-remotes-body>aside{overflow:auto;border-right:1px solid var(--line)}
+.git-remotes-body>main{min-width:0;overflow:auto;padding-bottom:12px}
+.git-remote-entry{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;border:0;border-radius:0;border-bottom:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;padding:7px 9px}
+.git-remote-entry>span{overflow-wrap:anywhere;font-size:11px;color:var(--muted)}.git-remote-entry.selected{background:var(--selected)}
+.git-remote-addresses{margin:10px;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.git-remote-addresses>div{padding:5px 10px}.git-remote-addresses code{display:block;padding:4px 0;overflow-wrap:anywhere;font-size:12px}
+.git-remote-addresses>button{margin:4px 10px}.git-remote-addresses small{display:block;margin:4px 10px;color:var(--muted);font-size:11px}
+.git-remote-form{margin:10px;border:1px solid var(--primary);border-radius:4px;padding-bottom:10px}
+.git-remote-form>label{display:flex;align-items:center;gap:8px;padding:5px 10px;white-space:nowrap}
+.git-remote-form input{flex:1;min-width:0;padding:5px 7px;font-size:12px}
+.git-remote-form>button{margin:0 10px}.git-remote-form>p{margin:5px 10px;color:var(--muted);font-size:11px}
+.git-remote-network{display:flex;gap:8px;padding:5px 10px}.git-remote-probe{margin:8px 10px;color:var(--green);overflow-wrap:anywhere}
+.git-remotes-note,.git-remotes-empty{padding:5px 10px;color:var(--muted);font-size:11px}

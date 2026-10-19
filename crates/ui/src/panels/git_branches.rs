@@ -50,6 +50,7 @@ struct Menu {
     chosen: RwSignal<String>,
     form: RwSignal<Option<Form>>,
     pending: RwSignal<bool>,
+    expected: RwSignal<u64>,
 }
 impl Menu {
     fn close(self) {
@@ -90,6 +91,8 @@ impl Menu {
         if self.c.busy.get_untracked() {
             return;
         }
+        self.expected
+            .set(self.c.epoch.get_untracked().wrapping_add(1));
         self.pending.set(true);
         self.c.run(action);
     }
@@ -411,6 +414,7 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
         chosen: RwSignal::new(String::new()),
         form: RwSignal::new(None),
         pending: RwSignal::new(false),
+        expected: RwSignal::new(0),
     };
     let repository = Memo::new(move |_| {
         c.selected
@@ -428,12 +432,17 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
         if !m.pending.get() {
             return;
         }
+        if m.expected.get() != c.epoch.get() {
+            m.pending.set(false);
+            return;
+        }
         if c.plan.with(|p| p.is_some()) {
             m.open.set(false);
             review_focus();
             return;
         }
         if !c.busy.get()
+            && c.completion_epoch.get() == m.expected.get()
             && let Some(success) = c.completion.get()
         {
             m.pending.set(false);

@@ -7,6 +7,12 @@ pub struct ScanSettings {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Remote {
+    #[serde(default)]
+    pub fetch_urls: Vec<String>,
+    #[serde(default)]
+    pub push_urls: Vec<String>,
+    #[serde(default)]
+    pub push_local: bool,
     pub name: String,
     pub fetch: String,
     pub push: String,
@@ -476,6 +482,9 @@ pub enum Action {
         url: String,
         push: bool,
     },
+    ClearRemotePush {
+        name: String,
+    },
     RemoveRemote {
         name: String,
     },
@@ -491,6 +500,8 @@ pub struct ActionPlan {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionResult {
+    #[serde(default)]
+    pub recovery_path: Option<String>,
     pub output: String,
     pub backup_reference: Option<String>,
     pub state: RepositoryState,
@@ -542,4 +553,13 @@ pub enum StashOperation {
     Pop,
     Drop,
     Branch,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RemoteProbe {
+    pub remote: String,
+    pub push: bool,
+    pub references: usize,
+    pub default_branch: Option<String>,
+    pub elapsed_ms: String,
 }

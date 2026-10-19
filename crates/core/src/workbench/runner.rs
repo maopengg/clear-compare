@@ -166,13 +166,33 @@ pub fn redact(input: &str) -> String {
     input
         .split_inclusive(char::is_whitespace)
         .map(|part| {
-            if let Some(scheme) = part.find("://") {
-                let rest = &part[scheme + 3..];
-                if let Some(at) = rest.find('@') {
-                    return format!("{}***@{}", &part[..scheme + 3], &rest[at + 1..]);
-                }
-            }
-            part.to_owned()
+            let Some(scheme) = part.find("://") else {
+                return part.to_owned();
+            };
+            let end = part.trim_end_matches(char::is_whitespace).len();
+            let value = &part[..end];
+            let whitespace = &part[end..];
+            let rest = &value[scheme + 3..];
+            let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+            let authority = &rest[..authority_end];
+            let safe_authority = if let Some(at) = authority.rfind('@') {
+                format!("***@{}", &authority[at + 1..])
+            } else {
+                authority.into()
+            };
+            let tail = &rest[authority_end..];
+            let tail = if let Some(i) = tail.find(['?', '#']) {
+                format!("{}{}***", &tail[..i], &tail[i..i + 1])
+            } else {
+                tail.into()
+            };
+            format!(
+                "{}{}{}{}",
+                &value[..scheme + 3],
+                safe_authority,
+                tail,
+                whitespace
+            )
         })
         .collect()
 }

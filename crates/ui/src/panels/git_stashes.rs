@@ -22,6 +22,7 @@ struct Stashes {
     restore: RwSignal<bool>,
     branch: RwSignal<String>,
     pending: RwSignal<Option<String>>,
+    expected: RwSignal<u64>,
 }
 fn key(state: &RepositoryState) -> String {
     format!("{}/{}", state.repository.id, state.revision)
@@ -124,6 +125,8 @@ impl Stashes {
             return;
         };
         let branching = matches!(&operation, StashOperation::Branch);
+        self.expected
+            .set(self.c.epoch.get_untracked().wrapping_add(1));
         self.pending.set(Some(if branching {
             "branch".into()
         } else {
@@ -163,6 +166,7 @@ pub fn panel(c: Controller, en: RwSignal<bool>) -> impl IntoView {
         restore: RwSignal::new(false),
         branch: RwSignal::new(String::new()),
         pending: RwSignal::new(None),
+        expected: RwSignal::new(0),
     };
     let repository = Memo::new(move |_| {
         c.selected
@@ -205,8 +209,13 @@ pub fn panel(c: Controller, en: RwSignal<bool>) -> impl IntoView {
         }
     });
     Effect::new(move || {
+        if v.pending.with(|p| p.is_some()) && v.expected.get() != c.epoch.get() {
+            v.pending.set(None);
+            return;
+        }
         if v.pending.with(|p| p.is_some())
             && !c.busy.get()
+            && v.expected.get() == c.completion_epoch.get()
             && let Some(success) = c.completion.get()
         {
             let pending = v.pending.get_untracked();
@@ -235,7 +244,7 @@ pub fn panel(c: Controller, en: RwSignal<bool>) -> impl IntoView {
         })
     });
     view! {<Show when=move ||c.stashes.get()><section class="git-stashes" aria-label=move ||tr(en.get(),"贮藏管理","Stash manager")>
-    <header><strong>{move ||tr(en.get(),"贮藏管理","Stash manager")}</strong><details class="git-stash-create"><summary>{move ||tr(en.get(),"保存当前修改","Save current changes")}</summary><div><input aria-label=move ||tr(en.get(),"贮藏说明","Stash message") placeholder=move ||tr(en.get(),"填写贮藏说明","Enter a stash message") disabled=move ||c.busy.get() prop:value=move ||v.message.get() on:input=move |ev|v.message.set(event_target_value(&ev))/><label><input type="checkbox" disabled=move ||c.busy.get() prop:checked=move ||v.include.get() on:change=move |ev|v.include.set(event_target_checked(&ev))/>{move ||tr(en.get(),"包含未跟踪文件","Include untracked files")}</label><button class="quiet" disabled=move ||c.busy.get()||!v.mutable()||v.message.get().trim().is_empty() on:click=move |_|{v.pending.set(Some("save".into()));c.run(Action::StashSave{message:v.message.get_untracked(),include_untracked:v.include.get_untracked()});}>{move ||tr(en.get(),"保存贮藏","Save stash")}</button></div></details><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|v.load(v.page.with_untracked(|p|p.as_ref().map(|p|p.offset).unwrap_or(0)))>{move ||tr(en.get(),"刷新贮藏","Refresh stashes")}</button><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.stashes.set(false)>{move ||tr(en.get(),"返回仓库","Back to repository")}</button></header>
+    <header><strong>{move ||tr(en.get(),"贮藏管理","Stash manager")}</strong><details class="git-stash-create"><summary>{move ||tr(en.get(),"保存当前修改","Save current changes")}</summary><div><input aria-label=move ||tr(en.get(),"贮藏说明","Stash message") placeholder=move ||tr(en.get(),"填写贮藏说明","Enter a stash message") disabled=move ||c.busy.get() prop:value=move ||v.message.get() on:input=move |ev|v.message.set(event_target_value(&ev))/><label><input type="checkbox" disabled=move ||c.busy.get() prop:checked=move ||v.include.get() on:change=move |ev|v.include.set(event_target_checked(&ev))/>{move ||tr(en.get(),"包含未跟踪文件","Include untracked files")}</label><button class="quiet" disabled=move ||c.busy.get()||!v.mutable()||v.message.get().trim().is_empty() on:click=move |_|{v.expected.set(c.epoch.get_untracked().wrapping_add(1));v.pending.set(Some("save".into()));c.run(Action::StashSave{message:v.message.get_untracked(),include_untracked:v.include.get_untracked()});}>{move ||tr(en.get(),"保存贮藏","Save stash")}</button></div></details><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|v.load(v.page.with_untracked(|p|p.as_ref().map(|p|p.offset).unwrap_or(0)))>{move ||tr(en.get(),"刷新贮藏","Refresh stashes")}</button><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.stashes.set(false)>{move ||tr(en.get(),"返回仓库","Back to repository")}</button></header>
     <div class="git-stash-body"><aside class="git-stash-list"><input aria-label=move ||tr(en.get(),"筛选本页贮藏","Filter this stash page") placeholder=move ||tr(en.get(),"筛选本页说明、作者…","Filter page messages, authors…") prop:value=move ||v.query.get() on:input=move |ev|v.query.set(event_target_value(&ev))/><div class="git-stash-entries"><For each=move ||v.page.with(|p|p.as_ref().map(|p|{let q=v.query.get().to_lowercase();p.entries.iter().filter(|e|format!("{} {} {}",e.message,e.author,e.object).to_lowercase().contains(&q)).cloned().collect::<Vec<_>>()}).unwrap_or_default()) key=|e|e.id.clone() children=move |entry|{let id=entry.id.clone();let selected=entry.id.clone();view!{<button class="git-stash-entry" class:selected=move ||v.selected.get()==selected disabled=move ||c.busy.get() on:click=move |_|v.open(id.clone(),"tracked".into())><strong>{format!("stash@{{{}}}",entry.position)}</strong><span>{entry.message}</span><small>{format!("{} · {}",entry.author,entry.date)}</small><code title=entry.object.clone()>{entry.object.chars().take(12).collect::<String>()}</code></button>}}/><Show when=move ||!c.busy.get()&&v.page.with(|p|p.as_ref().is_some_and(|p|p.entries.is_empty()))><p>{move ||tr(en.get(),"当前没有贮藏记录。","No stash entries.")}</p></Show></div><footer><button class="quiet" disabled=move ||c.busy.get()||v.page.with(|p|p.as_ref().is_none_or(|p|p.offset==0)) on:click=move |_|v.load(v.page.with_untracked(|p|p.as_ref().map(|p|p.offset.saturating_sub(100)).unwrap_or(0)))>"‹"</button><span>{move ||v.page.with(|p|p.as_ref().map(|p|format!("{}–{}",p.offset+usize::from(!p.entries.is_empty()),p.offset+p.entries.len())))}</span><button class="quiet" disabled=move ||c.busy.get()||v.page.with(|p|p.as_ref().is_none_or(|p|!p.has_more)) on:click=move |_|v.load(v.page.with_untracked(|p|p.as_ref().map(|p|p.offset+100).unwrap_or(0)))>"›"</button></footer></aside>
     <main class="git-stash-detail"><Show when=move ||v.detail.with(|d|d.is_some()) fallback=move ||view!{<p class="git-stash-empty">{move ||tr(en.get(),"选择贮藏查看文件与差异。","Select a stash to inspect its files and changes.")}</p>}>
     <header><strong>{move ||v.detail.with(|d|d.as_ref().map(|d|format!("{} · {}",d.entry.message,area(&d.area,en.get()))))}</strong><select aria-label=move ||tr(en.get(),"贮藏比较区域","Stash comparison area") disabled=move ||c.busy.get() prop:value=move ||v.area.get() on:change=move |ev|v.open(v.selected.get_untracked(),event_target_value(&ev))>{["tracked","index","unstaged","untracked"].into_iter().map(move |a|view!{<option value=a disabled=move ||a=="untracked"&&v.detail.with(|d|d.as_ref().is_none_or(|d|d.entry.parents.len()<3))>{move ||area(a,en.get())}</option>}).collect_view()}</select></header>

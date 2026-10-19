@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-remote-probe"
+description = "Enables the workspace_remote_probe command without any pre-configured scope."
+commands.allow = ["workspace_remote_probe"]
+
+[[permission]]
+identifier = "deny-workspace-remote-probe"
+description = "Denies the workspace_remote_probe command without any pre-configured scope."
+commands.deny = ["workspace_remote_probe"]

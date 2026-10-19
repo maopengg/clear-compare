@@ -1583,6 +1583,7 @@ fn main() {
             workbench::workspace_reference_favorite,
             workbench::workspace_compare_references,
             workbench::workspace_stashes,
+            workbench::workspace_remote_probe,
             workbench::workspace_stash_detail,
             workbench::workspace_remove,
             workbench::workspace_prepare,

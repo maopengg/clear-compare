@@ -764,3 +764,25 @@ pub async fn workspace_stash_detail(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_remote_probe(
+    repository_id: String,
+    remote: String,
+    push: bool,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::RemoteProbe, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .probe_remote(&repository_id, &remote, push, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

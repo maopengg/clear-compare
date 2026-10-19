@@ -6,6 +6,9 @@ use leptos::{prelude::*, task::spawn_local};
 
 #[derive(Clone, Copy)]
 pub struct Controller {
+    pub epoch: RwSignal<u64>,
+    pub completion_epoch: RwSignal<u64>,
+    pub remotes: RwSignal<bool>,
     pub stashes: RwSignal<bool>,
     pub comparison: RwSignal<Option<ReferenceComparison>>,
     pub selected: RwSignal<Option<RepositoryState>>,
@@ -34,6 +37,19 @@ impl Controller {
         self.selected.set(Some(state));
     }
     async fn execute(self, plan: ActionPlan) {
+        let epoch = self.epoch.get_untracked();
+        if self.selected.with_untracked(|s| {
+            s.as_ref()
+                .is_none_or(|s| s.repository.id != plan.repository_id)
+        }) {
+            self.error.set(
+                "Repository selection changed; review the action again in its repository".into(),
+            );
+            self.completion_epoch.set(epoch);
+            self.completion.set(Some(false));
+            self.busy.set(false);
+            return;
+        }
         match invoke::<ActionResult>("workspace_apply", serde_json::json!({"planId":plan.id})).await
         {
             Ok(result) => {
@@ -41,12 +57,18 @@ impl Controller {
                     .backup_reference
                     .map(|r| format!("\n{r}"))
                     .unwrap_or_default();
-                self.log.set(format!("{}{recovery}", result.output));
+                let config = result
+                    .recovery_path
+                    .map(|p| format!("\n{p}"))
+                    .unwrap_or_default();
+                self.log.set(format!("{}{recovery}{config}", result.output));
                 self.accept(result.state);
+                self.completion_epoch.set(epoch);
                 self.completion.set(Some(true));
             }
             Err(e) => {
                 self.error.set(e);
+                self.completion_epoch.set(epoch);
                 self.completion.set(Some(false));
                 // Failed merges can still change the index and enter a conflict state.
                 if let Ok(state) = invoke::<RepositoryState>(
@@ -68,6 +90,8 @@ impl Controller {
         let Some(state) = self.selected.get_untracked() else {
             return;
         };
+        self.epoch.update(|n| *n = n.wrapping_add(1));
+        let epoch = self.epoch.get_untracked();
         self.busy.set(true);
         self.completion.set(None);
         self.error.set(String::new());
@@ -76,7 +100,7 @@ impl Controller {
             match invoke::<ActionPlan>("workspace_prepare", serde_json::json!({"repositoryId":state.repository.id,"revision":state.revision,"action":action})).await {
                 Ok(plan) if plan.dangerous => { self.plan.set(Some(plan)); self.busy.set(false); }
                 Ok(plan) => self.execute(plan).await,
-                Err(e) => { self.error.set(e); self.completion.set(Some(false)); self.busy.set(false); }
+                Err(e) => { self.error.set(e); self.completion_epoch.set(epoch); self.completion.set(Some(false)); self.busy.set(false); }
             }
         });
     }
@@ -160,14 +184,14 @@ pub fn panel(c: Controller, english: RwSignal<bool>) -> impl IntoView {
                     <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.run(Action::Pull {remote:remote.get_untracked(),branch:name.get_untracked(),mode:pull_mode.get_untracked()})>{move ||tr(english.get(),"拉取","Pull")}</button>
                     <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|c.run(Action::Push {remote:remote.get_untracked(),branch:name.get_untracked(),set_upstream:true,force_with_lease:false})>{move ||tr(english.get(),"推送并设置上游","Push and set upstream")}</button>
                 </div></details>
-                <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.stashes.set(true);}>{move ||tr(english.get(),"贮藏管理","Stash manager")}</button>
+                <button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.remotes.set(false);c.stashes.set(true);}>{move ||tr(english.get(),"贮藏管理","Stash manager")}</button><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.comparison.set(None);c.stashes.set(false);c.remotes.set(true);}>{move ||tr(english.get(),"远程管理","Remote manager")}</button>
             </div>
             <Show when=move ||c.selected.with(|s|s.as_ref().is_some_and(|s|s.operation.is_some()))>
                 <div class="git-quick-actions"><span>{move ||tr(english.get(),"进行中的 Git 操作","Git operation in progress")}</span>
                     {[("continue","继续","Continue"),("skip","跳过","Skip"),("abort","中止","Abort")].into_iter().map(move |(kind,zh,en)|view!{<button class="quiet" disabled=move ||c.busy.get()||c.selected.with(|s|s.as_ref().is_none_or(|s|kind=="skip"&&s.operation.as_deref()==Some("merge"))) on:click=move |_|{if let Some(operation)=c.selected.get_untracked().and_then(|s|s.operation){c.run(match kind {"continue"=>Action::Continue{operation},"skip"=>Action::Skip{operation},_=>Action::Abort{operation}})}}>{move ||tr(english.get(),zh,en)}</button>}).collect_view()}
                 </div>
             </Show>
-            <Show when=move ||c.plan.with(|p|p.is_some())><section class="git-action-review" role="region" aria-label=move ||tr(english.get(),"确认 Git 操作","Review Git action")><strong>{move ||tr(english.get(),"请确认操作范围；历史或文件可能改变","Review the action; history or files may change")}</strong><code>{move ||c.plan.with(|p|p.as_ref().map(|p|format!("git {}",p.arguments.join(" "))).unwrap_or_default())}</code><code>{move ||c.plan.with(|p|p.as_ref().and_then(|p|p.backup_reference.clone()).unwrap_or_default())}</code><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.plan.set(None);c.completion.set(Some(false));}>{move ||tr(english.get(),"取消操作","Cancel action")}</button><button class="primary" disabled=move ||c.busy.get() on:click=move |_|{if let Some(plan)=c.plan.get_untracked(){c.plan.set(None);c.busy.set(true);spawn_local(c.execute(plan));}}>{move ||tr(english.get(),"确认执行","Confirm action")}</button></section></Show>
+            <Show when=move ||c.plan.with(|p|p.is_some())><section class="git-action-review" role="region" aria-label=move ||tr(english.get(),"确认 Git 操作","Review Git action")><strong>{move ||tr(english.get(),"请确认操作范围；历史或文件可能改变","Review the action; history or files may change")}</strong><code>{move ||c.plan.with(|p|p.as_ref().map(|p|format!("git {}",p.arguments.join(" "))).unwrap_or_default())}</code><code>{move ||c.plan.with(|p|p.as_ref().and_then(|p|p.backup_reference.clone()).unwrap_or_default())}</code><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{c.plan.set(None);c.completion_epoch.set(c.epoch.get_untracked());c.completion.set(Some(false));}>{move ||tr(english.get(),"取消操作","Cancel action")}</button><button class="primary" disabled=move ||c.busy.get() on:click=move |_|{if let Some(plan)=c.plan.get_untracked(){c.plan.set(None);c.busy.set(true);spawn_local(c.execute(plan));}}>{move ||tr(english.get(),"确认执行","Confirm action")}</button></section></Show>
             <Show when=move ||!c.log.get().is_empty()><details class="git-action-log"><summary>{move ||tr(english.get(),"上次 Git 操作结果","Last Git action result")}</summary><pre>{move ||c.log.get()}</pre></details></Show>
         </section>
     }

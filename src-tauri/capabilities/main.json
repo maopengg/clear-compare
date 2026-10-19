@@ -113,6 +113,7 @@
     "allow-workspace-reference-favorite",
     "allow-workspace-compare-references",
     "allow-workspace-stashes",
+    "allow-workspace-remote-probe",
     "allow-workspace-stash-detail"
   ]
 }

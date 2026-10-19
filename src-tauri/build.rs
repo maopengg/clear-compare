@@ -9,6 +9,7 @@ fn main() {
             "workspace_reference_favorite",
             "workspace_compare_references",
             "workspace_stashes",
+            "workspace_remote_probe",
             "workspace_stash_detail",
             "workspace_remove",
             "workspace_prepare",

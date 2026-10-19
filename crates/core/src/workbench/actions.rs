@@ -13,6 +13,7 @@ pub(super) struct Prepared {
     followup: Option<(Vec<String>, bool)>,
     checkout_expectation: Option<(String, String)>,
     preference_rename: Option<(String, String)>,
+    config_change: Option<String>,
 }
 fn invalid(message: &str) -> Error {
     Error::Invalid(message.into())
@@ -171,6 +172,7 @@ impl Workspace {
         let mut followup = None;
         let mut checkout_expectation = None;
         let mut preference_rename = None;
+        let mut config_change = None;
         let args = match action {
             Action::CreateAndSwitch { name, start } => {
                 let mut args = vec![
@@ -677,18 +679,51 @@ impl Workspace {
                 ]
             }
             Action::AddRemote { name, url } => {
-                vec!["remote".into(), "add".into(), atom(&name)?, atom(&url)?]
+                let name = super::remotes::name(&repo.root, &name, cancel)?;
+                if state.remotes.len() >= 128 || state.remotes.iter().any(|r| r.name == name) {
+                    return Err(invalid(
+                        "Remote already exists or the 128-remote limit was reached",
+                    ));
+                }
+                dangerous = true;
+                config_change = Some(name.clone());
+                vec!["remote".into(), "add".into(), name, atom(&url)?]
             }
             Action::SetRemote { name, url, push } => {
+                let urls = super::remotes::editable(&repo.root, &name, push, cancel)?;
+                dangerous = true;
+                config_change = Some(remote(&state, &name)?);
                 let mut a = vec!["remote".into(), "set-url".into()];
                 if push {
                     a.push("--push".into());
                 }
                 a.push(remote(&state, &name)?);
                 a.push(atom(&url)?);
+                if urls.len() > 1 {
+                    a.push(format!("^{}$", regex::escape(&urls[0])));
+                }
                 a
             }
+            Action::ClearRemotePush { name } => {
+                let name = remote(&state, &name)?;
+                if !state.remotes.iter().any(|r| r.name == name && r.push_local) {
+                    return Err(invalid(
+                        "No push URL is configured in the repository's main config",
+                    ));
+                }
+                dangerous = true;
+                config_change = Some(name.clone());
+                vec![
+                    "config".into(),
+                    "--local".into(),
+                    "--unset-all".into(),
+                    format!("remote.{name}.pushurl"),
+                ]
+            }
             Action::RemoveRemote { name } => {
+                super::remotes::editable(&repo.root, &name, false, cancel)?;
+                super::remotes::editable(&repo.root, &name, true, cancel)?;
+                config_change = Some(remote(&state, &name)?);
                 dangerous = true;
                 vec!["remote".into(), "remove".into(), remote(&state, &name)?]
             }
@@ -729,6 +764,7 @@ impl Workspace {
             followup,
             checkout_expectation,
             preference_rename,
+            config_change,
         });
         Ok(view)
     }
@@ -789,11 +825,42 @@ impl Workspace {
                 )?;
             }
         }
-        let output = if let Some(input) = &plan.input {
-            runner::mutate_input(&repo.root, &plan.args, input, cancel)?
+        let config_recovery = if let Some(remote) = &plan.config_change {
+            let path = super::remotes::backup(
+                repo,
+                remote,
+                &plan.view.id,
+                &state,
+                plan.args.get(1).is_some_and(|a| a == "remove"),
+                cancel,
+            )?;
+            super::remotes::unchanged(repo, &plan.view.revision, cancel)?;
+            Some(path)
         } else {
-            runner::mutate(&repo.root, &plan.args, cancel, plan.network)?
+            None
         };
+        let result = if let Some(input) = &plan.input {
+            runner::mutate_input(&repo.root, &plan.args, input, cancel)
+        } else {
+            runner::mutate(&repo.root, &plan.args, cancel, plan.network)
+        };
+        if let Some(path) = &config_recovery {
+            let recorded = super::remotes::finish(path, result.is_ok());
+            if let Err(e) = recorded {
+                return Err(invalid(&format!(
+                    "Remote command finished (success: {}), but recording recovery failed: {e}. Recovery: {}",
+                    result.is_ok(),
+                    path.display()
+                )));
+            }
+        }
+        let output = result.map_err(|e| {
+            if let Some(path) = &config_recovery {
+                invalid(&format!("{e}. Configuration recovery: {}", path.display()))
+            } else {
+                e
+            }
+        })?;
         let mut output = runner::redact(&String::from_utf8_lossy(&output));
         if let Some((next, network)) = &plan.followup {
             let next_result = (|| -> Result<Vec<u8>> {
@@ -829,6 +896,7 @@ impl Workspace {
         }
         let state = self.open(&plan.view.repository_id, cancel)?;
         Ok(ActionResult {
+            recovery_path: config_recovery.map(|p| p.to_string_lossy().into_owned()),
             output,
             backup_reference: plan.view.backup_reference,
             state,
