@@ -83,7 +83,9 @@ fn modification_times_do_not_affect_file_or_directory_status() {
                 bytes
             };
             fs::write(&path, bytes).unwrap();
-            fs::File::open(path)
+            fs::File::options()
+                .write(true)
+                .open(path)
                 .unwrap()
                 .set_times(
                     fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(seconds)),

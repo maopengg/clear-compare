@@ -1,4 +1,5 @@
 //! Bounded native Git subprocesses; no shell command concatenation.
+mod process;
 use crate::{Error, Result, compare::check_cancel};
 use std::{
     fs::File,
@@ -109,28 +110,23 @@ fn run_mode(
         })
         .stdout(Stdio::from(out.as_file().try_clone()?))
         .stderr(Stdio::from(err.as_file().try_clone()?));
-    let mut child = command
-        .spawn()
+    let mut child = process::ManagedChild::spawn(&mut command)
         .map_err(|e| Error::Invalid(format!("Cannot start Git: {e}")))?;
-    let start = Instant::now();
-    let status = loop {
-        if check_cancel(cancel).is_err()
-            || start.elapsed() > Duration::from_secs(if network { 120 } else { 30 })
-            || out.as_file().metadata()?.len() > 16 * 1024 * 1024
-            || err.as_file().metadata()?.len() > 256 * 1024
-        {
-            let _ = child.kill();
-            let _ = child.wait();
-            check_cancel(cancel)?;
-            return Err(Error::Invalid(
-                "Git command exceeded its time/output limit".into(),
-            ));
-        }
-        match child.try_wait()? {
-            Some(s) => break s,
-            None => thread::sleep(Duration::from_millis(2)),
-        }
-    };
+    let outcome = monitor(
+        &mut child,
+        cancel,
+        out.as_file(),
+        err.as_file(),
+        Duration::from_secs(if network { 120 } else { 30 }),
+        16 * 1024 * 1024,
+        256 * 1024,
+    );
+    // Always stop helpers, including on successful root exit and inspection errors.
+    // Cleanup errors take precedence: do not claim cancellation has finished otherwise.
+    let status = child
+        .finish()
+        .map_err(|e| Error::Invalid(format!("Git process cleanup failed: {e}")))?;
+    outcome?;
     let mut output = Vec::new();
     File::open(out.path())?
         .take(16 * 1024 * 1024 + 1)
@@ -140,8 +136,13 @@ fn run_mode(
     }
     let mut message = Vec::new();
     File::open(err.path())?
-        .take(256 * 1024)
+        .take(256 * 1024 + 1)
         .read_to_end(&mut message)?;
+    if message.len() > 256 * 1024 {
+        return Err(Error::Invalid(
+            "Git diagnostic output exceeded its limit".into(),
+        ));
+    }
     if !status.success() {
         if no_match && status.code() == Some(1) {
             return Ok(output);
@@ -156,6 +157,32 @@ fn run_mode(
         output.extend_from_slice(&message);
     }
     Ok(output)
+}
+fn monitor(
+    child: &mut process::ManagedChild,
+    cancel: &AtomicBool,
+    out: &File,
+    err: &File,
+    timeout: Duration,
+    out_limit: u64,
+    err_limit: u64,
+) -> Result<()> {
+    let start = Instant::now();
+    loop {
+        check_cancel(cancel)?;
+        if start.elapsed() > timeout
+            || out.metadata()?.len() > out_limit
+            || err.metadata()?.len() > err_limit
+        {
+            return Err(Error::Invalid(
+                "Git command exceeded its time/output limit".into(),
+            ));
+        }
+        if child.complete()? {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
 }
 pub fn text(repo: &Path, args: &[&str], cancel: &AtomicBool) -> Result<String> {
     Ok(String::from_utf8_lossy(&run(repo, args, cancel)?)
@@ -195,4 +222,64 @@ pub fn redact(input: &str) -> String {
             )
         })
         .collect()
+}
+
+#[cfg(all(test, unix))]
+mod cancellation_tests {
+    use super::*;
+    use std::{fs, os::unix::fs::PermissionsExt, sync::atomic::Ordering};
+    #[test]
+    fn fast_successful_command_cannot_bypass_stderr_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = AtomicBool::new(false);
+        run(dir.path(), &["init", "-q"], &cancel).unwrap();
+        let script = format!(
+            r#"!i=0; while test "$i" -lt 300; do printf '%s' '{}' >&2; i=$((i+1)); done"#,
+            "x".repeat(1024)
+        );
+        run(dir.path(), &["config", "alias.noisy", &script], &cancel).unwrap();
+        let error = run(dir.path(), &["noisy"], &cancel).unwrap_err();
+        assert!(error.to_string().contains("limit"));
+    }
+    #[test]
+    fn cancelling_a_running_git_hook_stops_its_background_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = AtomicBool::new(false);
+        run(dir.path(), &["init", "-q"], &cancel).unwrap();
+        run(dir.path(), &["config", "user.name", "Test"], &cancel).unwrap();
+        run(
+            dir.path(),
+            &["config", "user.email", "test@example.com"],
+            &cancel,
+        )
+        .unwrap();
+        fs::write(dir.path().join("file"), "data").unwrap();
+        run(dir.path(), &["add", "file"], &cancel).unwrap();
+        let hook = dir.path().join(".git/hooks/pre-commit");
+        fs::write(&hook, "#!/bin/sh\n( i=0; while [ $i -lt 300 ]; do echo $i > heartbeat; i=$((i+1)); sleep 0.01; done ) &\necho ready > ready\nwait\n").unwrap();
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o700)).unwrap();
+        thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                mutate(
+                    dir.path(),
+                    &["commit".into(), "-m".into(), "test".into()],
+                    &cancel,
+                    false,
+                )
+            });
+            let start = Instant::now();
+            while !dir.path().join("ready").exists() || !dir.path().join("heartbeat").exists() {
+                assert!(start.elapsed() < Duration::from_secs(4));
+                thread::sleep(Duration::from_millis(2));
+            }
+            cancel.store(true, Ordering::Relaxed);
+            assert!(matches!(worker.join().unwrap(), Err(Error::Cancelled)));
+        });
+        let before = fs::read(dir.path().join("heartbeat")).unwrap();
+        thread::sleep(Duration::from_millis(60));
+        assert_eq!(before, fs::read(dir.path().join("heartbeat")).unwrap());
+        cancel.store(false, Ordering::Relaxed);
+        assert!(run(dir.path(), &["rev-parse", "--verify", "HEAD"], &cancel).is_err());
+        assert!(!dir.path().join(".git/index.lock").exists());
+    }
 }

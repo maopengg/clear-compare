@@ -140,9 +140,9 @@ fn copy_tree(
     }
     Ok(())
 }
-fn sync_parent(path: &Path) -> Result<()> {
+fn sync_parent(_path: &Path) -> Result<()> {
     #[cfg(unix)]
-    fs::File::open(path.parent().ok_or_else(|| invalid("Parent missing"))?)?.sync_all()?;
+    fs::File::open(_path.parent().ok_or_else(|| invalid("Parent missing"))?)?.sync_all()?;
     Ok(())
 }
 impl Workspace {
