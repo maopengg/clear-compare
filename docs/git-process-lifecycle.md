@@ -18,6 +18,6 @@ Windows 建立设置了 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 的 Job Object，�
 
 ## 验证
 
-原生测试使用临时目录和运行时间有限的独立测试进程，验证运行中取消、三层进程、独立任务存活、正常/失败根进程的残留辅助进程清理、退出码、Drop/unwind、超时和两种输出上限，另验证快速成功退出不能绕过 stderr 上限。另用真实临时 Git 仓库的 pre-commit hook 验证取消返回后后台文件写入不再变化。macOS 本机通过；Windows 代码在 GNU 目标交叉编译和 strict Clippy 通过。Windows/Linux 实际运行结果另以对应提交 CI 为准。
+原生测试使用临时目录和运行时间有限的独立测试进程，验证运行中取消、三层进程、独立任务存活、正常/失败根进程的残留辅助进程清理、退出码、Drop/unwind、超时和两种输出上限，另验证快速成功退出不能绕过 stderr 上限。另用真实临时 Git 仓库的 pre-commit hook 验证取消返回后后台文件写入不再变化。macOS 本机通过。提交 d449362 的 Linux/macOS CI 原生测试与 Clippy 通过；Windows CI 中本模块五项测试通过（真实 Git hook 两项测试仅在 Unix 运行），随后仓库扫描测试发现了另一个 Windows 路径表示问题，尚不能报告 Windows 完整 CI 通过。Windows 代码亦通过 GNU 目标交叉编译和 strict Clippy。
 
 操作系统 API 参考：[Rust Windows CommandExt](https://doc.rust-lang.org/std/os/windows/process/trait.CommandExt.html)、[Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)。

@@ -278,3 +278,48 @@ fn removing_a_repository_survives_rescans_and_restart_without_deleting_its_files
             .is_empty()
     );
 }
+
+#[cfg(windows)]
+#[test]
+fn windows_git_paths_and_verbatim_paths_identify_the_same_repository() {
+    let base = tempfile::tempdir().unwrap();
+    let root = base.path().join("项目 with spaces");
+    init(&root);
+    let canonical = fs::canonicalize(&root).unwrap();
+    let verbatim = canonical.to_str().unwrap();
+    let drive_path = verbatim.strip_prefix(r"\\?\").unwrap().replace('\\', "/");
+    let cancel = AtomicBool::new(false);
+    let mut workspace = Workspace::default();
+    let first = workspace
+        .scan(
+            ScanSettings {
+                roots: vec![drive_path],
+                exclusions: vec![],
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(first.repositories.len(), 1, "{:?}", first.warnings);
+    let repository = &first.repositories[0];
+    let id = repository.id.clone();
+    assert_eq!(repository.kind, "repository");
+    assert_eq!(
+        workspace.open(&id, &cancel).unwrap().repository.branch,
+        "main"
+    );
+    let second = workspace
+        .scan(
+            ScanSettings {
+                roots: vec![verbatim.into()],
+                exclusions: vec![],
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(second.repositories.len(), 1, "{:?}", second.warnings);
+    assert_eq!(second.repositories[0].id, id);
+    assert_eq!(
+        workspace.open(&id, &cancel).unwrap().repository.branch,
+        "main"
+    );
+}

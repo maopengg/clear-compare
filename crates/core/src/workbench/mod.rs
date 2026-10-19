@@ -350,24 +350,17 @@ impl Workspace {
             .repositories
             .get_mut(repository_id)
             .ok_or_else(|| Error::Invalid("Repository unavailable".into()))?;
-        let current_git = PathBuf::from(runner::text(
-            &repo.root,
-            &["rev-parse", "--absolute-git-dir"],
-            cancel,
-        )?);
-        let current_common = PathBuf::from(runner::text(
+        let current_git = git_directory(&repo.root, &["rev-parse", "--absolute-git-dir"], cancel)?;
+        let current_common = git_directory(
             &repo.root,
             &["rev-parse", "--path-format=absolute", "--git-common-dir"],
             cancel,
-        )?);
+        )?;
         if current_git != repo.git
             || current_common != repo.common
             || (repo.view.kind != "bare"
-                && Path::new(&runner::text(
-                    &repo.root,
-                    &["rev-parse", "--show-toplevel"],
-                    cancel,
-                )?) != repo.root)
+                && git_directory(&repo.root, &["rev-parse", "--show-toplevel"], cancel)?
+                    != repo.root)
         {
             return Err(Error::Invalid(
                 "Git repository mapping changed; scan again before continuing".into(),
@@ -426,25 +419,23 @@ impl Workspace {
         Ok(self.catalog.clone())
     }
 }
+// Git for Windows prints drive/slash paths while canonical_root uses verbatim
+// paths. Compare actual directories in one representation, not their spelling.
+fn git_directory(root: &Path, args: &[&str], cancel: &AtomicBool) -> Result<PathBuf> {
+    let path = PathBuf::from(runner::text(root, args, cancel)?);
+    #[cfg(windows)]
+    let path = fs::canonicalize(path)?;
+    Ok(path)
+}
 fn inspect(root: &Path, cancel: &AtomicBool) -> Result<Captured> {
-    let git = PathBuf::from(runner::text(
-        root,
-        &["rev-parse", "--absolute-git-dir"],
-        cancel,
-    )?);
-    let common = PathBuf::from(runner::text(
+    let git = git_directory(root, &["rev-parse", "--absolute-git-dir"], cancel)?;
+    let common = git_directory(
         root,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],
         cancel,
-    )?);
+    )?;
     let bare = runner::text(root, &["rev-parse", "--is-bare-repository"], cancel)? == "true";
-    if !bare
-        && PathBuf::from(runner::text(
-            root,
-            &["rev-parse", "--show-toplevel"],
-            cancel,
-        )?) != root
-    {
+    if !bare && git_directory(root, &["rev-parse", "--show-toplevel"], cancel)? != root {
         return Err(Error::Invalid("Expected repository root".into()));
     }
     let kind = if bare {
