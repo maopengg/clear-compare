@@ -18,7 +18,7 @@ pub(super) fn outside(path: &Path, snapshot: &Snapshot) -> Result<()> {
     }
     Ok(())
 }
-pub(super) fn lock(path: &Path, create: bool) -> Result<File> {
+pub(super) fn lock(path: &Path, create: bool) -> Result<crate::file_lock::FileLock> {
     let mut name = path
         .file_name()
         .ok_or_else(|| invalid("Baseline lock name missing"))?
@@ -42,10 +42,8 @@ pub(super) fn lock(path: &Path, create: bool) -> Result<File> {
         options.mode(0o600);
     }
     let handle = options.open(file)?;
-    handle
-        .try_lock()
-        .map_err(|e| invalid(format!("Baseline is in use or cannot be locked: {e}")))?;
-    Ok(handle)
+    crate::file_lock::FileLock::try_new(handle)
+        .map_err(|e| invalid(format!("Baseline is in use or cannot be locked: {e}")))
 }
 pub(super) fn read(path: &Path) -> Result<(Baseline, String)> {
     let (data, hash): (Baseline, String) = durable::read(path, MAX_BASELINE)?;

@@ -214,7 +214,7 @@ pub fn action_root(plan: &SyncPlan, action: &FileAction) -> Result<PathBuf> {
         Ok(root.to_owned())
     }
 }
-pub fn lock(root: &Path, create: bool) -> Result<File> {
+pub fn lock(root: &Path, create: bool) -> Result<crate::file_lock::FileLock> {
     if !fs::symlink_metadata(root)?.is_dir() || fs::canonicalize(root)? != root {
         return Err(Error::Invalid("Operation backup root changed".into()));
     }
@@ -225,12 +225,11 @@ pub fn lock(root: &Path, create: bool) -> Result<File> {
         .create(create)
         .truncate(false)
         .open(path)?;
-    file.try_lock().map_err(|e| {
+    crate::file_lock::FileLock::try_new(file).map_err(|e| {
         Error::Invalid(format!(
             "Operation backup set is in use or cannot be locked: {e}"
         ))
-    })?;
-    Ok(file)
+    })
 }
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))

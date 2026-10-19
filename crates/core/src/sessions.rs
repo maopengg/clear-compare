@@ -41,7 +41,7 @@ fn root(base: &Path, create: bool) -> Result<PathBuf> {
     }
     Ok(path)
 }
-fn lock(base: &Path) -> Result<File> {
+fn lock(base: &Path) -> Result<crate::file_lock::FileLock> {
     let path = root(base, true)?.join(".lock");
     if let Ok(metadata) = fs::symlink_metadata(&path)
         && (!metadata.is_file() || metadata.file_type().is_symlink())
@@ -54,9 +54,8 @@ fn lock(base: &Path) -> Result<File> {
         .create(true)
         .truncate(false)
         .open(path)?;
-    file.try_lock()
-        .map_err(|e| Error::Invalid(format!("Session storage is busy: {e}")))?;
-    Ok(file)
+    crate::file_lock::FileLock::try_new(file)
+        .map_err(|e| Error::Invalid(format!("Session storage is busy: {e}")))
 }
 
 fn read_bytes(path: &Path) -> Result<Vec<u8>> {

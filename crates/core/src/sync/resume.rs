@@ -929,7 +929,12 @@ mod crash_tests {
                 let status = observer.status();
                 if status.phase == clear_contracts::TaskPhase::Paused && status.bytes_written != "0"
                 {
-                    fs::write(base.join("ready"), journal.to_str().unwrap()).unwrap();
+                    // Publish readiness only after the journal path is complete;
+                    // the parent may kill this process as soon as it sees the file.
+                    let ready = tempfile::NamedTempFile::new_in(&base).unwrap();
+                    fs::write(ready.path(), journal.to_str().unwrap()).unwrap();
+                    ready.as_file().sync_all().unwrap();
+                    ready.persist_noclobber(base.join("ready")).unwrap();
                     return;
                 }
                 assert!(Instant::now() < deadline, "fixture did not pause");
@@ -1070,6 +1075,10 @@ mod crash_tests {
         child.0.kill().unwrap();
         child.0.wait().unwrap();
         let journal = PathBuf::from(fs::read_to_string(root.join("ready")).unwrap());
+        assert!(
+            journal.is_absolute(),
+            "crash fixture published an incomplete journal path"
+        );
         // A new excluded child must not disappear inside a formerly removable directory.
         fs::write(root.join("r/old/keep.txt"), b"new excluded child").unwrap();
         assert!(super::preview(&journal, &AtomicBool::new(false)).is_err());

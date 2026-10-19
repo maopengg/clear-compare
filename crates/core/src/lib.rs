@@ -5,6 +5,7 @@ pub mod binary;
 pub mod compare;
 pub mod compare_refresh;
 pub mod editing;
+mod file_lock;
 pub mod folder_merge;
 pub mod git;
 pub mod merge;
