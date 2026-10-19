@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-conflict-open"
+description = "Enables the workspace_conflict_open command without any pre-configured scope."
+commands.allow = ["workspace_conflict_open"]
+
+[[permission]]
+identifier = "deny-workspace-conflict-open"
+description = "Denies the workspace_conflict_open command without any pre-configured scope."
+commands.deny = ["workspace_conflict_open"]

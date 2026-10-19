@@ -110,6 +110,7 @@
     "allow-workspace-file-reveal",
     "allow-workspace-file-exclude",
     "allow-workspace-working-diff",
+    "allow-workspace-conflict-open",
     "allow-workspace-change-file",
     "allow-workspace-reference-favorite",
     "allow-workspace-compare-references",

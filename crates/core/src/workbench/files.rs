@@ -16,10 +16,10 @@ pub(super) struct FileCapability {
 }
 #[derive(Clone)]
 pub(super) struct Document {
-    file: FileCapability,
-    original: editing::OpenDocument,
-    object: Option<Object>,
-    dirty: bool,
+    pub(super) file: FileCapability,
+    pub(super) original: editing::OpenDocument,
+    pub(super) object: Option<Object>,
+    pub(super) dirty: bool,
     generation: u64,
 }
 fn invalid(message: &str) -> Error {
@@ -379,6 +379,7 @@ impl Workspace {
                 "Save or explicitly discard this source buffer before closing",
             ));
         }
+        self.conflict_documents.remove(document);
         if let Some(doc) = self.source_documents.remove(document)
             && !self.open_sources_in(&doc.file.repository)
             && !self
@@ -414,6 +415,14 @@ impl Workspace {
         }
         let root = self.source_root(&slot.file.repository, cancel)?;
         checked_path(&root, &slot.file.relative, false)?;
+        if let Some(guard) = self.conflict_documents.get(document) {
+            guard.check(
+                self.repositories
+                    .get(&slot.file.repository)
+                    .ok_or_else(|| invalid("Unknown repository"))?,
+                cancel,
+            )?;
+        }
         if Object::observe(&root, &slot.file.relative)? != slot.object {
             return Err(invalid(
                 "Source file identity changed; reopen before saving",

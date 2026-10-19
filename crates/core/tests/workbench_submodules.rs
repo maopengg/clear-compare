@@ -111,7 +111,7 @@ fn registration_is_separate_from_checkout_and_recursive_update_opens_nested_repo
             .all(|e| e.initialized && e.status == "current")
     );
     assert_eq!(list.entries[1].depth, 1);
-    assert!(list.entries[1].path.ends_with("nested/leaf"));
+    assert!(Path::new(&list.entries[1].path).ends_with("nested/leaf"));
     let opened = w.open_submodule(&id, &list.entries[1].id, &CANCEL).unwrap();
     assert_eq!(
         fs::read_to_string(Path::new(&opened.state.repository.path).join("tracked.txt")).unwrap(),
@@ -148,12 +148,7 @@ fn nonrecursive_update_stops_at_the_selected_module_and_nested_action_uses_its_p
             recursive: false,
         },
     );
-    assert!(
-        p.working_directory
-            .as_ref()
-            .unwrap()
-            .ends_with("libs/module with space")
-    );
+    assert!(Path::new(p.working_directory.as_ref().unwrap()).ends_with("libs/module with space"));
     w.apply(&p.id, &CANCEL).unwrap();
     assert!(
         t.path()

@@ -1598,6 +1598,7 @@ fn main() {
             workbench::workspace_file_tree,
             workbench::workspace_file_info,
             workbench::workspace_working_diff,
+            workbench::workspace_conflict_open,
             workbench::workspace_change_file,
             workbench::workspace_file_exclude,
             workbench::workspace_file_prepare,

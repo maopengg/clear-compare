@@ -9,6 +9,7 @@ pub(super) struct Prepared {
     backup_target: Option<String>,
     input: Option<Vec<u8>>,
     selection: Option<super::working::SelectionGuard>,
+    conflict_guard: Option<super::conflicts::ResolvedGuard>,
     guard_unsaved: bool,
     followup: Option<(Vec<String>, bool)>,
     checkout_expectation: Option<(String, String)>,
@@ -101,6 +102,7 @@ impl Workspace {
                 | Action::UpdateCurrent { .. }
                 | Action::StageSelection { .. }
                 | Action::Stage { .. }
+                | Action::ResolveConflict { .. }
                 | Action::Unstage { .. }
                 | Action::Discard { .. }
                 | Action::Commit { .. }
@@ -172,6 +174,7 @@ impl Workspace {
         };
         let mut input = None;
         let mut selection = None;
+        let mut conflict_guard = None;
         let mut followup = None;
         let mut checkout_expectation = None;
         let mut preference_rename = None;
@@ -351,6 +354,16 @@ impl Workspace {
                     args.push("--reverse".into());
                 }
                 args
+            }
+            Action::ResolveConflict { document } => {
+                let guard = self.conflict_resolution(repository_id, &document, cancel)?;
+                let path = guard
+                    .path()
+                    .to_str()
+                    .ok_or_else(|| invalid("Conflict resolution requires a Unicode path"))?
+                    .to_string();
+                conflict_guard = Some(guard);
+                vec!["add".into(), "--".into(), path]
             }
             Action::Stage { files } => {
                 let mut a = vec!["add".into(), "--".into()];
@@ -788,6 +801,7 @@ impl Workspace {
             backup_target,
             input,
             selection,
+            conflict_guard,
             guard_unsaved,
             followup,
             checkout_expectation,
@@ -828,6 +842,9 @@ impl Workspace {
         }
         if let Some(selection) = &plan.selection {
             selection.check(&repo.root, cancel)?;
+        }
+        if let Some(guard) = &plan.conflict_guard {
+            guard.check(repo, cancel)?;
         }
         if let Some(guard) = &plan.worktree_guard {
             guard.check(self, repo, cancel)?;
@@ -879,6 +896,19 @@ impl Workspace {
             guard.check(self, repo, cancel)?;
             super::remotes::unchanged(repo, &plan.view.revision, cancel)?;
             Some(path)
+        } else if let Some(guard) = &plan.conflict_guard {
+            let path = guard.journal(repo, &plan.view.id, cancel).map_err(|e| {
+                invalid(&format!(
+                    "{e}. Conflict recovery: {}",
+                    repo.common
+                        .join("clear-compare-conflict-operations")
+                        .join(&plan.view.id)
+                        .display()
+                ))
+            })?;
+            guard.check(repo, cancel)?;
+            super::remotes::unchanged(repo, &plan.view.revision, cancel)?;
+            Some(path)
         } else if let Some(remote) = &plan.config_change {
             let path = super::remotes::backup(
                 repo,
@@ -927,6 +957,8 @@ impl Workspace {
             if let Some(path) = &config_recovery {
                 let kind = if plan.config_change.is_some() {
                     "Configuration recovery"
+                } else if plan.conflict_guard.is_some() {
+                    "Conflict recovery"
                 } else if plan.submodule_guard.is_some() {
                     "Submodule recovery"
                 } else {
@@ -937,6 +969,9 @@ impl Workspace {
                 e
             }
         })?;
+        if let Some(guard) = &plan.conflict_guard {
+            self.conflict_documents.remove(&guard.document);
+        }
         let mut output = runner::redact(&String::from_utf8_lossy(&output));
         if let Some((next, network)) = &plan.followup {
             let next_result = (|| -> Result<Vec<u8>> {

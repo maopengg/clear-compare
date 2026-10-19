@@ -2,6 +2,7 @@
 mod actions;
 mod branches;
 mod comparison;
+mod conflicts;
 mod file_ops;
 mod files;
 mod history;
@@ -48,6 +49,7 @@ pub struct Workspace {
     source_documents: BTreeMap<String, files::Document>,
     file_plan: Option<file_ops::Prepared>,
     working_diff: Option<working::CapturedDiff>,
+    conflict_documents: BTreeMap<String, conflicts::Guard>,
     stash_entries: BTreeMap<String, (String, StashEntry)>,
     worktree_entries: BTreeMap<String, (String, worktrees::Entry)>,
     worktree_destinations: BTreeMap<String, worktrees::Destination>,
@@ -171,6 +173,7 @@ impl Workspace {
             source_documents: BTreeMap::new(),
             file_plan: None,
             working_diff: None,
+            conflict_documents: BTreeMap::new(),
             stash_entries: BTreeMap::new(),
             worktree_entries: BTreeMap::new(),
             worktree_destinations: BTreeMap::new(),
@@ -218,6 +221,7 @@ impl Workspace {
         next.catalog.reference_settings = self.catalog.reference_settings.clone();
         next.file_caps = self.file_caps.clone();
         next.source_documents = self.source_documents.clone();
+        next.conflict_documents = self.conflict_documents.clone();
         next.ignored = self.ignored.clone();
         let mut seen = BTreeSet::new();
         let mut visited = 0;

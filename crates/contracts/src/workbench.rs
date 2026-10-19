@@ -376,6 +376,9 @@ pub enum Action {
         hunks: Vec<String>,
         lines: Vec<String>,
     },
+    ResolveConflict {
+        document: String,
+    },
     Stage {
         files: Vec<String>,
     },
@@ -647,4 +650,27 @@ pub struct RemoteProbe {
     pub references: usize,
     pub default_branch: Option<String>,
     pub elapsed_ms: String,
+}
+
+/// Index stages are explicitly absent for add/add and modify/delete conflicts.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConflictVersion {
+    pub stage: u8,
+    pub object: String,
+    pub mode: String,
+    pub text: Option<String>,
+    pub issue: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConflictDocument {
+    pub repository_id: String,
+    pub file_id: String,
+    pub path: String,
+    pub operation: Option<String>,
+    pub base: Option<ConflictVersion>,
+    pub current: Option<ConflictVersion>,
+    pub incoming: Option<ConflictVersion>,
+    pub document: Option<WorkspaceDocument>,
+    pub suggestion: Option<crate::MergeResult>,
+    pub issue: Option<String>,
 }
