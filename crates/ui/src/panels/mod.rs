@@ -52,3 +52,5 @@ pub mod git_stashes;
 pub mod git_remotes;
 
 pub mod git_worktrees;
+
+pub mod git_submodules;

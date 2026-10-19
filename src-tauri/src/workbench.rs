@@ -917,3 +917,45 @@ pub async fn workspace_worktree_reveal(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_submodules(
+    repository_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::SubmoduleList, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace(&state, &base)?
+            .as_mut()
+            .ok_or("Workspace unavailable")?
+            .submodules(&repository_id, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_submodule_open(
+    repository_id: String,
+    submodule_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::WorktreeOpen, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        let w = w.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .open_submodule(&repository_id, &submodule_id, &state.cancel)
+            .map_err(|e| e.to_string())?;
+        w.save(&base).map_err(|e| e.to_string())?;
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

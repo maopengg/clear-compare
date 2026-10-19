@@ -15,6 +15,7 @@ pub(super) struct Prepared {
     preference_rename: Option<(String, String)>,
     config_change: Option<String>,
     worktree_guard: Option<super::worktrees::Guard>,
+    submodule_guard: Option<super::submodules::Guard>,
 }
 fn invalid(message: &str) -> Error {
     Error::Invalid(message.into())
@@ -120,6 +121,7 @@ impl Workspace {
                 | Action::StashSave { .. }
                 | Action::StashApply { .. }
                 | Action::StashBranch { .. }
+                | Action::UpdateSubmodules { .. }
         );
         if guard_unsaved && self.dirty_repository(repository_id) {
             return Err(invalid(
@@ -175,7 +177,16 @@ impl Workspace {
         let mut preference_rename = None;
         let mut config_change = None;
         let mut worktree_guard = None;
+        let mut submodule_guard = None;
         let args = match action {
+            action @ (Action::InitializeSubmodules { .. } | Action::UpdateSubmodules { .. }) => {
+                let (args, guard, needs_network) =
+                    self.prepare_submodules(repository_id, &action, cancel)?;
+                submodule_guard = Some(guard);
+                dangerous = true;
+                network = needs_network;
+                args
+            }
             action @ (Action::CreateWorktree { .. }
             | Action::RemoveWorktree { .. }
             | Action::PruneWorktrees
@@ -755,6 +766,9 @@ impl Workspace {
         }
         let token = crate::unique_id();
         let view = ActionPlan {
+            working_directory: submodule_guard
+                .as_ref()
+                .map(|g| g.command_root().to_string_lossy().into_owned()),
             id: token.clone(),
             repository_id: repository_id.into(),
             revision: state.revision,
@@ -780,6 +794,7 @@ impl Workspace {
             preference_rename,
             config_change,
             worktree_guard,
+            submodule_guard,
         });
         Ok(view)
     }
@@ -817,6 +832,9 @@ impl Workspace {
         if let Some(guard) = &plan.worktree_guard {
             guard.check(self, repo, cancel)?;
         }
+        if let Some(guard) = &plan.submodule_guard {
+            guard.check(self, cancel)?;
+        }
         if let Some(reference) = &plan.view.backup_reference {
             let target = if plan.backup_worktree {
                 let created = runner::text(
@@ -843,7 +861,20 @@ impl Workspace {
                 )?;
             }
         }
-        let config_recovery = if let Some(guard) = &plan.worktree_guard {
+        let config_recovery = if let Some(guard) = &plan.submodule_guard {
+            let path = guard.journal(&plan.view.id, cancel).map_err(|e| {
+                invalid(&format!(
+                    "{e}. Submodule recovery location (possibly incomplete): {}",
+                    repo.common
+                        .join("clear-compare-submodule-operations")
+                        .join(&plan.view.id)
+                        .display()
+                ))
+            })?;
+            guard.check(self, cancel)?;
+            super::remotes::unchanged(repo, &plan.view.revision, cancel)?;
+            Some(path)
+        } else if let Some(guard) = &plan.worktree_guard {
             let path = guard.journal(repo, &plan.view.id, &plan.args, cancel)?;
             guard.check(self, repo, cancel)?;
             super::remotes::unchanged(repo, &plan.view.revision, cancel)?;
@@ -874,7 +905,12 @@ impl Workspace {
             if let Some(input) = &plan.input {
                 runner::mutate_input(&repo.root, &plan.args, input, cancel)
             } else {
-                runner::mutate(&repo.root, &plan.args, cancel, plan.network)
+                let root = plan
+                    .submodule_guard
+                    .as_ref()
+                    .map(|g| g.command_root())
+                    .unwrap_or(&repo.root);
+                runner::mutate(root, &plan.args, cancel, plan.network)
             }
         })();
         if let Some(path) = &config_recovery {
@@ -891,6 +927,8 @@ impl Workspace {
             if let Some(path) = &config_recovery {
                 let kind = if plan.config_change.is_some() {
                     "Configuration recovery"
+                } else if plan.submodule_guard.is_some() {
+                    "Submodule recovery"
                 } else {
                     "Worktree recovery"
                 };

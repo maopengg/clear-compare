@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-submodules"
+description = "Enables the workspace_submodules command without any pre-configured scope."
+commands.allow = ["workspace_submodules"]
+
+[[permission]]
+identifier = "deny-workspace-submodules"
+description = "Denies the workspace_submodules command without any pre-configured scope."
+commands.deny = ["workspace_submodules"]

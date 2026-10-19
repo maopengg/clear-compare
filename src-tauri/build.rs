@@ -11,6 +11,8 @@ fn main() {
             "workspace_stashes",
             "workspace_remote_probe",
             "workspace_worktrees",
+            "workspace_submodules",
+            "workspace_submodule_open",
             "workspace_worktree_destination",
             "workspace_worktree_open",
             "workspace_worktree_reveal",

@@ -1585,6 +1585,8 @@ fn main() {
             workbench::workspace_stashes,
             workbench::workspace_remote_probe,
             workbench::workspace_worktrees,
+            workbench::workspace_submodules,
+            workbench::workspace_submodule_open,
             workbench::workspace_worktree_destination,
             workbench::workspace_worktree_open,
             workbench::workspace_worktree_reveal,

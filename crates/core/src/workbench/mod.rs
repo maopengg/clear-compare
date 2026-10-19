@@ -9,6 +9,7 @@ mod remotes;
 mod runner;
 mod stashes;
 mod status;
+mod submodules;
 mod working;
 mod worktrees;
 use crate::{
@@ -50,6 +51,7 @@ pub struct Workspace {
     stash_entries: BTreeMap<String, (String, StashEntry)>,
     worktree_entries: BTreeMap<String, (String, worktrees::Entry)>,
     worktree_destinations: BTreeMap<String, worktrees::Destination>,
+    submodule_entries: BTreeMap<String, (String, submodules::Entry)>,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -172,6 +174,7 @@ impl Workspace {
             stash_entries: BTreeMap::new(),
             worktree_entries: BTreeMap::new(),
             worktree_destinations: BTreeMap::new(),
+            submodule_entries: BTreeMap::new(),
         })
     }
     pub fn save(&self, base: &Path) -> Result<()> {

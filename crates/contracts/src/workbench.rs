@@ -512,9 +512,18 @@ pub enum Action {
         id: String,
         reason: Option<String>,
     },
+    InitializeSubmodules {
+        id: Option<String>,
+    },
+    UpdateSubmodules {
+        id: Option<String>,
+        recursive: bool,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionPlan {
+    #[serde(default)]
+    pub working_directory: Option<String>,
     pub id: String,
     pub repository_id: String,
     pub revision: String,
@@ -559,6 +568,28 @@ pub struct WorktreeDestination {
 pub struct WorktreeOpen {
     pub state: RepositoryState,
     pub catalog: Catalog,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmoduleEntry {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub depth: usize,
+    pub expected: Option<String>,
+    pub head: Option<String>,
+    pub declared_url: String,
+    pub configured_url: Option<String>,
+    pub actual_url: Option<String>,
+    pub registered: bool,
+    pub initialized: bool,
+    pub status: String,
+    pub changes: usize,
+    pub issue: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubmoduleList {
+    pub state: RepositoryState,
+    pub entries: Vec<SubmoduleEntry>,
 }
 
 /// Reference IDs come from the captured repository state, never from UI paths.

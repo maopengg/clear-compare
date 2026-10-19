@@ -78,7 +78,7 @@ fn run_mode(
     // Its typed calls accept revisions/messages, never caller-supplied pathspecs.
     if args
         .first()
-        .is_none_or(|a| a != "check-ignore" && a != "stash")
+        .is_none_or(|a| a != "check-ignore" && a != "stash" && a != "submodule")
     {
         command.arg("--literal-pathspecs");
     }
