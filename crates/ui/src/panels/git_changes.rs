@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Copy)]
 struct Changes {
     c: Controller,
+    source_visible: RwSignal<bool>,
+    conflict_requests: RwSignal<Option<(String, String)>>,
     english: RwSignal<bool>,
     query: RwSignal<String>,
     category: RwSignal<String>,
@@ -21,6 +23,16 @@ struct Changes {
     attempted: RwSignal<String>,
 }
 impl Changes {
+    fn conflict(self, file: String) {
+        if self.c.busy.get_untracked() {
+            return;
+        }
+        if let Some(state) = self.c.selected.get_untracked() {
+            self.conflict_requests
+                .set(Some((state.repository.id, file)));
+            self.source_visible.set(true);
+        }
+    }
     fn key(self, file: &str, area: &str, revision: &str) -> String {
         format!("{file}/{area}/{revision}")
     }
@@ -202,7 +214,7 @@ fn row(s: Changes, c: Change, group: &'static str, leaf: bool) -> AnyView {
         s.english.get_untracked(),
     )
     .to_string();
-    view!{<tr class="git-change-row" aria-selected=move ||s.file.get()==highlight&&s.area.get()==area><td><input type="checkbox" aria-label=format!("{} {}",tr(s.english.get_untracked(),"选择","Select"),c.path) prop:checked=move ||s.selected.with(|v|v.contains(&checked)) on:change=move |ev|{let value=event_target_checked(&ev);s.selected.update(|v|{if value&&v.len()<10000{v.insert(choose.clone());}else{v.remove(&choose);}});}/></td><td><button class="git-change-open" title=c.path.clone() on:click=move |_|s.load(id.clone(),area.into(),0,true) disabled=move ||s.c.busy.get()>{label}</button><small>{state}</small></td><td>{if group!="index"{Some(view!{<button class="quiet" disabled=move ||s.c.busy.get() on:click=move |_|s.c.run(Action::Stage{files:vec![stage.clone()]})>{move ||tr(s.english.get(),"暂存","Stage")}</button>})}else{None}}{if group=="index"{Some(view!{<button class="quiet" disabled=move ||s.c.busy.get() on:click=move |_|s.c.run(Action::Unstage{files:vec![unstage.clone()]})>{move ||tr(s.english.get(),"取消暂存","Unstage")}</button>})}else{None}}{if group=="worktree"{Some(view!{<button class="quiet" disabled=move ||s.c.busy.get() on:click=move |_|s.c.run(Action::Discard{files:vec![discard.clone()]})>{move ||tr(s.english.get(),"放弃修改","Discard")}</button>})}else{None}}</td></tr>}.into_any()
+    view!{<tr class="git-change-row" aria-selected=move ||s.file.get()==highlight&&s.area.get()==area><td><input type="checkbox" aria-label=format!("{} {}",tr(s.english.get_untracked(),"选择","Select"),c.path) prop:checked=move ||s.selected.with(|v|v.contains(&checked)) on:change=move |ev|{let value=event_target_checked(&ev);s.selected.update(|v|{if value&&v.len()<10000{v.insert(choose.clone());}else{v.remove(&choose);}});}/></td><td><button class="git-change-open" title=c.path.clone() on:click=move |_|{if group=="conflicts"{s.conflict(id.clone())}else{s.load(id.clone(),area.into(),0,true)}} disabled=move ||s.c.busy.get()>{label}</button><small>{state}</small></td><td>{if group!="index"{Some(view!{<button class="quiet" disabled=move ||s.c.busy.get() on:click=move |_|{if group=="conflicts"{s.conflict(stage.clone())}else{s.c.run(Action::Stage{files:vec![stage.clone()]})}}>{move ||if group=="conflicts"{tr(s.english.get(),"解决冲突","Resolve conflict")}else{tr(s.english.get(),"暂存","Stage")}}</button>})}else{None}}{if group=="index"{Some(view!{<button class="quiet" disabled=move ||s.c.busy.get() on:click=move |_|s.c.run(Action::Unstage{files:vec![unstage.clone()]})>{move ||tr(s.english.get(),"取消暂存","Unstage")}</button>})}else{None}}{if group=="worktree"{Some(view!{<button class="quiet" disabled=move ||s.c.busy.get() on:click=move |_|s.c.run(Action::Discard{files:vec![discard.clone()]})>{move ||tr(s.english.get(),"放弃修改","Discard")}</button>})}else{None}}</td></tr>}.into_any()
 }
 #[derive(Default)]
 struct Tree {
@@ -237,10 +249,13 @@ pub fn panel(
     history: RwSignal<bool>,
     source_visible: RwSignal<bool>,
     editor_request: RwSignal<Option<(String, String)>>,
+    conflict_requests: RwSignal<Option<(String, String)>>,
     english: RwSignal<bool>,
 ) -> impl IntoView {
     let s = Changes {
         c,
+        source_visible,
+        conflict_requests,
         english,
         query: RwSignal::new(String::new()),
         category: RwSignal::new("all".into()),

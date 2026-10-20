@@ -1,8 +1,11 @@
+#[path = "source_conflict.rs"]
+mod source_conflict;
 #[path = "source_menu.rs"]
 mod source_menu;
 // Lazy file tree, multi-document editor and native source search.
 use super::{entry_icon, git_actions};
 use crate::{invoke, tr};
+use clear_contracts::workbench::Action;
 use clear_contracts::{
     Encoding, Kind, LineEnding, SaveOptions, SaveResult, TextDocument, workbench::*,
 };
@@ -16,6 +19,7 @@ export function sourceReadonly(busy){window.ClearCode?.setReadonly(busy);}
 export function sourceLocale(en){window.ClearCode?.setLocale(en);}
 export function sourceNavigate(...args){window.ClearCode?.navigate(...args);}
 export function sourceCommand(...args){window.ClearCode?.command(...args);}
+export function sourceReplace(id,text){if(!window.ClearCode?.replace(id,text))throw Error('Result editor is unavailable');}
 export function sourceDestroy(id){window.ClearCode?.destroy(id);}
 export function sourceFocusSearch(){window.ClearCode?.focusSearch();}
 export function sourceQuickOpen(){window.ClearCode?.focusSearch();requestAnimationFrame(()=>{const select=document.querySelector('.source-search-type');if(select){select.value='name';select.dispatchEvent(new Event('change',{bubbles:true}));}const scope=document.querySelector('.source-search-scope');if(scope){scope.value=document.querySelector('.source-toolbar select')?.value?'current':'all';scope.dispatchEvent(new Event('change',{bubbles:true}));}document.querySelector('.source-search-query')?.select();});}
@@ -41,6 +45,8 @@ extern "C" {
     fn navigate(id: &str, offset: usize, length: usize);
     #[wasm_bindgen(js_name=sourceCommand)]
     fn command(id: &str, name: &str);
+    #[wasm_bindgen(catch,js_name=sourceReplace)]
+    fn replace(id: &str, text: &str) -> Result<(), JsValue>;
     #[wasm_bindgen(js_name=sourceDestroy)]
     fn destroy(id: &str);
     #[wasm_bindgen(js_name=sourceFocusSearch)]
@@ -88,6 +94,8 @@ struct Controller {
     close: RwSignal<Option<String>>,
     results: RwSignal<Option<SourceResults>>,
     result_offset: RwSignal<usize>,
+    conflicts: RwSignal<BTreeMap<String, ConflictDocument>>,
+    resolving: RwSignal<Option<(String, u64)>>,
 }
 fn key(repo: &str, directory: Option<&str>) -> String {
     format!("{repo}/{}", directory.unwrap_or("root"))
@@ -182,57 +190,67 @@ impl Controller {
             )
             .await
             {
-                Ok(view) => {
-                    let text = normalize(&view.document.text);
-                    let id = view.document.id.clone();
-                    let tab = Tab {
-                        repository: view.repository_id,
-                        file: view.file_id,
-                        document: RwSignal::new(view.document),
-                        draft: RwSignal::new(text.clone()),
-                        saved: RwSignal::new(text.clone()),
-                        options: RwSignal::new(SaveOptions::default()),
-                        generation: RwSignal::new(0),
-                        changed: RwSignal::new(false),
-                    };
-                    self.tabs.update(|tabs| tabs.push(tab.clone()));
-                    self.active.set(id.clone());
-                    if let Some(host) = self.host.get() {
-                        let t = tab.clone();
-                        let change = Closure::<dyn FnMut(String)>::new(move |text| {
-                            t.draft.set(text);
-                            self.dirty(t.clone());
-                        })
-                        .into_js_value();
-                        let save_id = id.clone();
-                        let save =
-                            Closure::<dyn FnMut()>::new(move || self.save(save_id.clone(), false))
-                                .into_js_value();
-                        let path = tab.document.with_untracked(|d| d.path.clone());
-                        if let Err(e) = mount(
-                            host.as_ref(),
-                            &id,
-                            &text,
-                            &path,
-                            self.english.get_untracked(),
-                            &change,
-                            &save,
-                        ) {
-                            self.c.error.set(
-                                e.as_string()
-                                    .unwrap_or_else(|| "Unable to initialize editor".into()),
-                            );
-                        } else if let Some((offset, length)) = position {
-                            navigate(&id, offset, length);
-                        }
-                    }
-                }
+                Ok(view) => self.accept_document(view, position),
                 Err(e) => self.c.error.set(e),
             }
             self.c.busy.set(false);
         });
     }
+    fn accept_document(self, view: WorkspaceDocument, position: Option<(usize, usize)>) {
+        if self.tab(&view.document.id).is_some() {
+            self.select(view.document.id.clone());
+            if let Some((offset, length)) = position {
+                navigate(&view.document.id, offset, length);
+            }
+            return;
+        }
+        let text = normalize(&view.document.text);
+        let id = view.document.id.clone();
+        let tab = Tab {
+            repository: view.repository_id,
+            file: view.file_id,
+            document: RwSignal::new(view.document),
+            draft: RwSignal::new(text.clone()),
+            saved: RwSignal::new(text.clone()),
+            options: RwSignal::new(SaveOptions::default()),
+            generation: RwSignal::new(0),
+            changed: RwSignal::new(false),
+        };
+        self.tabs.update(|tabs| tabs.push(tab.clone()));
+        self.active.set(id.clone());
+        if let Some(host) = self.host.get() {
+            let t = tab.clone();
+            let change = Closure::<dyn FnMut(String)>::new(move |text| {
+                t.draft.set(text);
+                self.dirty(t.clone());
+            })
+            .into_js_value();
+            let save_id = id.clone();
+            let save = Closure::<dyn FnMut()>::new(move || self.save(save_id.clone(), false))
+                .into_js_value();
+            let path = tab.document.with_untracked(|d| d.path.clone());
+            if let Err(e) = mount(
+                host.as_ref(),
+                &id,
+                &text,
+                &path,
+                self.english.get_untracked(),
+                &change,
+                &save,
+            ) {
+                self.c.error.set(
+                    e.as_string()
+                        .unwrap_or_else(|| "Unable to initialize editor".into()),
+                );
+            } else if let Some((offset, length)) = position {
+                navigate(&id, offset, length);
+            }
+        }
+    }
     fn save(self, id: String, close_after: bool) {
+        self.save_mode(id, close_after, false);
+    }
+    fn save_mode(self, id: String, close_after: bool, resolve_after: bool) {
         if self.c.busy.get_untracked() {
             return;
         }
@@ -240,7 +258,9 @@ impl Controller {
             return;
         };
         if !tab.dirty() {
-            if close_after {
+            if resolve_after {
+                self.resolve_saved(id);
+            } else if close_after {
                 self.close_tab(id, false);
             }
             return;
@@ -252,11 +272,121 @@ impl Controller {
         self.c.busy.set(true);
         self.c.error.set(String::new());
         spawn_local(async move {
-            match invoke::<SaveResult>("workspace_source_save",serde_json::json!({"documentId":id,"text":text,"options":options,"generation":generation})).await{Ok(result)=>{tab.saved.set(normalize(&result.document.text));tab.document.set(result.document);tab.options.set(SaveOptions::default());tab.changed.set(false);if tab.dirty(){self.dirty(tab.clone());}},Err(e)=>self.c.error.set(e)}
+            let saved = match invoke::<SaveResult>("workspace_source_save",serde_json::json!({"documentId":id,"text":text,"options":options,"generation":generation})).await {
+                Ok(result) => { tab.saved.set(normalize(&result.document.text)); tab.document.set(result.document); tab.options.set(SaveOptions::default()); tab.changed.set(false); if tab.dirty(){self.dirty(tab.clone());} true },
+                Err(e) => {self.c.error.set(if self.conflicts.with_untracked(|m|m.contains_key(&id)){source_conflict::describe(self.english.get_untracked(),e)}else{e}); false}
+            };
             self.c.busy.set(false);
-            if close_after && !tab.dirty() {
-                self.close_tab(id, false);
+            if saved && !tab.dirty() {
+                if resolve_after {
+                    self.resolve_saved(id);
+                } else if close_after {
+                    self.close_tab(id, false);
+                }
             }
+        });
+    }
+    fn resolve_saved(self, id: String) {
+        if self.c.busy.get_untracked() || !self.conflicts.with_untracked(|m| m.contains_key(&id)) {
+            return;
+        }
+        let Some(tab) = self.tab(&id) else {
+            return;
+        };
+        if tab.dirty() {
+            return;
+        }
+        self.c.busy.set(true);
+        self.c.error.set(String::new());
+        spawn_local(async move {
+            match invoke::<RepositoryState>(
+                "workspace_open",
+                serde_json::json!({"repositoryId":tab.repository}),
+            )
+            .await
+            {
+                Ok(state) if state.repository.id == tab.repository => {
+                    self.c.accept(state);
+                    self.c.busy.set(false);
+                    self.c.run(Action::ResolveConflict {
+                        document: id.clone(),
+                    });
+                    self.resolving.set(Some((id, self.c.epoch.get_untracked())));
+                }
+                Ok(_) => {
+                    self.c.error.set(tr(self.english.get_untracked(),"返回的仓库与当前结果不符，未发送暂存请求。","Repository response does not match the result; staging was not requested.").into());
+                    self.c.busy.set(false);
+                }
+                Err(error) => {
+                    self.c.error.set(error);
+                    self.c.busy.set(false);
+                }
+            }
+        });
+    }
+    fn open_conflict(self, repository: String, file: String) {
+        if self.c.busy.get_untracked() {
+            return;
+        }
+        if self.conflicts.with_untracked(|m| {
+            m.len() >= 8
+                && !m
+                    .values()
+                    .any(|v| v.repository_id == repository && v.file_id == file)
+        }) {
+            self.c.error.set(
+                tr(
+                    self.english.get_untracked(),
+                    "请先关闭部分冲突标签页，最多同时保留 8 份三方材料。",
+                    "Close an older conflict tab; at most 8 three-way snapshots can remain open.",
+                )
+                .into(),
+            );
+            return;
+        }
+        self.c.busy.set(true);
+        self.c.error.set(String::new());
+        spawn_local(async move {
+            match invoke::<ConflictDocument>(
+                "workspace_conflict_open",
+                serde_json::json!({"repositoryId":repository,"fileId":file}),
+            )
+            .await
+            {
+                Ok(mut view) if view.repository_id==repository && view.file_id==file && view.document.as_ref().is_none_or(|d|d.repository_id==repository) => {
+                    if let Some(merge) = view.suggestion.as_mut() {
+                        merge.text = normalize(&merge.text);
+                        for block in &mut merge.conflict_versions {
+                            block.left = normalize(&block.left);
+                            block.base = normalize(&block.base);
+                            block.right = normalize(&block.right);
+                        }
+                    }
+                    if let Some(doc) = view.document.take() {
+                        let id = doc.document.id.clone();
+                        if self.tab(&id).is_some_and(|t| t.dirty() || t.repository!=doc.repository_id || t.document.with_untracked(|d|d.digest!=doc.document.digest)) {
+                            self.c.error.set(
+                                tr(
+                                    self.english.get_untracked(),
+                                    "已有未保存内容，请先保存或放弃该文件的修改。",
+                                    "Save or discard the existing file buffer first.",
+                                )
+                                .into(),
+                            );
+                        } else {
+                            self.conflicts.update(|m| {
+                                m.insert(id, view);
+                            });
+                            self.accept_document(doc, None);
+                        }
+                    } else {
+                        self.c.error.set(tr(self.english.get_untracked(),"此冲突包含二进制、特殊类型、超限或缺失的工作文件，暂不能用文本冲突编辑器处理。原文件保持不变。","This binary, special, oversized or missing working file cannot be edited in the text conflict resolver yet. Files were retained.").into());
+                    }
+                }
+                Ok(_) => self.c.error.set(tr(self.english.get_untracked(),"返回的冲突与所选文件不符，未替换编辑内容。","Conflict response does not match the selected file; the buffer was retained.").into()),
+                Err(error) => self.c.error.set(source_conflict::describe(self.english.get_untracked(),error)),
+            }
+            self.c.busy.set(false);
         });
     }
     fn close_tab(self, id: String, discard: bool) {
@@ -279,6 +409,9 @@ impl Controller {
             .await
             {
                 Ok(()) => {
+                    self.conflicts.update(|m| {
+                        m.remove(&id);
+                    });
                     destroy(&id);
                     self.tabs
                         .update(|tabs| tabs.retain(|t| t.document.with_untracked(|d| d.id != id)));
@@ -321,6 +454,9 @@ impl Controller {
             .await
             {
                 Ok(()) => {
+                    self.conflicts.update(|m| {
+                        m.remove(&id);
+                    });
                     destroy(&id);
                     self.tabs
                         .update(|tabs| tabs.retain(|t| t.document.with_untracked(|d| d.id != id)));
@@ -431,6 +567,7 @@ pub fn panel(
     visible: RwSignal<bool>,
     english: RwSignal<bool>,
     requests: RwSignal<Option<(String, String)>>,
+    conflict_requests: RwSignal<Option<(String, String)>>,
     back: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
     let menu = source_menu::State::new();
@@ -446,6 +583,8 @@ pub fn panel(
         close: RwSignal::new(None),
         results: RwSignal::new(None),
         result_offset: RwSignal::new(0),
+        conflicts: RwSignal::new(BTreeMap::new()),
+        resolving: RwSignal::new(None),
     };
     let repo = Memo::new(move |_| {
         c.selected.with(|r| {
@@ -454,13 +593,23 @@ pub fn panel(
                 .map(|r| r.repository.id.clone())
         })
     });
+    let root_request = RwSignal::new(None::<String>);
     Effect::new(move |_| {
         let current = repo.get();
-        if visible.get()
-            && let Some(repo) = current
-        {
+        if visible.get() {
             s.parent.set(None);
-            s.load(repo, None, 0);
+            root_request.set(current);
+        } else {
+            root_request.set(None);
+        }
+    });
+    Effect::new(move |_| {
+        if visible.get()
+            && !c.busy.get()
+            && let Some(repository) = root_request.get()
+        {
+            root_request.set(None);
+            s.load(repository, None, 0);
         }
     });
     Effect::new(move |_| {
@@ -470,6 +619,33 @@ pub fn panel(
         {
             requests.set(None);
             s.open(repository, file, None, None);
+        }
+    });
+    Effect::new(move |_| {
+        if visible.get()
+            && !c.busy.get()
+            && let Some((repository, file)) = conflict_requests.get()
+        {
+            conflict_requests.set(None);
+            s.open_conflict(repository, file);
+        }
+    });
+    Effect::new(move |_| {
+        if let Some((id, epoch)) = s.resolving.get()
+            && c.completion_epoch.get() == epoch
+            && let Some(success) = c.completion.get()
+        {
+            if success {
+                s.conflicts.update(|m| {
+                    m.remove(&id);
+                });
+            } else {
+                c.error.set(source_conflict::describe(
+                    english.get_untracked(),
+                    c.error.get_untracked(),
+                ));
+            }
+            s.resolving.set(None);
         }
     });
     Effect::new(move |_| readonly(c.busy.get()));
@@ -623,6 +799,7 @@ pub fn panel(
         <main class="source-editing"><nav class="source-tabs" aria-label=move ||tr(english.get(),"打开的文件","Open files")><For each=move ||s.tabs.get() key=|t|t.document.with_untracked(|d|d.id.clone()) children=move |tab|{let id=tab.document.with_untracked(|d|d.id.clone());let select=id.clone();let close=id.clone();let chosen=id.clone();let metadata=tab.document;view!{<div><button class="quiet" aria-pressed=move ||s.active.get()==chosen title=move ||metadata.with(|d|d.absolute_path.clone()) on:click=move |_|s.select(select.clone())>{move ||metadata.with(|d|d.path.rsplit('/').next().unwrap_or(&d.path).to_string())}{move ||if tab.dirty(){" •"}else{""}}</button><button class="quiet" aria-label=move ||tr(english.get(),"关闭文件标签","Close file tab") disabled=move ||c.busy.get() on:click=move |_|s.close_tab(close.clone(),false)>"×"</button></div>}}/></nav>
         <div class="source-editor-tools"><button class="quiet" disabled=move ||c.busy.get()||s.current().is_none() on:click=move |_|s.save(s.active.get_untracked(),false)>{move ||tr(english.get(),"保存当前文件","Save current file")}</button>{[("undo","撤销","Undo"),("redo","重做","Redo"),("find","文件内查找替换","Find/replace in file"),("goto","跳转行","Go to line")].into_iter().map(move |(name,zh,en)|view!{<button class="quiet" disabled=move ||c.busy.get()||s.active.get().is_empty() on:click=move |_|command(&s.active.get_untracked(),name)>{move ||tr(english.get(),zh,en)}</button>}).collect_view()}<button class="quiet" disabled=move ||c.busy.get()||s.current().is_none() on:click=move |_|s.reload()>{move ||tr(english.get(),"重新载入","Reload")}</button></div>
         <Show when=move ||s.current().is_some_and(|t|t.changed.get())><p class="source-external" role="status">{move ||tr(english.get(),"文件在外部发生变化。未保存内容仍保留；保存前请核对或重新载入。","The file changed outside the editor. Your buffer is retained; review or reload before saving.")}</p></Show>
+        {source_conflict::panel(s)}
         <div class="source-code-host" node_ref=s.host></div><Show when=move ||s.tabs.with(|t|t.is_empty())><p class="source-empty">{move ||tr(english.get(),"从左侧文件树或搜索结果打开文件。","Open a file from the tree or search results.")}</p></Show>
         <footer class="source-format">{move ||s.current().map(|tab|{let encoding=tab.clone();let ending=tab.clone();let bom=tab.clone();let eo=encoding.options;let lo=ending.options;let bo=bom.options;view!{<span>{move ||tab.document.with(|d|d.absolute_path.clone())}</span><span class="source-format-meta">{move ||tab.document.with(|d|format!("{} · {} · {}",match d.encoding{Encoding::Utf8=>"UTF-8",Encoding::Utf16Le=>"UTF-16 LE",Encoding::Utf16Be=>"UTF-16 BE"},match d.line_ending{LineEnding::Lf=>"LF",LineEnding::CrLf=>"CRLF",LineEnding::Cr=>"CR",LineEnding::Mixed=>tr(english.get(),"混合换行","Mixed endings")},if d.bom{"BOM"}else{tr(english.get(),"无 BOM","No BOM")}))}</span><select disabled=move ||c.busy.get() aria-label=move ||tr(english.get(),"保存编码","Save encoding") prop:value=move ||eo.with(|o|match o.encoding{Some(Encoding::Utf8)=>"utf8",Some(Encoding::Utf16Le)=>"utf16_le",Some(Encoding::Utf16Be)=>"utf16_be",None=>""}) on:change=move |ev|{let value=event_target_value(&ev);encoding.options.update(|o|o.encoding=match value.as_str(){"utf8"=>Some(Encoding::Utf8),"utf16_le"=>Some(Encoding::Utf16Le),"utf16_be"=>Some(Encoding::Utf16Be),_=>None});s.dirty(encoding.clone());}><option value="">{move ||tr(english.get(),"保留编码","Preserve encoding")}</option><option value="utf8">"UTF-8"</option><option value="utf16_le">"UTF-16 LE"</option><option value="utf16_be">"UTF-16 BE"</option></select><select disabled=move ||c.busy.get() aria-label=move ||tr(english.get(),"保存换行格式","Save line endings") prop:value=move ||lo.with(|o|match o.line_ending{Some(LineEnding::Lf)=>"lf",Some(LineEnding::CrLf)=>"crlf",Some(LineEnding::Cr)=>"cr",_=>""}) on:change=move |ev|{let value=event_target_value(&ev);ending.options.update(|o|o.line_ending=match value.as_str(){"lf"=>Some(LineEnding::Lf),"crlf"=>Some(LineEnding::CrLf),"cr"=>Some(LineEnding::Cr),_=>None});s.dirty(ending.clone());}><option value="">{move ||tr(english.get(),"保留换行","Preserve endings")}</option><option value="lf">"LF"</option><option value="crlf">"CRLF"</option><option value="cr">"CR"</option></select><label>"BOM"<select disabled=move ||c.busy.get() aria-label="BOM" prop:value=move ||bo.with(|o|match o.bom{Some(true)=>"yes",Some(false)=>"no",None=>""}) on:change=move |ev|{bom.options.update(|o|o.bom=match event_target_value(&ev).as_str(){"yes"=>Some(true),"no"=>Some(false),_=>None});s.dirty(bom.clone());}><option value="">{move ||tr(english.get(),"保留","Preserve")}</option><option value="yes">{move ||tr(english.get(),"包含","Include")}</option><option value="no">{move ||tr(english.get(),"不包含","Exclude")}</option></select></label>}})}</footer>
         <Show when=move ||s.close.with(|c|c.is_some())><div class="source-close-review" role="region" aria-label=move ||tr(english.get(),"未保存文件","Unsaved file")><span>{move ||tr(english.get(),"此标签页有未保存修改。","This tab has unsaved changes.")}</span><button class="primary" disabled=move ||c.busy.get() on:click=move |_|{if let Some(id)=s.close.get_untracked(){s.save(id,true);}}>{move ||tr(english.get(),"保存并关闭","Save and close")}</button><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{if let Some(id)=s.close.get_untracked(){s.close_tab(id,true);}}>{move ||tr(english.get(),"放弃并关闭","Discard and close")}</button><button class="quiet" on:click=move |_|s.close.set(None)>{move ||tr(english.get(),"取消关闭","Cancel close")}</button></div></Show>

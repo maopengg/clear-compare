@@ -1,7 +1,7 @@
 import {basicSetup} from 'codemirror';
 import {EditorState,Compartment} from '@codemirror/state';
 import {EditorView,keymap} from '@codemirror/view';
-import {indentWithTab,undo,redo,indentMore,indentLess} from '@codemirror/commands';
+import {indentWithTab,undo,redo,indentMore,indentLess,isolateHistory} from '@codemirror/commands';
 import {openSearchPanel,closeSearchPanel,gotoLine} from '@codemirror/search';
 import {javascript} from '@codemirror/lang-javascript';
 import {python} from '@codemirror/lang-python';
@@ -28,3 +28,5 @@ export function navigate(id,offset,length){const item=views.get(id);if(!item)ret
 export function command(id,name){const view=views.get(id)?.view;if(!view)return;({find:openSearchPanel,goto:gotoLine,undo,redo,indent:indentMore,outdent:indentLess}[name]||(()=>false))(view);if(!['find','goto'].includes(name))view.focus();}
 export function destroy(id){const item=views.get(id);if(item){item.view.destroy();item.box.remove();views.delete(id);}}
 export function focusSearch(){requestAnimationFrame(()=>document.querySelector('.source-search-query')?.focus());}
+
+export function replace(id,text){const item=views.get(id);if(!item||item.view.state.readOnly)return false;item.view.dispatch({changes:{from:0,to:item.view.state.doc.length,insert:text},selection:{anchor:Math.min(item.view.state.selection.main.head,text.length)},userEvent:'input.merge',annotations:isolateHistory.of('full')});item.view.focus();return true;}
