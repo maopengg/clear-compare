@@ -18,6 +18,45 @@ fn workspace<'a>(
     Ok(workspace)
 }
 #[tauri::command]
+pub async fn workspace_registration_prepare(
+    path: String,
+    previous: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::RepositoryRegistration, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .registration_prepare(&path, previous.as_deref(), &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn workspace_registration_apply(
+    plan_id: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<Catalog, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .registration_apply(&plan_id, &base, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
 pub async fn workspace_history(
     repository_id: String,
     query: HistoryQuery,
@@ -269,8 +308,9 @@ pub async fn workspace_remove(
     tauri::async_runtime::spawn_blocking(move || {
         let mut w = workspace(&state, &base)?;
         let w = w.as_mut().ok_or("Workspace unavailable")?;
-        let result = w.remove(&repository_id).map_err(|e| e.to_string())?;
-        w.save(&base).map_err(|e| e.to_string())?;
+        let result = w
+            .remove_persisted(&repository_id, &base)
+            .map_err(|e| e.to_string())?;
         Ok(result)
     })
     .await

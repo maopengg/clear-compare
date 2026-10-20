@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-registration-apply"
+description = "Enables the workspace_registration_apply command without any pre-configured scope."
+commands.allow = ["workspace_registration_apply"]
+
+[[permission]]
+identifier = "deny-workspace-registration-apply"
+description = "Denies the workspace_registration_apply command without any pre-configured scope."
+commands.deny = ["workspace_registration_apply"]

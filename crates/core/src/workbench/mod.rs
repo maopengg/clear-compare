@@ -8,6 +8,7 @@ mod file_ops;
 mod files;
 mod history;
 pub mod rebase_editor;
+mod registration;
 mod remotes;
 mod replace;
 mod revision;
@@ -47,6 +48,8 @@ pub struct Workspace {
     pub catalog: Catalog,
     pub repositories: BTreeMap<String, Captured>,
     ignored: BTreeSet<String>,
+    manual: BTreeSet<String>,
+    registration: Option<registration::Prepared>,
     pending: Option<actions::Prepared>,
     history_details: BTreeMap<String, history::CapturedDetail>,
     file_caps: BTreeMap<String, files::FileCapability>,
@@ -66,6 +69,8 @@ pub struct Workspace {
 #[serde(deny_unknown_fields)]
 struct Stored {
     #[serde(default)]
+    manual: BTreeSet<String>,
+    #[serde(default)]
     reference_settings: BTreeMap<String, ReferenceSettings>,
     #[serde(default)]
     file_settings: BTreeMap<String, FileSettings>,
@@ -80,6 +85,27 @@ pub(crate) fn id(value: &[u8]) -> String {
 }
 fn path_id(path: &Path) -> String {
     id(format!("{:?}", crate::native_path::encode(path)).as_bytes())
+}
+// Missing descendants still inherit an existing ancestor's canonical spelling
+// (notably /var -> /private/var on macOS).
+fn scan_location(input: &str) -> PathBuf {
+    let mut cursor = PathBuf::from(input);
+    let mut tail = Vec::new();
+    loop {
+        if let Ok(mut resolved) = fs::canonicalize(&cursor) {
+            for part in tail.iter().rev() {
+                resolved.push(part);
+            }
+            return resolved;
+        }
+        let Some(name) = cursor.file_name().map(|s| s.to_os_string()) else {
+            return PathBuf::from(input);
+        };
+        tail.push(name);
+        if !cursor.pop() {
+            return PathBuf::from(input);
+        }
+    }
 }
 pub fn remote_key(url: &str) -> Option<String> {
     let raw = url.trim().trim_end_matches('/').trim_end_matches(".git");
@@ -159,6 +185,7 @@ impl Workspace {
             return Err(Error::Invalid("Unsupported Git workspace settings".into()));
         }
         validate(&stored.settings)?;
+        registration::validate_manual(&stored.manual)?;
         let mut catalog = Catalog {
             reference_settings: stored.reference_settings,
             settings: stored.settings,
@@ -174,6 +201,8 @@ impl Workspace {
             catalog,
             repositories: BTreeMap::new(),
             ignored: stored.ignored,
+            manual: stored.manual,
+            registration: None,
             pending: None,
             history_details: BTreeMap::new(),
             file_caps: BTreeMap::new(),
@@ -204,6 +233,7 @@ impl Workspace {
             ));
         }
         let stored = Stored {
+            manual: self.manual.clone(),
             reference_settings: self.catalog.reference_settings.clone(),
             file_settings: self.catalog.file_settings.clone(),
             version: 1,
@@ -233,9 +263,15 @@ impl Workspace {
         next.source_documents = self.source_documents.clone();
         next.conflict_documents = self.conflict_documents.clone();
         next.ignored = self.ignored.clone();
+        next.manual = self.manual.clone();
         let mut seen = BTreeSet::new();
         let mut visited = 0;
-        for input in &settings.roots {
+        for (input, manual) in settings
+            .roots
+            .iter()
+            .map(|p| (p, false))
+            .chain(self.manual.iter().map(|p| (p, true)))
+        {
             check_cancel(cancel)?;
             let root = match canonical_root(input) {
                 Ok(r) => r,
@@ -246,7 +282,7 @@ impl Workspace {
             };
             let walker = WalkDir::new(&root)
                 .follow_links(false)
-                .max_depth(64)
+                .max_depth(if manual { 0 } else { 64 })
                 .into_iter()
                 .filter_entry(|e| {
                     e.depth() == 0
@@ -326,12 +362,13 @@ impl Workspace {
         next.catalog
             .repositories
             .sort_by(|a, b| a.name.cmp(&b.name).then(a.path.cmp(&b.path)));
+        let covered_roots: Vec<_> = settings.roots.iter().map(|r| scan_location(r)).collect();
         for old in &self.catalog.repositories {
             if !next.repositories.contains_key(&old.id)
-                && settings
-                    .roots
-                    .iter()
-                    .any(|r| Path::new(&old.path).starts_with(r))
+                && (self.manual.contains(&old.path)
+                    || covered_roots
+                        .iter()
+                        .any(|r| Path::new(&old.path).starts_with(r)))
             {
                 let mut old = old.clone();
                 old.available = false;
@@ -428,6 +465,8 @@ impl Workspace {
             return Err(Error::Invalid("Unknown repository".into()));
         }
         self.catalog.repositories.retain(|r| r.id != repository_id);
+        self.manual
+            .retain(|path| path_id(Path::new(path)) != repository_id);
         self.repositories.remove(repository_id);
         self.ignored.insert(repository_id.to_owned());
         Ok(self.catalog.clone())

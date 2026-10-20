@@ -37,6 +37,13 @@ pub struct Repository {
     pub available: bool,
     pub error: Option<String>,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RepositoryRegistration {
+    pub id: String,
+    pub repository: Repository,
+    pub previous: Option<Repository>,
+    pub existing: Option<Repository>,
+}
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Catalog {
     #[serde(default)]

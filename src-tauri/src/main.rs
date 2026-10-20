@@ -1581,6 +1581,8 @@ fn main() {
             set_native_language,
             workbench::workspace_catalog,
             workbench::workspace_scan,
+            workbench::workspace_registration_prepare,
+            workbench::workspace_registration_apply,
             workbench::workspace_open,
             workbench::workspace_favorite,
             workbench::workspace_reference_favorite,

@@ -93,6 +93,8 @@
     "allow-workspace-open",
     "allow-workspace-favorite",
     "allow-workspace-remove",
+    "allow-workspace-registration-prepare",
+    "allow-workspace-registration-apply",
     "allow-workspace-prepare",
     "allow-workspace-apply",
     "allow-workspace-history",
