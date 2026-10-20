@@ -1616,6 +1616,9 @@ fn main() {
             workbench::workspace_source_check,
             workbench::workspace_source_create,
             workbench::workspace_source_search,
+            workbench::workspace_source_replace_preview,
+            workbench::workspace_source_replace_patch,
+            workbench::workspace_source_replace_apply,
 
             workbench::workspace_commit_detail,
             workbench::workspace_commit_children,

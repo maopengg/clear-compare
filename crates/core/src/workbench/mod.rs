@@ -8,6 +8,7 @@ mod files;
 mod history;
 pub mod rebase_editor;
 mod remotes;
+mod replace;
 mod runner;
 mod stashes;
 mod status;
@@ -49,6 +50,7 @@ pub struct Workspace {
     file_caps: BTreeMap<String, files::FileCapability>,
     source_documents: BTreeMap<String, files::Document>,
     file_plan: Option<file_ops::Prepared>,
+    replace_plan: Option<replace::Prepared>,
     working_diff: Option<working::CapturedDiff>,
     conflict_documents: BTreeMap<String, conflicts::Guard>,
     stash_entries: BTreeMap<String, (String, StashEntry)>,
@@ -173,6 +175,7 @@ impl Workspace {
             file_caps: BTreeMap::new(),
             source_documents: BTreeMap::new(),
             file_plan: None,
+            replace_plan: None,
             working_diff: None,
             conflict_documents: BTreeMap::new(),
             stash_entries: BTreeMap::new(),

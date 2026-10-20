@@ -3,6 +3,7 @@ use clear_contracts::workbench::{
     Action, ActionPlan, ActionResult, Catalog, CommitChildren, CommitDetail, GitPatch, HistoryPage,
     HistoryQuery, RepositoryState, ScanSettings,
 };
+use tauri::Emitter;
 fn workspace<'a>(
     state: &'a Backend,
     base: &std::path::Path,
@@ -503,6 +504,82 @@ pub async fn workspace_source_search(
             .workspace_dirty
             .store(w.has_dirty_sources(), Ordering::Release);
         Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_source_replace_preview(
+    request: clear_contracts::workbench::SourceReplaceRequest,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::SourceReplacePreview, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .source_replace_preview(request, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_source_replace_patch(
+    plan_id: String,
+    file_id: String,
+    offset: usize,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::GitPatch, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .source_replace_patch(&plan_id, &file_id, offset, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_source_replace_apply(
+    plan_id: String,
+    selected: Vec<String>,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::SourceReplaceResult, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let events = app.clone();
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        let w = w.as_mut().ok_or("Workspace unavailable")?;
+        let result = w
+            .source_replace_apply_progress(
+                &plan_id,
+                &selected,
+                &base.join("source-replacements"),
+                &state.cancel,
+                |progress| {
+                    let _ = events.emit_to("main", "source-replace-progress", progress);
+                },
+            )
+            .map_err(|e| e.to_string());
+        state
+            .workspace_dirty
+            .store(w.has_dirty_sources(), Ordering::Release);
+        result
     })
     .await
     .map_err(|e| e.to_string())?

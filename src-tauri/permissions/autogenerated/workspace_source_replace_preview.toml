@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-source-replace-preview"
+description = "Enables the workspace_source_replace_preview command without any pre-configured scope."
+commands.allow = ["workspace_source_replace_preview"]
+
+[[permission]]
+identifier = "deny-workspace-source-replace-preview"
+description = "Denies the workspace_source_replace_preview command without any pre-configured scope."
+commands.deny = ["workspace_source_replace_preview"]

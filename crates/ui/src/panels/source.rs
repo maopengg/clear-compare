@@ -2,6 +2,8 @@
 mod source_conflict;
 #[path = "source_menu.rs"]
 mod source_menu;
+#[path = "source_replace.rs"]
+mod source_replace;
 // Lazy file tree, multi-document editor and native source search.
 use super::{entry_icon, git_actions};
 use crate::{invoke, tr};
@@ -99,6 +101,48 @@ struct Controller {
 }
 fn key(repo: &str, directory: Option<&str>) -> String {
     format!("{repo}/{}", directory.unwrap_or("root"))
+}
+fn search_request(
+    s: Controller,
+    mut query: SourceSearch,
+    scope: &str,
+) -> Result<SourceSearch, String> {
+    query.directory = None;
+    query.file = None;
+    query.repositories = if scope == "all" {
+        s.c.catalog.with_untracked(|catalog| {
+            catalog
+                .repositories
+                .iter()
+                .filter(|repo| repo.kind != "bare")
+                .map(|repo| repo.id.clone())
+                .collect()
+        })
+    } else {
+        s.c.selected.with_untracked(|state| {
+            state
+                .as_ref()
+                .map(|state| state.repository.id.clone())
+                .into_iter()
+                .collect()
+        })
+    };
+    if scope == "directory" {
+        query.directory = s.parent.get_untracked();
+    }
+    if scope == "file" {
+        let tab = s.current().ok_or_else(|| {
+            tr(
+                s.english.get_untracked(),
+                "请先打开要搜索的文件。",
+                "Open a file before searching the current file.",
+            )
+            .to_string()
+        })?;
+        query.repositories = vec![tab.repository];
+        query.file = Some(tab.file);
+    }
+    Ok(query)
 }
 impl Controller {
     fn tab(self, id: &str) -> Option<Tab> {
@@ -742,30 +786,13 @@ pub fn panel(
         if c.busy.get_untracked() {
             return;
         }
-        let mut request = query.get_untracked();
-        let current = repo.get_untracked();
-        request.repositories = if scope.get_untracked() == "all" {
-            c.catalog.with_untracked(|c| {
-                c.repositories
-                    .iter()
-                    .filter(|r| r.kind != "bare")
-                    .map(|r| r.id.clone())
-                    .collect()
-            })
-        } else {
-            current.into_iter().collect()
+        let request = match search_request(s, query.get_untracked(), &scope.get_untracked()) {
+            Ok(request) => request,
+            Err(error) => {
+                c.error.set(error);
+                return;
+            }
         };
-        request.directory = None;
-        request.file = None;
-        if scope.get_untracked() == "directory" {
-            request.directory = s.parent.get_untracked();
-        }
-        if scope.get_untracked() == "file"
-            && let Some(tab) = s.current()
-        {
-            request.repositories = vec![tab.repository];
-            request.file = Some(tab.file);
-        }
         c.busy.set(true);
         c.error.set(String::new());
         spawn_local(async move {
@@ -805,6 +832,7 @@ pub fn panel(
         <header class="source-toolbar"><select aria-label=move ||tr(english.get(),"文件仓库","File repository") disabled=move ||c.busy.get() prop:value=move ||repo.get().unwrap_or_default() on:change=move |ev|{let id=event_target_value(&ev);if id.is_empty(){c.selected.set(None);return;}c.busy.set(true);spawn_local(async move{match invoke::<RepositoryState>("workspace_open",serde_json::json!({"repositoryId":id})).await{Ok(state)=>c.accept(state),Err(e)=>c.error.set(e)}c.busy.set(false);});}><option value="">{move ||tr(english.get(),"选择仓库","Choose repository")}</option>{move ||c.catalog.with(|c|c.repositories.iter().filter(|r|r.kind!="bare").map(|r|view!{<option value=r.id.clone()>{format!("{} · {}",r.name,r.path)}</option>}).collect_view())}</select><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|back_to_git()>{move ||tr(english.get(),"返回 Git","Back to Git")}</button><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{s.check();if let Some(repo)=repo.get_untracked(){s.load(repo,None,0);}}>{move ||tr(english.get(),"刷新文件","Refresh files")}</button><button class="quiet" disabled=move ||repo.get().is_none() on:click=move |_|{if let Some(id)=repo.get_untracked(){settings.set(c.catalog.with_untracked(|c|c.file_settings.get(&id).cloned().unwrap_or_default()));settings_open.update(|v|*v = !*v);}}>{move ||tr(english.get(),"文件规则","File rules")}</button></header>
         <Show when=move ||settings_open.get()><div class="source-rules"><textarea aria-label=move ||tr(english.get(),"仓库文件排除规则","Repository file exclusions") prop:value=move ||settings.with(|s|s.exclusions.clone()) on:input=move |ev|settings.update(|s|s.exclusions=event_target_value(&ev))/><label><input type="checkbox" prop:checked=move ||settings.with(|s|s.show_hidden) on:change=move |ev|settings.update(|s|s.show_hidden=event_target_checked(&ev))/>{move ||tr(english.get(),"显示隐藏文件","Show hidden files")}</label><label><input type="checkbox" prop:checked=move ||settings.with(|s|s.respect_gitignore) on:change=move |ev|settings.update(|s|s.respect_gitignore=event_target_checked(&ev))/>{move ||tr(english.get(),"遵循 Git 忽略规则","Respect Git ignore rules")}</label><button class="quiet" disabled=move ||c.busy.get() on:click=move |_|{let Some(id)=repo.get_untracked()else{return;};let mut draft=settings.get_untracked();draft.search=c.catalog.with_untracked(|catalog|catalog.file_settings.get(&id).and_then(|v|v.search.clone()));c.busy.set(true);spawn_local(async move{match invoke::<FileSettings>("workspace_file_settings",serde_json::json!({"repositoryId":id,"settings":draft})).await{Ok(value)=>{c.catalog.update(|c|{c.file_settings.insert(id.clone(),value);});settings_open.set(false);s.parent.set(None);c.busy.set(false);s.load(id,None,0);},Err(e)=>{c.error.set(e);c.busy.set(false);}}});}>{move ||tr(english.get(),"保存规则","Save rules")}</button></div></Show>
         <div class="source-search"><input class="source-search-query" aria-label=move ||tr(english.get(),"全局搜索内容","Global search query") placeholder=move ||tr(english.get(),"搜索名称、路径或文件内容…","Search names, paths or file contents…") prop:value=move ||query.with(|q|q.query.clone()) on:input=move |ev|query.update(|q|q.query=event_target_value(&ev)) on:keydown=move |ev|{if ev.key()=="Enter"{search();}}/><select class="source-search-scope" aria-label=move ||tr(english.get(),"搜索范围","Search scope") prop:value=move ||scope.get() on:change=move |ev|scope.set(event_target_value(&ev))><option value="current">{move ||tr(english.get(),"当前仓库","Current repository")}</option><option value="all">{move ||tr(english.get(),"全部仓库","All repositories")}</option><option value="directory">{move ||tr(english.get(),"选中目录","Selected directory")}</option><option value="file">{move ||tr(english.get(),"当前文件","Current file")}</option></select><select class="source-search-type" aria-label=move ||tr(english.get(),"搜索类型","Search type") prop:value=move ||query.with(|q|q.mode.clone()) on:change=move |ev|query.update(|q|q.mode=event_target_value(&ev))><option value="content">{move ||tr(english.get(),"内容","Contents")}</option><option value="name">{move ||tr(english.get(),"文件名","File name")}</option><option value="path">{move ||tr(english.get(),"完整路径","Full path")}</option></select><button class="quiet" disabled=move ||c.busy.get()||query.with(|q|q.query.is_empty()) on:click=move |_|search()>{move ||tr(english.get(),"搜索文件","Search files")}</button><details><summary>{move ||tr(english.get(),"搜索选项","Search options")}</summary><div>{[("regex","正则","Regex"),("case","区分大小写","Match case"),("word","全词","Whole word"),("multiline","多行","Multiline"),("ignore","遵循 .gitignore","Respect .gitignore")].into_iter().map(move |(key,zh,en)|view!{<label><input type="checkbox" prop:checked=move ||query.with(|q|match key{"regex"=>q.regex,"case"=>q.case_sensitive,"word"=>q.whole_word,"multiline"=>q.multiline,_=>q.respect_gitignore}) on:change=move |ev|{let value=event_target_checked(&ev);query.update(|q|match key{"regex"=>q.regex=value,"case"=>q.case_sensitive=value,"word"=>q.whole_word=value,"multiline"=>q.multiline=value,_=>q.respect_gitignore=value});}/>{move ||tr(english.get(),zh,en)}</label>}).collect_view()}<input aria-label=move ||tr(english.get(),"搜索包含规则","Search include rules") placeholder="*.rs;*.py" prop:value=move ||query.with(|q|q.include.clone()) on:input=move |ev|query.update(|q|q.include=event_target_value(&ev))/><input aria-label=move ||tr(english.get(),"搜索排除规则","Search exclude rules") placeholder="node_modules/;dist/" prop:value=move ||query.with(|q|q.exclusions.clone()) on:input=move |ev|query.update(|q|q.exclusions=event_target_value(&ev))/><button class="quiet" disabled=move ||c.busy.get()||repo.get().is_none() on:click=move |_|save_search()>{move ||tr(english.get(),"保存当前项目搜索设置","Save search settings for this project")}</button></div></details></div>
+        {source_replace::panel(s,query,scope)}
         {source_menu::panel(s,menu)}
         <div class="source-body"><aside class="source-sidebar"><div class="source-create"><input aria-label=move ||tr(english.get(),"新文件或文件夹名称","New file or folder name") placeholder=move ||tr(english.get(),"新文件或文件夹名称","New file or folder name") prop:value=move ||name.get() on:input=move |ev|name.set(event_target_value(&ev))/><label><input type="checkbox" prop:checked=move ||folder.get() on:change=move |ev|folder.set(event_target_checked(&ev))/>{move ||tr(english.get(),"文件夹","Folder")}</label><button class="quiet" disabled=move ||c.busy.get()||repo.get().is_none()||name.get().is_empty() on:click=move |_|create()>{move ||tr(english.get(),"创建","Create")}</button><button class="quiet" on:click=move |_|s.parent.set(None)>{move ||tr(english.get(),"选择根目录","Select root")}</button><small>{move ||s.parent.get().map(|id|format!("{}: {}",tr(english.get(),"创建于","Create in"),s.tree.with(|tree|tree.values().flat_map(|p|p.files.iter()).find(|f|f.id==id).map(|f|f.path.clone()).unwrap_or_default()))).unwrap_or_else(||tr(english.get(),"创建于仓库根目录","Create in repository root").into())}</small></div><div class="source-tree">{move ||repo.get().map(|repo|nodes(s,repo,None,0,menu))}</div></aside>
         <main class="source-editing"><nav class="source-tabs" aria-label=move ||tr(english.get(),"打开的文件","Open files")><For each=move ||s.tabs.get() key=|t|t.document.with_untracked(|d|d.id.clone()) children=move |tab|{let id=tab.document.with_untracked(|d|d.id.clone());let select=id.clone();let close=id.clone();let chosen=id.clone();let metadata=tab.document;view!{<div><button class="quiet" aria-pressed=move ||s.active.get()==chosen title=move ||metadata.with(|d|d.absolute_path.clone()) on:click=move |_|s.select(select.clone())>{move ||metadata.with(|d|d.path.rsplit('/').next().unwrap_or(&d.path).to_string())}{move ||if tab.dirty(){" •"}else{""}}</button><button class="quiet" aria-label=move ||tr(english.get(),"关闭文件标签","Close file tab") disabled=move ||c.busy.get() on:click=move |_|s.close_tab(close.clone(),false)>"×"</button></div>}}/></nav>

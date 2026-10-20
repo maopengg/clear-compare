@@ -399,6 +399,7 @@ fn save_bytes(
     temporary.as_file().sync_all()?;
     let backup_dir = base.join(unique_id());
     fs::create_dir(&backup_dir)?;
+    crate::sync::flush_directory(&base)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -434,6 +435,7 @@ fn save_bytes(
                 format!("Persist editor manifest: {}", e.error),
             )
         })?;
+        crate::sync::flush_directory(&backup_dir)?;
         Ok(())
     };
     write_manifest("prepared")?;
@@ -446,6 +448,7 @@ fn save_bytes(
             format!("Replace edited document: {}", e.error),
         )
     })?;
+    crate::sync::flush_directory(parent)?;
     if hash_file(&path, &cancel)? != digest {
         return Err(Error::Invalid("Saved document failed verification".into()));
     }

@@ -29,6 +29,25 @@ fn protected(path: &Path) -> bool {
     path.components()
         .any(|c| c.as_os_str().to_string_lossy().eq_ignore_ascii_case(".git"))
 }
+pub(super) fn source_matcher(query: &SourceSearch) -> Result<regex::Regex> {
+    let pattern = if query.regex {
+        query.query.clone()
+    } else {
+        regex::escape(&query.query)
+    };
+    let pattern = if query.whole_word {
+        format!(r"\b(?:{pattern})\b")
+    } else {
+        pattern
+    };
+    regex::RegexBuilder::new(&pattern)
+        .case_insensitive(!query.case_sensitive)
+        .multi_line(query.multiline)
+        .dot_matches_new_line(query.multiline)
+        .size_limit(4 * 1024 * 1024)
+        .build()
+        .map_err(|e| invalid(&e.to_string()))
+}
 impl Workspace {
     pub fn file_settings_persisted(
         &mut self,
@@ -508,6 +527,14 @@ impl Workspace {
         query: &SourceSearch,
         cancel: &AtomicBool,
     ) -> Result<SourceResults> {
+        self.source_search_mode(query, cancel, false)
+    }
+    pub(super) fn source_search_mode(
+        &mut self,
+        query: &SourceSearch,
+        cancel: &AtomicBool,
+        files_only: bool,
+    ) -> Result<SourceResults> {
         if query.query.is_empty()
             || query.query.len() > 8192
             || query.repositories.is_empty()
@@ -527,23 +554,7 @@ impl Workspace {
         }) {
             return Err(invalid("Unknown search repository"));
         }
-        let pattern = if query.regex {
-            query.query.clone()
-        } else {
-            regex::escape(&query.query)
-        };
-        let pattern = if query.whole_word {
-            format!(r"\b(?:{pattern})\b")
-        } else {
-            pattern
-        };
-        let matcher = regex::RegexBuilder::new(&pattern)
-            .case_insensitive(!query.case_sensitive)
-            .multi_line(query.multiline)
-            .dot_matches_new_line(query.multiline)
-            .size_limit(4 * 1024 * 1024)
-            .build()
-            .map_err(|e| invalid(&e.to_string()))?;
+        let matcher = source_matcher(query)?;
         let includes = Rules::parse(&query.include)?;
         let excludes = Rules::parse(&query.exclusions)?;
         let mut result = SourceResults {
@@ -828,6 +839,9 @@ impl Workspace {
                         preview,
                         digest: Some(digest.clone()),
                     });
+                    if files_only {
+                        break;
+                    }
                     for c in found.as_str().chars() {
                         utf16 += c.len_utf16();
                         if c == '\n' {

@@ -186,6 +186,58 @@ pub struct SourceResults {
     pub warnings: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceReplaceRequest {
+    pub query: SourceSearch,
+    pub replacement: String,
+    pub line_ending: Option<crate::LineEnding>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceReplaceFile {
+    pub id: String,
+    pub file_id: String,
+    pub repository_id: String,
+    pub repository: String,
+    pub path: String,
+    pub matches: usize,
+    pub before_bytes: usize,
+    pub after_bytes: usize,
+    pub encoding: crate::Encoding,
+    pub line_ending: crate::LineEnding,
+    pub issue: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceReplacePreview {
+    pub id: String,
+    pub request: SourceReplaceRequest,
+    pub files: Vec<SourceReplaceFile>,
+    pub searched_files: usize,
+    pub skipped_files: usize,
+    pub warnings: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceReplaceOutcome {
+    pub id: String,
+    pub status: String,
+    pub backup_directory: Option<String>,
+    pub issue: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceReplaceResult {
+    pub status: String,
+    pub journal: String,
+    pub outcomes: Vec<SourceReplaceOutcome>,
+    pub updated_documents: Vec<WorkspaceDocument>,
+    pub issue: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceReplaceProgress {
+    pub plan_id: String,
+    pub processed: usize,
+    pub total: usize,
+    pub path: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkspaceDocument {
     pub repository_id: String,
     pub file_id: String,
