@@ -8,6 +8,7 @@ mod file_history;
 mod file_ops;
 mod files;
 mod history;
+mod organization;
 pub mod rebase_editor;
 mod registration;
 mod remotes;
@@ -70,6 +71,8 @@ pub struct Workspace {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Stored {
+    #[serde(default)]
+    organization: RepositoryOrganization,
     #[serde(default)]
     manual: BTreeSet<String>,
     #[serde(default)]
@@ -188,7 +191,9 @@ impl Workspace {
         }
         validate(&stored.settings)?;
         registration::validate_manual(&stored.manual)?;
+        organization::validate(&stored.organization)?;
         let mut catalog = Catalog {
+            organization: stored.organization,
             reference_settings: stored.reference_settings,
             settings: stored.settings,
             file_settings: stored.file_settings,
@@ -236,6 +241,7 @@ impl Workspace {
             ));
         }
         let stored = Stored {
+            organization: self.catalog.organization.clone(),
             manual: self.manual.clone(),
             reference_settings: self.catalog.reference_settings.clone(),
             file_settings: self.catalog.file_settings.clone(),
@@ -260,6 +266,7 @@ impl Workspace {
         validate(&settings)?;
         let mut next = Workspace::default();
         next.catalog.settings = settings.clone();
+        next.catalog.organization = self.catalog.organization.clone();
         next.catalog.file_settings = self.catalog.file_settings.clone();
         next.catalog.reference_settings = self.catalog.reference_settings.clone();
         next.file_caps = self.file_caps.clone();

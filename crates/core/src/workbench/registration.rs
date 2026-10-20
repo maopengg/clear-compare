@@ -184,6 +184,12 @@ impl Workspace {
             next.catalog.repositories.retain(|r| r.id != old.id);
             next.manual.remove(&old.path);
             next.ignored.insert(old.id.clone());
+            if let Some(assignment) = next.catalog.organization.assignments.remove(&old.id) {
+                next.catalog
+                    .organization
+                    .assignments
+                    .insert(repo.view.id.clone(), assignment);
+            }
             repo.view.favorite |= old.favorite;
             repo.view.last_opened = repo.view.last_opened.max(old.last_opened.clone());
             if let Some(value) = next.catalog.reference_settings.remove(&old.id) {

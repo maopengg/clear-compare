@@ -1581,6 +1581,7 @@ fn main() {
             set_native_language,
             workbench::workspace_catalog,
             workbench::workspace_scan,
+            workbench::workspace_organize,
             workbench::workspace_creation_prepare,
             workbench::workspace_creation_apply,
             workbench::workspace_registration_prepare,

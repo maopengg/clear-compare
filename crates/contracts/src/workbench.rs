@@ -76,6 +76,8 @@ pub struct RepositoryCreationResult {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Catalog {
     #[serde(default)]
+    pub organization: RepositoryOrganization,
+    #[serde(default)]
     pub reference_settings: std::collections::BTreeMap<String, ReferenceSettings>,
     #[serde(default)]
     pub file_settings: std::collections::BTreeMap<String, FileSettings>,
@@ -86,6 +88,72 @@ pub struct Catalog {
     pub warnings: Vec<String>,
     pub scanned_directories: usize,
     pub truncated: bool,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositorySort {
+    #[default]
+    Name,
+    Path,
+    Recent,
+    Changes,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RepositoryAssignment {
+    #[default]
+    Automatic,
+    Separate,
+    Manual {
+        id: String,
+    },
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct RepositoryListView {
+    pub sort: RepositorySort,
+    pub descending: bool,
+    pub favorites_first: bool,
+    pub grouped: bool,
+}
+impl Default for RepositoryListView {
+    fn default() -> Self {
+        Self {
+            sort: RepositorySort::Name,
+            descending: false,
+            favorites_first: true,
+            grouped: true,
+        }
+    }
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct RepositoryOrganization {
+    pub groups: std::collections::BTreeMap<String, String>,
+    pub assignments: std::collections::BTreeMap<String, RepositoryAssignment>,
+    pub view: RepositoryListView,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizeRepositories {
+    RestoreAutomatic,
+    CreateGroup {
+        name: String,
+    },
+    RenameGroup {
+        id: String,
+        name: String,
+    },
+    DeleteGroup {
+        id: String,
+    },
+    Assign {
+        repositories: Vec<String>,
+        assignment: RepositoryAssignment,
+    },
+    SetView {
+        view: RepositoryListView,
+    },
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]

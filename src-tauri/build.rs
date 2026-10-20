@@ -4,6 +4,7 @@ fn main() {
             "set_native_language",
             "workspace_catalog",
             "workspace_scan",
+            "workspace_organize",
             "workspace_creation_prepare",
             "workspace_creation_apply",
             "workspace_registration_prepare",
