@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-file-history-close"
+description = "Enables the workspace_file_history_close command without any pre-configured scope."
+commands.allow = ["workspace_file_history_close"]
+
+[[permission]]
+identifier = "deny-workspace-file-history-close"
+description = "Denies the workspace_file_history_close command without any pre-configured scope."
+commands.deny = ["workspace_file_history_close"]

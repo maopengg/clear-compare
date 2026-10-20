@@ -54,3 +54,5 @@ pub mod git_remotes;
 pub mod git_worktrees;
 
 pub mod git_submodules;
+
+pub mod file_trace;

@@ -3,6 +3,7 @@ mod actions;
 mod branches;
 mod comparison;
 mod conflicts;
+mod file_history;
 mod file_ops;
 mod files;
 mod history;
@@ -53,6 +54,7 @@ pub struct Workspace {
     file_plan: Option<file_ops::Prepared>,
     replace_plan: Option<replace::Prepared>,
     revision_trees: BTreeMap<String, revision::CapturedTree>,
+    file_histories: BTreeMap<String, file_history::CapturedHistory>,
     working_diff: Option<working::CapturedDiff>,
     conflict_documents: BTreeMap<String, conflicts::Guard>,
     stash_entries: BTreeMap<String, (String, StashEntry)>,
@@ -179,6 +181,7 @@ impl Workspace {
             file_plan: None,
             replace_plan: None,
             revision_trees: BTreeMap::new(),
+            file_histories: BTreeMap::new(),
             working_diff: None,
             conflict_documents: BTreeMap::new(),
             stash_entries: BTreeMap::new(),

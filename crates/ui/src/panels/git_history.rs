@@ -310,6 +310,8 @@ pub fn panel(
     english: RwSignal<bool>,
     files_visible: RwSignal<bool>,
     editor_request: RwSignal<Option<(String, String)>>,
+    trace_request: RwSignal<Option<FileHistorySource>>,
+    detail_request: RwSignal<Option<(String, String)>>,
 ) -> impl IntoView {
     let h = History {
         c,
@@ -356,6 +358,21 @@ pub fn panel(
             rebase_restore();
         }
     });
+    Effect::new(move |_| {
+        if active.get()
+            && !c.busy.get()
+            && let Some((repository, commit)) = detail_request.get()
+            && c.selected.with(|state| {
+                state
+                    .as_ref()
+                    .is_some_and(|state| state.repository.id == repository)
+            })
+        {
+            detail_request.set(None);
+            h.revision.set(None);
+            h.select(commit, 0);
+        }
+    });
     let close = move || {
         h.menu.set(None);
         menu_restore();
@@ -369,5 +386,5 @@ pub fn panel(
                 <Show when=move ||h.patch.with(|p|p.is_some())><section class="git-history-patch"><header><strong>{move ||h.patch.with(|p|p.as_ref().map(|p|p.path.clone()).unwrap_or_default())}</strong><button class="quiet" on:click=move |_|h.patch.set(None)>{move ||tr(english.get(),"关闭差异","Close diff")}</button></header><div>{move ||h.patch.get().map(|p|p.text.lines().map(|line|{let css=if line.starts_with('+')&&!line.starts_with("+++"){"insert"}else if line.starts_with('-')&&!line.starts_with("---"){"delete"}else if line.starts_with("@@"){"hunk"}else{""};view!{<pre class=css>{line.to_string()}</pre>}}).collect_view())}</div><footer class="git-patch-paging"><span>{move ||h.patch.with(|p|p.as_ref().map(|p|format!("{}–{} / {}",p.offset+usize::from(p.total_lines>0),(p.offset+500).min(p.total_lines),p.total_lines)).unwrap_or_default())}</span><button class="quiet" disabled=move ||c.busy.get()||h.patch.with(|p|p.as_ref().is_none_or(|p|p.offset==0)) on:click=move |_|h.file(h.file_id.get_untracked(),h.patch.get_untracked().map(|p|p.offset.saturating_sub(500)).unwrap_or_default())>{move ||tr(english.get(),"上一页差异","Previous diff page")}</button><button class="quiet" disabled=move ||c.busy.get()||h.patch.with(|p|p.as_ref().is_none_or(|p|p.next_offset.is_none())) on:click=move |_|{if let Some(offset)=h.patch.get_untracked().and_then(|p|p.next_offset){h.file(h.file_id.get_untracked(),offset)}}>{move ||tr(english.get(),"下一页差异","Next diff page")}</button><span>{move ||h.patch.with(|p|p.as_ref().is_some_and(|p|p.long_lines)).then_some(tr(english.get(),"超长行仅预览前 8192 字符","Long lines preview the first 8192 characters"))}</span></footer></section></Show>
         <footer class="git-history-paging"><span>{move ||h.page.with(|p|p.as_ref().map(|p|format!("{}–{}",p.offset+usize::from(!p.commits.is_empty()),p.offset+p.commits.len())).unwrap_or_default())}</span><button class="quiet" disabled=move ||c.busy.get()||h.page.with(|p|p.as_ref().is_none_or(|p|p.offset==0)) on:click=move |_|h.load(h.page.get_untracked().map(|p|p.offset.saturating_sub(100)).unwrap_or_default(),false)>{move ||tr(english.get(),"上一页提交","Previous commits")}</button><button class="quiet" disabled=move ||c.busy.get()||h.page.with(|p|p.as_ref().is_none_or(|p|!p.has_more)) on:click=move |_|h.load(h.page.get_untracked().map(|p|p.offset+100).unwrap_or_default(),false)>{move ||tr(english.get(),"下一页提交","Next commits")}</button></footer>
         <Show when=move ||h.menu.with(|m|m.is_some())><div class="git-history-menu-dismiss" on:click=move |_|close() on:contextmenu=move |ev|{ev.prevent_default();close();}></div>{move ||h.menu.get().map(|(commit,x,y)|{let hash=commit.id.clone();let copy_hash=hash.clone();let child_hash=hash.clone();let rebase_hash=hash.clone();let browse_hash=hash.clone();view!{<div class="git-history-menu" role="menu" aria-label=move ||tr(english.get(),"提交操作","Commit actions") style=format!("left:{x}px;top:{y}px") on:click=move |ev|ev.stop_propagation() on:keydown=move |ev|{ev.stop_propagation();if ev.key()=="Escape"{close();}else{menu_key(ev.as_ref());}}><strong>{commit.id.chars().take(12).collect::<String>()}</strong><button role="menuitem" on:click=move |_|{let value=copy_hash.clone();spawn_local(async move{match wasm_bindgen_futures::JsFuture::from(copy(&value)).await{Ok(_)=>close(),Err(_)=>c.error.set(tr(english.get_untracked(),"无法复制提交哈希","Unable to copy commit hash").into())}});}>{move ||tr(english.get(),"复制提交哈希","Copy revision hash")}</button><button role="menuitem" disabled=move ||c.busy.get() on:click=move |_|{close();h.revision.set(Some(browse_hash.clone()));}>{move ||tr(english.get(),"浏览此提交的仓库","Show repository at revision")}</button><button role="menuitem" disabled=move ||c.busy.get() on:click=move |_|{close();h.open_rebase(rebase_hash.clone());}>{move ||tr(english.get(),"从此处交互式变基…","Interactive rebase from here…")}</button>{[("cherry_pick","拣选提交","Cherry-pick"),("revert","反向提交","Revert commit"),("checkout","检出此提交","Checkout revision"),("soft","重置到此处（保留暂存修改）","Reset here (soft)"),("mixed","重置到此处（保留工作区修改）","Reset here (mixed)"),("hard","重置到此处（丢弃工作区修改）","Reset here (hard)")].into_iter().map(move |(action,zh,en)|{let hash=hash.clone();view!{<button role="menuitem" disabled=move ||c.busy.get()||(action=="hard"&&c.selected.with(|s|s.as_ref().is_some_and(|s|s.changes.iter().any(|c|c.untracked||c.conflicted)))) on:click=move |_|{close();c.run(match action{"cherry_pick"=>Action::CherryPick{reference:hash.clone()},"revert"=>Action::Revert{reference:hash.clone()},"checkout"=>Action::Switch{reference:hash.clone(),detach:true},mode=>Action::Reset{reference:hash.clone(),mode:mode.into()}});}>{move ||tr(english.get(),zh,en)}</button>}}).collect_view()}<button role="menuitem" disabled=move ||c.busy.get() on:click=move |_|{close();h.select_details(child_hash.clone(),0,true);}>{move ||tr(english.get(),"跳转子提交…","Go to child commit…")}</button><input aria-label=move ||tr(english.get(),"从提交创建的名称","Name to create from commit") placeholder=move ||tr(english.get(),"新分支或标签名称","New branch or tag name") prop:value=move ||name.get() on:input=move |ev|name.set(event_target_value(&ev))/>{[(false,"从此提交新建分支","New branch from commit"),(true,"从此提交新建标签","New tag from commit")].into_iter().map(move |(tag,zh,en)|{let hash=commit.id.clone();view!{<button role="menuitem" disabled=move ||c.busy.get()||name.get().trim().is_empty() on:click=move |_|{close();c.run(if tag{Action::CreateTag{name:name.get_untracked(),reference:hash.clone(),message:None}}else{Action::CreateBranch{name:name.get_untracked(),start:Some(hash.clone())}});}>{move ||tr(english.get(),zh,en)}</button>}}).collect_view()}<button role="menuitem" on:click=move |_|close()>{move ||tr(english.get(),"关闭菜单","Close menu")}</button></div>}})}</Show>
-    </div>{revision::panel(h,english,files_visible,editor_request)}</section>}
+    </div>{revision::panel(h,english,files_visible,editor_request,trace_request)}</section>}
 }

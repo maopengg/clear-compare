@@ -25,7 +25,11 @@ fn invalid(text: &str) -> Error {
 fn oid(text: &str) -> bool {
     matches!(text.len(), 40 | 64) && text.bytes().all(|b| b.is_ascii_hexdigit())
 }
-fn root(workspace: &Workspace, repository: &str, cancel: &AtomicBool) -> Result<PathBuf> {
+pub(super) fn root(
+    workspace: &Workspace,
+    repository: &str,
+    cancel: &AtomicBool,
+) -> Result<PathBuf> {
     check_cancel(cancel)?;
     let repo = workspace
         .repositories
@@ -42,9 +46,20 @@ fn root(workspace: &Workspace, repository: &str, cancel: &AtomicBool) -> Result<
     if fs::canonicalize(git)? != repo.git {
         return Err(invalid("Historical repository mapping changed; scan again"));
     }
+    let common = runner::text(&repo.root, &["rev-parse", "--git-common-dir"], cancel)?;
+    if fs::canonicalize(repo.root.join(common))? != repo.common {
+        return Err(invalid(
+            "Historical common repository mapping changed; scan again",
+        ));
+    }
     Ok(repo.root.clone())
 }
-fn verify_blob(file: &mut fs::File, object: &str, size: u64, cancel: &AtomicBool) -> Result<()> {
+pub(super) fn verify_blob(
+    file: &mut fs::File,
+    object: &str,
+    size: u64,
+    cancel: &AtomicBool,
+) -> Result<()> {
     use sha2::Digest;
     fn digest<D: Digest>(file: &mut fs::File, size: u64, cancel: &AtomicBool) -> Result<String> {
         let mut hash = D::new();
@@ -100,6 +115,76 @@ fn blob(
     Ok(tree.blobs[&node.view.id].reopen()?)
 }
 impl Workspace {
+    pub(super) fn revision_file_selection(
+        &self,
+        repository: &str,
+        session: &str,
+        file: &str,
+    ) -> Result<(String, PathBuf)> {
+        let tree = self
+            .revision_trees
+            .get(session)
+            .filter(|tree| tree.repository == repository)
+            .ok_or_else(|| invalid("Historical tree expired; reopen the revision"))?;
+        let node = tree
+            .nodes
+            .get(file)
+            .filter(|node| matches!(node.view.kind.as_str(), "file" | "link"))
+            .ok_or_else(|| invalid("Select a historical file to inspect its history"))?;
+        Ok((tree.commit.clone(), node.relative.clone()))
+    }
+    pub(super) fn revision_focus(
+        &mut self,
+        repository: &str,
+        commit: &str,
+        path: &Path,
+        line: usize,
+        cancel: &AtomicBool,
+    ) -> Result<RevisionFocus> {
+        let opened = self.revision_open(repository, commit, cancel)?;
+        let mut directory = None;
+        let mut relative = PathBuf::new();
+        let parts = path.components().collect::<Vec<_>>();
+        for (i, part) in parts.iter().enumerate() {
+            check_cancel(cancel)?;
+            self.revision_tree(repository, &opened.id, directory.as_deref(), 0, "", cancel)?;
+            relative.push(part.as_os_str());
+            let tree = &self.revision_trees[&opened.id];
+            let node = tree
+                .nodes
+                .values()
+                .find(|node| node.relative == relative && node.parent == directory)
+                .cloned()
+                .ok_or_else(|| invalid("File is absent from the selected historical commit"))?;
+            if i + 1 == parts.len() {
+                if !matches!(node.view.kind.as_str(), "file" | "link") {
+                    return Err(invalid("Selected historical path is not a file"));
+                }
+                let index = tree.directories[directory.as_deref().unwrap_or("")]
+                    .iter()
+                    .position(|id| id == &node.view.id)
+                    .ok_or_else(|| invalid("Historical file selection expired"))?;
+                let page = self.revision_tree(
+                    repository,
+                    &opened.id,
+                    directory.as_deref(),
+                    index / 300 * 300,
+                    "",
+                    cancel,
+                )?;
+                return Ok(RevisionFocus {
+                    tree: page,
+                    entry: node.view,
+                    line,
+                });
+            }
+            if node.view.kind != "directory" {
+                return Err(invalid("Historical path has a non-directory parent"));
+            }
+            directory = Some(node.view.id);
+        }
+        Err(invalid("Select a historical file"))
+    }
     fn revision_cache_room(&mut self, repository: &str, session: &str, file: &str) -> Result<()> {
         let tree = self
             .revision_trees
@@ -171,8 +256,22 @@ impl Workspace {
         if !oid(&tree) {
             return Err(invalid("Malformed historical tree identity"));
         }
+        if let Some(id) = self
+            .revision_trees
+            .iter()
+            .find(|(_, tree)| tree.repository == repository && tree.commit == commit)
+            .map(|(id, _)| id.clone())
+        {
+            return self.revision_tree(repository, &id, None, 0, "", cancel);
+        }
         if self.revision_trees.len() >= 4 {
-            self.revision_trees.clear();
+            let protected = self
+                .file_histories
+                .values()
+                .filter_map(|history| history.source_session.as_ref())
+                .collect::<BTreeSet<_>>();
+            let oldest=self.revision_trees.keys().find(|id|!protected.contains(id)).cloned().ok_or_else(||invalid("Historical readers are pinned; close a file history before opening another revision"))?;
+            self.revision_trees.remove(&oldest);
         }
         let id = crate::unique_id();
         self.revision_trees.insert(

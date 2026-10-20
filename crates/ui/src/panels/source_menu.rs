@@ -282,12 +282,16 @@ fn title(action: &str, en: bool) -> &'static str {
         _ => tr(en, "移到废纸篓…", "Move to trash…"),
     }
 }
-pub(super) fn panel(s: Controller, m: State) -> impl IntoView {
+pub(super) fn panel(
+    s: Controller,
+    m: State,
+    trace_request: RwSignal<Option<FileHistorySource>>,
+) -> impl IntoView {
     let english = s.english;
     view! {
         <Show when=move ||m.menu.with(|v|v.is_some())><div class="source-context-backdrop" on:pointerdown=move |_|m.dismiss() on:contextmenu=move |ev|{ev.prevent_default();m.dismiss();}>{move ||m.menu.get().map(|target|{
             let regular=matches!(target.file.kind.as_str(),"file"|"directory");
-            view!{<div class="source-context-menu" role="menu" aria-label=move ||tr(english.get(),"文件操作","File actions") style=format!("left:{}px;top:{}px",target.x,target.y) on:pointerdown=move |ev|ev.stop_propagation() on:keydown=move |ev|{if ev.key()=="Escape"{ev.prevent_default();m.dismiss();}else{keypress(ev.as_ref());}}>{["open","name","relative","path","reveal","exclude","rename","copy","move","trash"].into_iter().filter(|a|*a!="open"||target.file.kind=="file").map(|action|{let target=target.clone();view!{<button role="menuitem" disabled=move ||s.c.busy.get()||!regular on:click=move |_|m.action(s,target.clone(),action)>{move ||title(action,english.get())}</button>}}).collect_view()}</div>}
+            view!{<div class="source-context-menu" role="menu" aria-label=move ||tr(english.get(),"文件操作","File actions") style=format!("left:{}px;top:{}px",target.x,target.y) on:pointerdown=move |ev|ev.stop_propagation() on:keydown=move |ev|{if ev.key()=="Escape"{ev.prevent_default();m.dismiss();}else{keypress(ev.as_ref());}}>{(target.file.kind=="file").then(||{let target=target.clone();view!{<button role="menuitem" disabled=move ||s.c.busy.get() on:click=move |_|{m.dismiss();super::super::file_trace::open(trace_request,FileHistorySource::Source{repository_id:target.repository.clone(),file_id:target.file.id.clone()});}>{move ||tr(english.get(),"文件历史 / 逐行追溯","File history / blame")}</button>}})}{["open","name","relative","path","reveal","exclude","rename","copy","move","trash"].into_iter().filter(|a|*a!="open"||target.file.kind=="file").map(|action|{let target=target.clone();view!{<button role="menuitem" disabled=move ||s.c.busy.get()||!regular on:click=move |_|m.action(s,target.clone(),action)>{move ||title(action,english.get())}</button>}}).collect_view()}</div>}
         })}</div></Show>
         <Show when=move ||m.draft.with(|v|v.is_some())><section class="source-file-review" role="region" aria-label=move ||tr(english.get(),"文件操作确认","Review file operation")>
             <header><strong>{move ||m.draft.with(|d|d.as_ref().map(|d|format!("{} · {}",title(&d.operation,english.get()),d.target.file.path)).unwrap_or_default())}</strong><button class="quiet" disabled=move ||s.c.busy.get() on:click=move |_|{m.draft.set(None);restore();}>{move ||tr(english.get(),"取消文件操作","Cancel file operation")}</button></header>

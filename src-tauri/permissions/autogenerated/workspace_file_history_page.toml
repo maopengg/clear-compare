@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-file-history-page"
+description = "Enables the workspace_file_history_page command without any pre-configured scope."
+commands.allow = ["workspace_file_history_page"]
+
+[[permission]]
+identifier = "deny-workspace-file-history-page"
+description = "Denies the workspace_file_history_page command without any pre-configured scope."
+commands.deny = ["workspace_file_history_page"]

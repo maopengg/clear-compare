@@ -796,3 +796,77 @@ pub struct RevisionLocalDiff {
     pub local_missing: bool,
     pub local_file_id: Option<String>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FileHistorySource {
+    Source {
+        repository_id: String,
+        file_id: String,
+    },
+    Revision {
+        repository_id: String,
+        session: String,
+        file_id: String,
+    },
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileHistoryEntry {
+    pub id: String,
+    pub commit: Commit,
+    pub path: String,
+    pub previous_path: Option<String>,
+    pub deleted: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileHistoryPage {
+    pub id: String,
+    pub repository_id: String,
+    pub anchor: String,
+    pub path: String,
+    pub status: String,
+    pub shallow: bool,
+    pub truncated: bool,
+    pub offset: usize,
+    pub total: usize,
+    pub entries: Vec<FileHistoryEntry>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TraceTarget {
+    Anchor,
+    Commit { id: String },
+    Line { id: String },
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlameLine {
+    pub id: String,
+    pub commit: String,
+    pub original_line: usize,
+    pub line: usize,
+    pub author: String,
+    pub email: String,
+    pub timestamp: String,
+    pub timezone: String,
+    pub subject: String,
+    pub original_path: String,
+    pub boundary: bool,
+    pub text: String,
+    pub long_line: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileBlamePage {
+    pub history_id: String,
+    pub commit: String,
+    pub path: String,
+    pub offset: usize,
+    pub total: usize,
+    pub lines: Vec<BlameLine>,
+    pub next_offset: Option<usize>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevisionFocus {
+    pub tree: RevisionTree,
+    pub entry: RevisionEntry,
+    pub line: usize,
+}

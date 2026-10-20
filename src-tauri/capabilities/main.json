@@ -98,6 +98,12 @@
     "allow-workspace-history",
     "allow-workspace-commit-detail",
     "allow-workspace-revision-open",
+    "allow-workspace-file-history-open",
+    "allow-workspace-file-history-close",
+    "allow-workspace-file-history-page",
+    "allow-workspace-file-blame",
+    "allow-workspace-file-history-version",
+
     "allow-workspace-revision-tree",
     "allow-workspace-revision-content",
     "allow-workspace-revision-local-diff",

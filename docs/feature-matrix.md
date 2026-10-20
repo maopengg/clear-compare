@@ -47,3 +47,5 @@ Not complete: historical image/table viewers, historical object export/restore, 
 Cross-file replacement boundaries and separate native/UI evidence are documented in [source replacement](source-replacement.md).
 
 Pinned commit browsing now exposes lazy full directories, bounded text/hex object pages and direct single-file local diffs/editor navigation; see [revision browsing](git-revisions.md) for limits and separate native/UI evidence.
+
+File-scoped history follows Git rename detection at a pinned commit, with committed UTF-8 line attribution, original filename/line navigation, direct commit details and source-buffer-preserving return. See [file history and blame](git-file-history.md) for budgets, format limits and distinct native/UI evidence.

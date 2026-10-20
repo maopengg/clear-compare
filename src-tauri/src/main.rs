@@ -1622,6 +1622,12 @@ fn main() {
 
             workbench::workspace_commit_detail,
             workbench::workspace_revision_open,
+            workbench::workspace_file_history_open,
+            workbench::workspace_file_history_close,
+            workbench::workspace_file_history_page,
+            workbench::workspace_file_blame,
+            workbench::workspace_file_history_version,
+
             workbench::workspace_revision_tree,
             workbench::workspace_revision_content,
             workbench::workspace_revision_local_diff,
