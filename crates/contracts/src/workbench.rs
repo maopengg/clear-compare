@@ -44,6 +44,35 @@ pub struct RepositoryRegistration {
     pub previous: Option<Repository>,
     pub existing: Option<Repository>,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RepositoryCreation {
+    Init {
+        branch: String,
+        bare: bool,
+    },
+    Clone {
+        url: String,
+        branch: Option<String>,
+        bare: bool,
+        depth: Option<u32>,
+    },
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RepositoryCreationPlan {
+    pub id: String,
+    pub destination: String,
+    pub operation: RepositoryCreation,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RepositoryCreationResult {
+    pub status: String,
+    pub path: String,
+    pub journal: String,
+    pub output: String,
+    pub issue: Option<String>,
+    pub catalog: Option<Catalog>,
+}
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Catalog {
     #[serde(default)]

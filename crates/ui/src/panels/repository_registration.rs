@@ -56,6 +56,10 @@ fn describe(en: bool, error: String) -> String {
     if en { error } else { zh.into() }
 }
 impl Registration {
+    pub fn open_path(self, path: String) {
+        self.open(None);
+        self.path.set(path);
+    }
     pub fn open(self, previous: Option<Repository>) {
         if self.c.busy.get_untracked() {
             return;
@@ -67,10 +71,15 @@ impl Registration {
         self.c.error.set(String::new());
         focus();
     }
-    fn close(self) {
+    pub fn hide(self) {
         if !self.c.busy.get_untracked() {
             self.opened.set(false);
             self.plan.set(None);
+        }
+    }
+    pub fn close(self) {
+        if !self.c.busy.get_untracked() && self.opened.get_untracked() {
+            self.hide();
             restore();
         }
     }

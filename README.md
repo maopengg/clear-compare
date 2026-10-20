@@ -328,4 +328,4 @@ Read [architecture](docs/architecture.md), [contributing](CONTRIBUTING.md) and [
 
 Original code is [MIT](LICENSE). Dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md) and the [resolved dependency list](docs/third-party-dependencies.md). License notices are included in desktop packages. Beyond Compare is a functional reference; Clear Compare is independently implemented and is not affiliated with Scooter Software. No proprietary code, icons or branding is distributed.
 
-工作台支持手动添加已有 Git 仓库、重新定位失效记录并保留项目规则；详见 [仓库收录说明](docs/repository-registration.md)。克隆/初始化及完整工作台仍在开发中。
+工作台支持手动添加已有 Git 仓库、重新定位失效记录并保留项目规则；详见 [仓库收录说明](docs/repository-registration.md)。另支持[克隆/初始化仓库](docs/repository-creation.md)；完整工作台仍在开发中。

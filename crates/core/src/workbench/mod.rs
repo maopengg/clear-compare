@@ -3,6 +3,7 @@ mod actions;
 mod branches;
 mod comparison;
 mod conflicts;
+mod creation;
 mod file_history;
 mod file_ops;
 mod files;
@@ -50,6 +51,7 @@ pub struct Workspace {
     ignored: BTreeSet<String>,
     manual: BTreeSet<String>,
     registration: Option<registration::Prepared>,
+    creation: Option<creation::Prepared>,
     pending: Option<actions::Prepared>,
     history_details: BTreeMap<String, history::CapturedDetail>,
     file_caps: BTreeMap<String, files::FileCapability>,
@@ -203,6 +205,7 @@ impl Workspace {
             ignored: stored.ignored,
             manual: stored.manual,
             registration: None,
+            creation: None,
             pending: None,
             history_details: BTreeMap::new(),
             file_caps: BTreeMap::new(),

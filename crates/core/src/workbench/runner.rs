@@ -329,7 +329,13 @@ fn run_mode(
         cancel,
         out.as_file(),
         err.as_file(),
-        Duration::from_secs(if network { 120 } else { 30 }),
+        Duration::from_secs(if network && args.first().is_some_and(|a| a == "clone") {
+            1800
+        } else if network {
+            120
+        } else {
+            30
+        }),
         16 * 1024 * 1024,
         256 * 1024,
     );

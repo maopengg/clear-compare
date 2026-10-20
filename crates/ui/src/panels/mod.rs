@@ -38,6 +38,7 @@ pub mod exclusions;
 
 pub mod git_actions;
 pub mod git_history;
+pub mod repository_creation;
 pub mod repository_registration;
 pub mod source;
 pub mod workbench;
