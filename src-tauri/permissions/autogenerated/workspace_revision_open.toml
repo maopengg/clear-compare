@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-revision-open"
+description = "Enables the workspace_revision_open command without any pre-configured scope."
+commands.allow = ["workspace_revision_open"]
+
+[[permission]]
+identifier = "deny-workspace-revision-open"
+description = "Denies the workspace_revision_open command without any pre-configured scope."
+commands.deny = ["workspace_revision_open"]

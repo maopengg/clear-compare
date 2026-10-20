@@ -97,6 +97,11 @@
     "allow-workspace-apply",
     "allow-workspace-history",
     "allow-workspace-commit-detail",
+    "allow-workspace-revision-open",
+    "allow-workspace-revision-tree",
+    "allow-workspace-revision-content",
+    "allow-workspace-revision-local-diff",
+
     "allow-workspace-commit-children",
     "allow-workspace-commit-patch",
     "allow-workspace-file-tree",

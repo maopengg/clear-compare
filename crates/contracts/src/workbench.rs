@@ -752,3 +752,47 @@ pub struct ConflictDocument {
     pub suggestion: Option<crate::MergeResult>,
     pub issue: Option<String>,
 }
+
+/// Opaque immutable revision tree, independent of index/working-tree paths.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevisionEntry {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub bytes: String,
+    pub mode: String,
+    pub object: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevisionTree {
+    pub id: String,
+    pub repository_id: String,
+    pub commit: String,
+    pub directory: Option<String>,
+    pub parent: Option<String>,
+    pub path: String,
+    pub entries: Vec<RevisionEntry>,
+    pub offset: usize,
+    pub total: usize,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevisionContent {
+    pub file_id: String,
+    pub path: String,
+    pub object: String,
+    pub mode: String,
+    pub offset: usize,
+    pub total: usize,
+    pub next_offset: Option<usize>,
+    pub text: String,
+    pub encoding: Option<crate::Encoding>,
+    pub line_ending: Option<crate::LineEnding>,
+    pub long_lines: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevisionLocalDiff {
+    pub diff: crate::TextDiff,
+    pub local_missing: bool,
+    pub local_file_id: Option<String>,
+}

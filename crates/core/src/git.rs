@@ -193,7 +193,7 @@ struct GitEntry {
     mode: String,
     entry: Entry,
 }
-fn path_from_bytes(bytes: &[u8]) -> Result<PathBuf> {
+pub(crate) fn path_from_bytes(bytes: &[u8]) -> Result<PathBuf> {
     if bytes.is_empty()
         || bytes.len() > 16384
         || bytes.starts_with(b"/")

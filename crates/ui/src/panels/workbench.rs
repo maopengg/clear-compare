@@ -239,7 +239,7 @@ pub fn panel(
                 {super::git_remotes::panel(actions,english)}
                 {super::git_worktrees::panel(actions,english)}
                 {super::git_submodules::panel(actions,english)}
-                <div class="git-normal-panels" style:display=move ||if actions.comparison.with(|r|r.is_some())||actions.stashes.get()||actions.remotes.get()||actions.worktrees.get()||actions.submodules.get(){"none"}else{"contents"}>{git_history::panel(actions,history_visible,english)}
+                <div class="git-normal-panels" style:display=move ||if actions.comparison.with(|r|r.is_some())||actions.stashes.get()||actions.remotes.get()||actions.worktrees.get()||actions.submodules.get(){"none"}else{"contents"}>{git_history::panel(actions,history_visible,english,files_visible,editor_request)}
                 {git_changes::panel(actions,history_visible,files_visible,editor_request,conflict_request,english)}</div>
             </Show></div></main></div>
         </section>}

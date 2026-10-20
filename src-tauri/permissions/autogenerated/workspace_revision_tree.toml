@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-revision-tree"
+description = "Enables the workspace_revision_tree command without any pre-configured scope."
+commands.allow = ["workspace_revision_tree"]
+
+[[permission]]
+identifier = "deny-workspace-revision-tree"
+description = "Denies the workspace_revision_tree command without any pre-configured scope."
+commands.deny = ["workspace_revision_tree"]

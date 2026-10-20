@@ -1621,6 +1621,11 @@ fn main() {
             workbench::workspace_source_replace_apply,
 
             workbench::workspace_commit_detail,
+            workbench::workspace_revision_open,
+            workbench::workspace_revision_tree,
+            workbench::workspace_revision_content,
+            workbench::workspace_revision_local_diff,
+
             workbench::workspace_commit_children,
             workbench::workspace_commit_patch,
             compare,

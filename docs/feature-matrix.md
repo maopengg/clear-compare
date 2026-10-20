@@ -42,6 +42,8 @@ Native conflict inspection, guarded source saves and a typed saved-result stagin
 
 Interactive history rewriting now offers ordered pick/reword/edit/squash/fixup/drop plans, recovery references and managed continuation. Root-commit rewriting, merge-topology preservation and platform acceptance remain pending; see [interactive rebase](git-rebase.md).
 
-Not complete: full history tree browsing, patch export/apply acceptance, special-diff partial staging, advanced interactive rebase, special three-way conflict results, advanced submodule maintenance, unrestricted remote configuration/recovery GUI, batch-replacement recovery browsing, general non-Git source roots, and complete platform integration. Track all requirements in [workbench acceptance](workbench-acceptance.md); do not equate this foundation with the complete Git client.
+Not complete: historical image/table viewers, historical object export/restore, patch export/apply acceptance, special-diff partial staging, advanced interactive rebase, special three-way conflict results, advanced submodule maintenance, unrestricted remote configuration/recovery GUI, batch-replacement recovery browsing, general non-Git source roots, and complete platform integration. Track all requirements in [workbench acceptance](workbench-acceptance.md); do not equate this foundation with the complete Git client.
 
 Cross-file replacement boundaries and separate native/UI evidence are documented in [source replacement](source-replacement.md).
+
+Pinned commit browsing now exposes lazy full directories, bounded text/hex object pages and direct single-file local diffs/editor navigation; see [revision browsing](git-revisions.md) for limits and separate native/UI evidence.

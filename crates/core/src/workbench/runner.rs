@@ -187,31 +187,7 @@ fn shell_quote(path: &Path) -> Result<String> {
     let value = value.replace('\\', "/");
     Ok(format!("'{}'", value.replace('\'', "'\\''")))
 }
-fn run_mode(
-    repo: &Path,
-    args: &[String],
-    cancel: &AtomicBool,
-    network: bool,
-    include_stderr: bool,
-    no_match: bool,
-    input: CommandInput<'_>,
-) -> Result<Vec<u8>> {
-    let CommandInput {
-        stdin: input,
-        sequence_editor,
-        message_editor,
-    } = input;
-    check_cancel(cancel)?;
-    let out = tempfile::NamedTempFile::new()?;
-    let err = tempfile::NamedTempFile::new()?;
-    let input_file = input
-        .map(|bytes| -> Result<tempfile::NamedTempFile> {
-            let mut file = tempfile::NamedTempFile::new()?;
-            file.write_all(bytes)?;
-            file.flush()?;
-            Ok(file)
-        })
-        .transpose()?;
+fn configured(repo: &Path, args: &[String], network: bool) -> Command {
     let mut command = Command::new("git");
     for (name, _) in std::env::vars_os() {
         if name.to_str().is_some_and(|n| n.starts_with("GIT_")) {
@@ -250,8 +226,91 @@ fn run_mode(
             "protocol.file.allow=always",
         ]);
     }
+    command.args(args);
     command
-        .args(args)
+}
+
+/// Capture a bounded immutable blob on disk; never allocate the full object as IPC output.
+pub(super) fn blob(
+    repo: &Path,
+    oid: &str,
+    size: u64,
+    cancel: &AtomicBool,
+) -> Result<tempfile::NamedTempFile> {
+    check_cancel(cancel)?;
+    if size > 256 * 1024 * 1024
+        || !matches!(oid.len(), 40 | 64)
+        || !oid.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Err(Error::Invalid(
+            "Historical blob exceeds 256 MiB or has an invalid identity".into(),
+        ));
+    }
+    let output = tempfile::NamedTempFile::new()?;
+    let diagnostic = tempfile::NamedTempFile::new()?;
+    let mut command = configured(repo, &["cat-file".into(), "blob".into(), oid.into()], false);
+    command
+        .env("LC_ALL", "C")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(output.as_file().try_clone()?))
+        .stderr(Stdio::from(diagnostic.as_file().try_clone()?));
+    let mut child = process::ManagedChild::spawn(&mut command)?;
+    let outcome = monitor(
+        &mut child,
+        cancel,
+        output.as_file(),
+        diagnostic.as_file(),
+        Duration::from_secs(30),
+        size,
+        256 * 1024,
+    );
+    let status = child
+        .finish()
+        .map_err(|e| Error::Invalid(format!("Git process cleanup failed: {e}")))?;
+    outcome?;
+    if !status.success() {
+        let mut message = String::new();
+        File::open(diagnostic.path())?
+            .take(256 * 1024)
+            .read_to_string(&mut message)?;
+        return Err(Error::Invalid(redact(&message)));
+    }
+    if output.as_file().metadata()?.len() != size {
+        return Err(Error::Invalid(
+            "Historical blob size differs from its tree entry".into(),
+        ));
+    }
+    Ok(output)
+}
+
+fn run_mode(
+    repo: &Path,
+    args: &[String],
+    cancel: &AtomicBool,
+    network: bool,
+    include_stderr: bool,
+    no_match: bool,
+    input: CommandInput<'_>,
+) -> Result<Vec<u8>> {
+    let CommandInput {
+        stdin: input,
+        sequence_editor,
+        message_editor,
+    } = input;
+    check_cancel(cancel)?;
+    let out = tempfile::NamedTempFile::new()?;
+    let err = tempfile::NamedTempFile::new()?;
+    let input_file = input
+        .map(|bytes| -> Result<tempfile::NamedTempFile> {
+            let mut file = tempfile::NamedTempFile::new()?;
+            file.write_all(bytes)?;
+            file.flush()?;
+            Ok(file)
+        })
+        .transpose()?;
+    let mut command = configured(repo, args, network);
+    command
         .env("GIT_EDITOR", message_editor.unwrap_or("true"))
         .env("GIT_SEQUENCE_EDITOR", sequence_editor.unwrap_or("false"))
         .env("LC_ALL", "C")

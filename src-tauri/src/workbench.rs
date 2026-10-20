@@ -1078,3 +1078,109 @@ pub async fn workspace_conflict_open(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn workspace_revision_open(
+    repository_id: String,
+    commit: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::RevisionTree, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .revision_open(&repository_id, &commit, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_revision_tree(
+    repository_id: String,
+    session: String,
+    directory: Option<String>,
+    offset: usize,
+    filter: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::RevisionTree, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .revision_tree(
+                &repository_id,
+                &session,
+                directory.as_deref(),
+                offset,
+                &filter,
+                &state.cancel,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_revision_content(
+    repository_id: String,
+    session: String,
+    file_id: String,
+    mode: String,
+    offset: usize,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::RevisionContent, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .revision_content(
+                &repository_id,
+                &session,
+                &file_id,
+                &mode,
+                offset,
+                &state.cancel,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn workspace_revision_local_diff(
+    repository_id: String,
+    session: String,
+    file_id: String,
+    options: clear_contracts::TextOptions,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<clear_contracts::workbench::RevisionLocalDiff, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .revision_local_diff(&repository_id, &session, &file_id, &options, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
