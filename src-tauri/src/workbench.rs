@@ -37,6 +37,27 @@ pub async fn workspace_history(
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+pub async fn workspace_rebase_todo(
+    repository_id: String,
+    revision: String,
+    upstream: String,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<Backend>>,
+) -> Result<Vec<clear_contracts::workbench::RebaseTodoItem>, String> {
+    let _guard = state.begin()?;
+    let base = data_dir(&app)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut w = workspace(&state, &base)?;
+        w.as_mut()
+            .ok_or("Workspace unavailable")?
+            .interactive_rebase_todo(&repository_id, &revision, &upstream, &state.cancel)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
 pub async fn workspace_commit_children(
     repository_id: String,
     detail_id: String,

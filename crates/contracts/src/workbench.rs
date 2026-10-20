@@ -341,6 +341,26 @@ pub struct WorkingDiff {
     pub next_offset: Option<usize>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RebaseStepKind {
+    Pick,
+    Reword,
+    Edit,
+    Squash,
+    Fixup,
+    Drop,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RebaseTodoItem {
+    pub commit: String,
+    pub subject: String,
+    pub message: String,
+    pub action: RebaseStepKind,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
@@ -417,6 +437,10 @@ pub enum Action {
     },
     Rebase {
         reference: String,
+    },
+    InteractiveRebase {
+        upstream: String,
+        todo: Vec<RebaseTodoItem>,
     },
     CherryPick {
         reference: String,
@@ -525,6 +549,8 @@ pub enum Action {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionPlan {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rebase_todo: Option<Vec<RebaseTodoItem>>,
     #[serde(default)]
     pub working_directory: Option<String>,
     pub id: String,

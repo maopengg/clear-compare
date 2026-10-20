@@ -1570,6 +1570,9 @@ fn set_native_language(english: bool, app: tauri::AppHandle) -> Result<(), Strin
 }
 
 fn main() {
+    if let Some(code) = clear_core::workbench::rebase_editor::run_from_args() {
+        std::process::exit(code);
+    }
     tauri::Builder::default()
         .manage(Arc::new(Backend::default()))
         .plugin(tauri_plugin_dialog::init())
@@ -1595,6 +1598,7 @@ fn main() {
             workbench::workspace_prepare,
             workbench::workspace_apply,
             workbench::workspace_history,
+            workbench::workspace_rebase_todo,
             workbench::workspace_file_tree,
             workbench::workspace_file_info,
             workbench::workspace_working_diff,

@@ -6,6 +6,7 @@ mod conflicts;
 mod file_ops;
 mod files;
 mod history;
+pub mod rebase_editor;
 mod remotes;
 mod runner;
 mod stashes;

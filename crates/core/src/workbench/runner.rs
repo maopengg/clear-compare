@@ -1,4 +1,4 @@
-//! Bounded native Git subprocesses; no shell command concatenation.
+//! Bounded native Git subprocesses with typed arguments and owned internal editors.
 mod process;
 use crate::{Error, Result, compare::check_cancel};
 use std::{
@@ -10,6 +10,12 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[derive(Default)]
+struct CommandInput<'a> {
+    stdin: Option<&'a [u8]>,
+    sequence_editor: Option<&'a str>,
+    message_editor: Option<&'a str>,
+}
 pub fn run(repo: &Path, args: &[&str], cancel: &AtomicBool) -> Result<Vec<u8>> {
     run_owned(
         repo,
@@ -18,7 +24,15 @@ pub fn run(repo: &Path, args: &[&str], cancel: &AtomicBool) -> Result<Vec<u8>> {
     )
 }
 pub fn run_owned(repo: &Path, args: &[String], cancel: &AtomicBool) -> Result<Vec<u8>> {
-    run_mode(repo, args, cancel, false, false, false, None)
+    run_mode(
+        repo,
+        args,
+        cancel,
+        false,
+        false,
+        false,
+        CommandInput::default(),
+    )
 }
 pub fn optional(
     repo: &Path,
@@ -26,10 +40,29 @@ pub fn optional(
     input: &[u8],
     cancel: &AtomicBool,
 ) -> Result<Vec<u8>> {
-    run_mode(repo, args, cancel, false, false, true, Some(input))
+    run_mode(
+        repo,
+        args,
+        cancel,
+        false,
+        false,
+        true,
+        CommandInput {
+            stdin: Some(input),
+            ..CommandInput::default()
+        },
+    )
 }
 pub fn mutate(repo: &Path, args: &[String], cancel: &AtomicBool, network: bool) -> Result<Vec<u8>> {
-    run_mode(repo, args, cancel, network, true, false, None)
+    run_mode(
+        repo,
+        args,
+        cancel,
+        network,
+        true,
+        false,
+        CommandInput::default(),
+    )
 }
 pub fn mutate_input(
     repo: &Path,
@@ -37,7 +70,122 @@ pub fn mutate_input(
     input: &[u8],
     cancel: &AtomicBool,
 ) -> Result<Vec<u8>> {
-    run_mode(repo, args, cancel, false, true, false, Some(input))
+    run_mode(
+        repo,
+        args,
+        cancel,
+        false,
+        true,
+        false,
+        CommandInput {
+            stdin: Some(input),
+            ..CommandInput::default()
+        },
+    )
+}
+pub fn mutate_sequence(
+    repo: &Path,
+    git: &Path,
+    args: &[String],
+    todo: &[u8],
+    messages: &std::collections::BTreeMap<String, String>,
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>> {
+    let executable = std::env::current_exe()?;
+    let directory = tempfile::tempdir()?;
+    let plan = directory.path().join("rebase-plan.json");
+    let mut plan_file = File::create(&plan)?;
+    serde_json::to_writer(
+        &mut plan_file,
+        &serde_json::json!({
+            "todo": String::from_utf8(todo.to_vec()).map_err(|_| Error::Invalid("Invalid generated rebase sequence".into()))?,
+            "messages": messages,
+        }),
+    )?;
+    plan_file.flush()?;
+    let sequence_editor = format!(
+        "{} --clear-compare-sequence-editor {}",
+        shell_quote(&executable)?,
+        shell_quote(&plan)?,
+    );
+    let message_editor = message_editor(&executable, git)?;
+    run_mode(
+        repo,
+        args,
+        cancel,
+        false,
+        true,
+        false,
+        CommandInput {
+            sequence_editor: Some(&sequence_editor),
+            message_editor: Some(&message_editor),
+            ..CommandInput::default()
+        },
+    )
+}
+
+pub fn continue_sequence(
+    repo: &Path,
+    git: &Path,
+    args: &[String],
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>> {
+    let directory = git.join("rebase-merge");
+    let payload = std::fs::read(directory.join("clear-compare-editor.json"))?;
+    if payload.len() > 16 * 1024 * 1024 {
+        return Err(Error::Invalid(
+            "Managed rebase plan exceeds size limit".into(),
+        ));
+    }
+    let payload: serde_json::Value = serde_json::from_slice(&payload)?;
+    let original = payload["todo"]
+        .as_str()
+        .ok_or_else(|| Error::Invalid("Managed rebase sequence missing".into()))?;
+    let mut actual = std::fs::read_to_string(directory.join("done"))?;
+    actual.push('\n');
+    actual.push_str(&std::fs::read_to_string(directory.join("git-rebase-todo"))?);
+    let steps = |text: &str| {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    if steps(original) != steps(&actual) {
+        return Err(Error::Invalid(
+            "The rebase sequence was changed externally; review it in Git before continuing".into(),
+        ));
+    }
+    let editor = message_editor(&std::env::current_exe()?, git)?;
+    run_mode(
+        repo,
+        args,
+        cancel,
+        false,
+        true,
+        false,
+        CommandInput {
+            message_editor: Some(&editor),
+            ..CommandInput::default()
+        },
+    )
+}
+
+fn message_editor(executable: &Path, git: &Path) -> Result<String> {
+    Ok(format!(
+        "{} --clear-compare-message-editor {}",
+        shell_quote(executable)?,
+        shell_quote(&git.join("rebase-merge/clear-compare-editor.json"))?
+    ))
+}
+
+fn shell_quote(path: &Path) -> Result<String> {
+    let value = path.to_str().ok_or_else(|| {
+        Error::Invalid("Managed Git editors require Unicode executable and repository paths".into())
+    })?;
+    #[cfg(windows)]
+    let value = value.replace('\\', "/");
+    Ok(format!("'{}'", value.replace('\'', "'\\''")))
 }
 fn run_mode(
     repo: &Path,
@@ -46,8 +194,13 @@ fn run_mode(
     network: bool,
     include_stderr: bool,
     no_match: bool,
-    input: Option<&[u8]>,
+    input: CommandInput<'_>,
 ) -> Result<Vec<u8>> {
+    let CommandInput {
+        stdin: input,
+        sequence_editor,
+        message_editor,
+    } = input;
     check_cancel(cancel)?;
     let out = tempfile::NamedTempFile::new()?;
     let err = tempfile::NamedTempFile::new()?;
@@ -99,8 +252,8 @@ fn run_mode(
     }
     command
         .args(args)
-        .env("GIT_EDITOR", "true")
-        .env("GIT_SEQUENCE_EDITOR", "false")
+        .env("GIT_EDITOR", message_editor.unwrap_or("true"))
+        .env("GIT_SEQUENCE_EDITOR", sequence_editor.unwrap_or("false"))
         .env("LC_ALL", "C")
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(if let Some(file) = &input_file {

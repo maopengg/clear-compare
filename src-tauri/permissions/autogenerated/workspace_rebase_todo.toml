@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-rebase-todo"
+description = "Enables the workspace_rebase_todo command without any pre-configured scope."
+commands.allow = ["workspace_rebase_todo"]
+
+[[permission]]
+identifier = "deny-workspace-rebase-todo"
+description = "Denies the workspace_rebase_todo command without any pre-configured scope."
+commands.deny = ["workspace_rebase_todo"]

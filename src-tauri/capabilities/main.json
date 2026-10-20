@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "allow-set-native-language",
+    "allow-workspace-rebase-todo",
     "allow-compare",
     "allow-compare-archives",
     "allow-compare-git",

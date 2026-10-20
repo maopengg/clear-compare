@@ -472,11 +472,22 @@ impl Controller {
         });
     }
     fn load(self, repository: String, directory: Option<String>, offset: usize) {
+        self.load_tree(repository, directory, offset, true);
+    }
+    fn load_tree(
+        self,
+        repository: String,
+        directory: Option<String>,
+        offset: usize,
+        clear_error: bool,
+    ) {
         if self.c.busy.get_untracked() {
             return;
         }
         self.c.busy.set(true);
-        self.c.error.set(String::new());
+        if clear_error {
+            self.c.error.set(String::new());
+        }
         spawn_local(async move {
             match invoke::<FilePage>("workspace_file_tree",serde_json::json!({"repositoryId":repository,"directory":directory,"offset":offset})).await{Ok(page)=>self.tree.update(|t|{t.insert(key(&repository,directory.as_deref()),page);}),Err(e)=>self.c.error.set(e)}
             self.c.busy.set(false);
@@ -609,7 +620,7 @@ pub fn panel(
             && let Some(repository) = root_request.get()
         {
             root_request.set(None);
-            s.load(repository, None, 0);
+            s.load_tree(repository, None, 0, false);
         }
     });
     Effect::new(move |_| {

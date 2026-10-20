@@ -67,6 +67,94 @@ fn oid(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%D";
+
+pub(super) fn interactive_rebase_todo(
+    root: &Path,
+    upstream: &str,
+    cancel: &AtomicBool,
+) -> Result<Vec<RebaseTodoItem>> {
+    let upstream = sha(root, upstream, cancel)?;
+    if runner::text(root, &["merge-base", &upstream, "HEAD"], cancel)? != upstream {
+        return Err(invalid(
+            "Choose an ancestor of the current HEAD as the rebase base",
+        ));
+    }
+    let raw = runner::run_owned(
+        root,
+        &[
+            "log".into(),
+            "--reverse".into(),
+            "--topo-order".into(),
+            "--no-merges".into(),
+            "--max-count=5001".into(),
+            "-z".into(),
+            "--format=%H%x00%B".into(),
+            format!("{upstream}..HEAD"),
+        ],
+        cancel,
+    )?;
+    let fields = raw.split(|b| *b == 0).collect::<Vec<_>>();
+    let fields = fields.strip_suffix(&[b"".as_slice()]).unwrap_or(&fields);
+    if fields.len() % 2 != 0 || fields.len() > 10_000 {
+        return Err(invalid("Malformed or oversized interactive rebase history"));
+    }
+    let mut commits = Vec::with_capacity(fields.len() / 2);
+    for pair in fields.as_chunks::<2>().0 {
+        let commit = String::from_utf8_lossy(pair[0]).into_owned();
+        if !oid(&commit) {
+            return Err(invalid("Malformed commit identity in rebase history"));
+        }
+        let message = String::from_utf8_lossy(pair[1])
+            .trim_end_matches(['\n', '\r'])
+            .to_string();
+        let subject = message.lines().next().unwrap_or_default().to_string();
+        commits.push(RebaseTodoItem {
+            commit,
+            subject,
+            message,
+            action: RebaseStepKind::Pick,
+        });
+    }
+    if commits.is_empty() {
+        return Err(invalid(
+            "No non-merge commits are available after this revision",
+        ));
+    }
+    Ok(commits)
+}
+
+impl Workspace {
+    pub fn interactive_rebase_todo(
+        &mut self,
+        repository: &str,
+        revision: &str,
+        upstream: &str,
+        cancel: &AtomicBool,
+    ) -> Result<Vec<RebaseTodoItem>> {
+        let state = self.open(repository, cancel)?;
+        if state.revision != revision {
+            return Err(invalid(
+                "Repository changed; refresh before reviewing rebase",
+            ));
+        }
+        if state.operation.is_some() || !state.changes.is_empty() {
+            return Err(invalid(
+                "Resolve Git operations and save or stash changes before rewriting history",
+            ));
+        }
+        if state.repository.kind == "bare" || state.repository.head.is_none() {
+            return Err(invalid(
+                "Interactive rebase requires a committed working branch",
+            ));
+        }
+        let repo = self
+            .repositories
+            .get(repository)
+            .ok_or_else(|| invalid("Unknown repository"))?;
+        interactive_rebase_todo(&repo.root, upstream, cancel)
+    }
+}
+
 fn graph(commits: Vec<Commit>, filtered: bool) -> Result<Vec<GraphCommit>> {
     let mut lanes = Vec::<String>::new();
     let visible = commits

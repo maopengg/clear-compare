@@ -1233,6 +1233,9 @@ fn run(cli: Cli) -> clear_core::Result<i32> {
 }
 
 fn main() {
+    if let Some(code) = clear_core::workbench::rebase_editor::run_from_args() {
+        std::process::exit(code);
+    }
     let code = match run(Cli::parse()) {
         Ok(code) => code,
         Err(error) => {

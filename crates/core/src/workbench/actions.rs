@@ -1,6 +1,6 @@
 //! Typed Git operations with one-use plans, revision checks and recovery references.
 use super::*;
-use clear_contracts::workbench::{Action, ActionPlan, ActionResult};
+use clear_contracts::workbench::{Action, ActionPlan, ActionResult, RebaseStepKind};
 pub(super) struct Prepared {
     view: ActionPlan,
     args: Vec<String>,
@@ -8,6 +8,8 @@ pub(super) struct Prepared {
     backup_worktree: bool,
     backup_target: Option<String>,
     input: Option<Vec<u8>>,
+    sequence_todo: Option<Vec<u8>>,
+    sequence_messages: BTreeMap<String, String>,
     selection: Option<super::working::SelectionGuard>,
     conflict_guard: Option<super::conflicts::ResolvedGuard>,
     guard_unsaved: bool,
@@ -109,6 +111,7 @@ impl Workspace {
                 | Action::Switch { .. }
                 | Action::Merge { .. }
                 | Action::Rebase { .. }
+                | Action::InteractiveRebase { .. }
                 | Action::CherryPick { .. }
                 | Action::Revert { .. }
                 | Action::Reset { .. }
@@ -173,6 +176,9 @@ impl Workspace {
             Ok(paths.into_iter().collect())
         };
         let mut input = None;
+        let mut sequence_todo = None;
+        let mut sequence_messages = BTreeMap::new();
+        let mut rebase_todo = None;
         let mut selection = None;
         let mut conflict_guard = None;
         let mut followup = None;
@@ -497,6 +503,124 @@ impl Workspace {
                 backup = true;
                 vec!["rebase".into(), commit(&repo.root, &reference, cancel)?]
             }
+            Action::InteractiveRebase { upstream, todo } => {
+                if state.operation.is_some() || !state.changes.is_empty() {
+                    return Err(invalid(
+                        "Resolve Git operations and save or stash changes before rewriting history",
+                    ));
+                }
+                if state.repository.kind == "bare" || state.repository.head.is_none() {
+                    return Err(invalid(
+                        "Interactive rebase requires a committed working branch",
+                    ));
+                }
+                let upstream = commit(&repo.root, &upstream, cancel)?;
+                let expected =
+                    super::history::interactive_rebase_todo(&repo.root, &upstream, cancel)?;
+                if expected.len() != todo.len() || todo.len() > 5000 {
+                    return Err(invalid(
+                        "Rebase todo no longer matches repository history; review it again",
+                    ));
+                }
+                if todo
+                    .iter()
+                    .map(|item| {
+                        item.subject
+                            .len()
+                            .saturating_add(item.message.len())
+                            .saturating_add(item.commit.len())
+                    })
+                    .sum::<usize>()
+                    > 8 * 1024 * 1024
+                {
+                    return Err(invalid("Rebase review exceeds its size limit"));
+                }
+                let expected_ids = expected
+                    .iter()
+                    .map(|item| item.commit.as_str())
+                    .collect::<BTreeSet<_>>();
+                let actual_ids = todo
+                    .iter()
+                    .map(|item| item.commit.as_str())
+                    .collect::<BTreeSet<_>>();
+                if expected_ids != actual_ids || actual_ids.len() != todo.len() {
+                    return Err(invalid(
+                        "Rebase todo must contain every commit after the selected base exactly once",
+                    ));
+                }
+                let mut script = String::new();
+                let mut has_predecessor = false;
+                for item in &todo {
+                    let action = match item.action {
+                        RebaseStepKind::Pick => "pick",
+                        RebaseStepKind::Reword => {
+                            if item.message.trim().is_empty()
+                                || item.message.len() > 65_536
+                                || item.message.contains('\0')
+                            {
+                                return Err(invalid(
+                                    "Reword commit message must contain 1–65536 bytes",
+                                ));
+                            }
+                            sequence_messages.insert(item.commit.clone(), item.message.clone());
+                            "reword"
+                        }
+                        RebaseStepKind::Edit => "edit",
+                        RebaseStepKind::Squash => "squash",
+                        RebaseStepKind::Fixup => "fixup",
+                        RebaseStepKind::Drop => "drop",
+                    };
+                    if matches!(item.action, RebaseStepKind::Squash | RebaseStepKind::Fixup)
+                        && !has_predecessor
+                    {
+                        return Err(invalid(
+                            "Squash and fixup require a preceding retained commit",
+                        ));
+                    }
+                    has_predecessor |= item.action != RebaseStepKind::Drop;
+                    if !expected_ids.contains(item.commit.as_str()) {
+                        return Err(invalid(
+                            "Rebase todo contains a commit outside the reviewed range",
+                        ));
+                    }
+                    script.push_str(action);
+                    script.push(' ');
+                    script.push_str(&item.commit);
+                    script.push('\n');
+                }
+                sequence_todo = Some(script.into_bytes());
+                rebase_todo = Some(
+                    todo.into_iter()
+                        .map(|mut item| {
+                            if let Some(original) = expected
+                                .iter()
+                                .find(|original| original.commit == item.commit)
+                            {
+                                item.subject = original.subject.clone();
+                                if item.action != RebaseStepKind::Reword {
+                                    item.message = original.message.clone();
+                                }
+                            }
+                            item
+                        })
+                        .collect(),
+                );
+                dangerous = true;
+                backup = true;
+                vec![
+                    "rebase".into(),
+                    "--interactive".into(),
+                    "--no-autostash".into(),
+                    "--no-update-refs".into(),
+                    "--no-rebase-merges".into(),
+                    "--no-fork-point".into(),
+                    "--no-autosquash".into(),
+                    "--reapply-cherry-picks".into(),
+                    "--keep-empty".into(),
+                    "--empty=keep".into(),
+                    upstream,
+                ]
+            }
             Action::CherryPick { reference } => vec![
                 "cherry-pick".into(),
                 commit(&repo.root, &reference, cancel)?,
@@ -779,6 +903,7 @@ impl Workspace {
         }
         let token = crate::unique_id();
         let view = ActionPlan {
+            rebase_todo,
             working_directory: submodule_guard
                 .as_ref()
                 .map(|g| g.command_root().to_string_lossy().into_owned()),
@@ -800,6 +925,8 @@ impl Workspace {
             backup_worktree,
             backup_target,
             input,
+            sequence_todo,
+            sequence_messages,
             selection,
             conflict_guard,
             guard_unsaved,
@@ -932,7 +1059,27 @@ impl Workspace {
                     cancel,
                 )?;
             }
-            if let Some(input) = &plan.input {
+            if let Some(todo) = &plan.sequence_todo {
+                runner::mutate_sequence(
+                    &repo.root,
+                    &repo.git,
+                    &plan.args,
+                    todo,
+                    &plan.sequence_messages,
+                    cancel,
+                )
+            } else if plan.args.first().is_some_and(|arg| arg == "rebase")
+                && plan
+                    .args
+                    .get(1)
+                    .is_some_and(|arg| matches!(arg.as_str(), "--continue" | "--skip"))
+                && repo
+                    .git
+                    .join("rebase-merge/clear-compare-editor.json")
+                    .is_file()
+            {
+                runner::continue_sequence(&repo.root, &repo.git, &plan.args, cancel)
+            } else if let Some(input) = &plan.input {
                 runner::mutate_input(&repo.root, &plan.args, input, cancel)
             } else {
                 let root = plan
@@ -965,6 +1112,8 @@ impl Workspace {
                     "Worktree recovery"
                 };
                 invalid(&format!("{e}. {kind}: {}", path.display()))
+            } else if let Some(reference) = &plan.view.backup_reference {
+                invalid(&format!("{e}. Recovery reference: {reference}"))
             } else {
                 e
             }
